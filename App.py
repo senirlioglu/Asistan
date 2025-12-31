@@ -1,5 +1,4 @@
 import streamlit as st
-import re
 import pandas as pd
 import urllib.parse
 from datetime import datetime
@@ -131,115 +130,119 @@ URUN_EMOJILERI = {
 
 def get_emoji(urun_adi):
     """Ürün adına göre emoji döndür"""
-    urun_upper = urun_adi.upper()
+    urun_upper = str(urun_adi).upper()
     for keyword, emoji in URUN_EMOJILERI.items():
         if keyword in urun_upper:
             return emoji
     return "🏷️"
 
 # =============================================================================
-# MAİL PARSER
+# EXCEL PARSER
 # =============================================================================
-def parse_kampanya_maili(mail_text):
-    """Kampanya mailini parse et"""
+def parse_excel(df):
+    """Excel dosyasını parse et"""
     
     result = {
-        'baslangic': None,
-        'bitis': None,
-        'magaza_kodu': None,
-        'magaza_adi': None,
         'urunler': [],
-        'parse_guven': 100,
         'hatalar': [],
         'uyarilar': []
     }
     
-    # Tarihleri bul
-    tarih_pattern = r'(\d{2}\.\d{2}\.\d{4})'
-    tarihler = re.findall(tarih_pattern, mail_text)
-    if len(tarihler) >= 2:
-        result['baslangic'] = tarihler[0]
-        result['bitis'] = tarihler[1]
-    else:
-        result['hatalar'].append("⚠️ Kampanya tarihleri bulunamadı!")
-        result['parse_guven'] -= 20
+    # Sütun isimlerini normalize et
+    df.columns = df.columns.str.strip().str.lower()
     
-    # Ürünleri parse et - tablo formatı
-    lines = mail_text.split('\n')
-    current_urun = {}
+    # Olası sütun isimleri
+    kod_cols = ['ürün kodu', 'urun kodu', 'kod', 'malzeme']
+    ad_cols = ['ürün adı', 'urun adi', 'ürün', 'urun', 'ad', 'tanım']
+    eski_fiyat_cols = ['satış fiyatı', 'satis fiyati', 'eski fiyat', 'liste fiyatı']
+    yeni_fiyat_cols = ['tanıtım fiyatı', 'tanitim fiyati', 'yeni fiyat', 'kampanya fiyatı', 'indirimli fiyat']
+    indirim_cols = ['indirim oranı', 'indirim orani', 'indirim', 'iskonto']
     
-    for i, line in enumerate(lines):
-        line = line.strip()
-        
-        # Ürün kodu ile başlayan satır (8 haneli sayı)
-        if re.match(r'^\d{8}$', line):
-            if current_urun:
-                result['urunler'].append(current_urun)
-            current_urun = {'kod': line, 'ad': '', 'eski_fiyat': '', 'yeni_fiyat': '', 'indirim': ''}
-        
-        # Fiyat satırı
-        elif '₺' in line and current_urun:
-            fiyat_match = re.search(r'₺([\d.,]+)', line)
-            if fiyat_match:
-                if not current_urun['eski_fiyat']:
-                    current_urun['eski_fiyat'] = fiyat_match.group(1)
-                elif not current_urun['yeni_fiyat']:
-                    current_urun['yeni_fiyat'] = fiyat_match.group(1)
-        
-        # İndirim oranı
-        elif '%' in line and current_urun:
-            indirim_match = re.search(r'%(\d+[,.]?\d*)', line)
-            if indirim_match:
-                current_urun['indirim'] = indirim_match.group(1)
-        
-        # Ürün adı (kod sonrası, fiyat öncesi satır)
-        elif current_urun and current_urun['kod'] and not current_urun['eski_fiyat'] and line and not line.startswith('%'):
-            current_urun['ad'] = line
+    # Sütunları bul
+    kod_col = None
+    ad_col = None
+    eski_fiyat_col = None
+    yeni_fiyat_col = None
+    indirim_col = None
     
-    # Son ürünü ekle
-    if current_urun and current_urun.get('kod'):
-        result['urunler'].append(current_urun)
+    for col in df.columns:
+        if any(x in col for x in kod_cols):
+            kod_col = col
+        elif any(x in col for x in ad_cols):
+            ad_col = col
+        elif any(x in col for x in eski_fiyat_cols):
+            eski_fiyat_col = col
+        elif any(x in col for x in yeni_fiyat_cols):
+            yeni_fiyat_col = col
+        elif any(x in col for x in indirim_cols):
+            indirim_col = col
     
-    # Alternatif parse - tek satır format
-    if not result['urunler']:
-        urun_pattern = r'(\d{8})\s+(.+?)\s+₺([\d.,]+)\s+₺([\d.,]+)\s+%(\d+[,.]?\d*)'
-        for match in re.finditer(urun_pattern, mail_text):
-            result['urunler'].append({
-                'kod': match.group(1),
-                'ad': match.group(2).strip(),
-                'eski_fiyat': match.group(3),
-                'yeni_fiyat': match.group(4),
-                'indirim': match.group(5)
-            })
+    # Sütun kontrolü
+    if not kod_col:
+        result['hatalar'].append("🔴 'Ürün Kodu' sütunu bulunamadı!")
+    if not ad_col:
+        result['hatalar'].append("🔴 'Ürün Adı' sütunu bulunamadı!")
+    if not yeni_fiyat_col:
+        result['hatalar'].append("🔴 'Tanıtım Fiyatı' sütunu bulunamadı!")
     
-    # Anomali kontrolleri
-    for urun in result['urunler']:
-        # Boş fiyat kontrolü
-        if not urun.get('yeni_fiyat') or not urun.get('eski_fiyat'):
-            result['uyarilar'].append(f"⚠️ {urun.get('ad', 'Bilinmeyen')}: Fiyat bilgisi eksik")
-            result['parse_guven'] -= 5
-        
-        # Ters indirim kontrolü
+    if result['hatalar']:
+        return result
+    
+    # Verileri parse et
+    for idx, row in df.iterrows():
         try:
-            eski = float(urun.get('eski_fiyat', '0').replace('.', '').replace(',', '.'))
-            yeni = float(urun.get('yeni_fiyat', '0').replace('.', '').replace(',', '.'))
-            if yeni > eski and eski > 0:
-                result['hatalar'].append(f"🔴 {urun.get('ad', 'Bilinmeyen')}: Yeni fiyat eskisinden yüksek!")
-                result['parse_guven'] -= 10
-        except:
-            pass
-        
-        # Sıfır/çok düşük fiyat kontrolü
-        try:
-            yeni = float(urun.get('yeni_fiyat', '0').replace('.', '').replace(',', '.'))
-            if yeni < 10:
-                result['uyarilar'].append(f"⚠️ {urun.get('ad', 'Bilinmeyen')}: Fiyat çok düşük ({yeni}₺)")
-        except:
-            pass
+            kod = str(row.get(kod_col, '')).strip()
+            ad = str(row.get(ad_col, '')).strip()
+            
+            # Boş satırları atla
+            if not kod or kod == 'nan' or not ad or ad == 'nan':
+                continue
+            
+            # Fiyatları temizle
+            eski_fiyat = str(row.get(eski_fiyat_col, '')).replace('₺', '').replace('.', '').replace(',', '.').strip()
+            yeni_fiyat = str(row.get(yeni_fiyat_col, '')).replace('₺', '').replace('.', '').replace(',', '.').strip()
+            indirim = str(row.get(indirim_col, '')).replace('%', '').replace(',', '.').strip() if indirim_col else ''
+            
+            # Fiyatları formatla
+            try:
+                eski_fiyat_num = float(eski_fiyat) if eski_fiyat and eski_fiyat != 'nan' else 0
+                yeni_fiyat_num = float(yeni_fiyat) if yeni_fiyat and yeni_fiyat != 'nan' else 0
+                
+                eski_fiyat_str = f"{eski_fiyat_num:,.0f}".replace(',', '.')
+                yeni_fiyat_str = f"{yeni_fiyat_num:,.0f}".replace(',', '.')
+            except:
+                eski_fiyat_str = eski_fiyat
+                yeni_fiyat_str = yeni_fiyat
+                eski_fiyat_num = 0
+                yeni_fiyat_num = 0
+            
+            # İndirim hesapla (yoksa)
+            if not indirim and eski_fiyat_num > 0 and yeni_fiyat_num > 0:
+                indirim = f"{((eski_fiyat_num - yeni_fiyat_num) / eski_fiyat_num) * 100:.1f}"
+            
+            urun = {
+                'kod': kod,
+                'ad': ad,
+                'eski_fiyat': eski_fiyat_str,
+                'yeni_fiyat': yeni_fiyat_str,
+                'indirim': indirim,
+                'indirim_num': float(indirim) if indirim and indirim != 'nan' else 0
+            }
+            
+            # Anomali kontrolleri
+            if yeni_fiyat_num > eski_fiyat_num and eski_fiyat_num > 0:
+                result['uyarilar'].append(f"⚠️ {ad[:30]}: Yeni fiyat eskisinden yüksek!")
+            
+            if yeni_fiyat_num < 10 and yeni_fiyat_num > 0:
+                result['uyarilar'].append(f"⚠️ {ad[:30]}: Fiyat çok düşük ({yeni_fiyat_num}₺)")
+            
+            result['urunler'].append(urun)
+            
+        except Exception as e:
+            result['uyarilar'].append(f"⚠️ Satır {idx+1} okunamadı: {str(e)}")
     
     if not result['urunler']:
-        result['hatalar'].append("🔴 Hiç ürün bulunamadı! Mail formatını kontrol edin.")
-        result['parse_guven'] = 0
+        result['hatalar'].append("🔴 Hiç ürün bulunamadı!")
     
     return result
 
@@ -272,12 +275,6 @@ def format_whatsapp_mesaji(magaza_kodu, magaza_adi, secili_urunler, bitis_tarihi
 
 st.markdown('<p class="main-header">📢 A101 Kampanya Mesaj Oluşturucu</p>', unsafe_allow_html=True)
 
-# Session state başlat
-if 'adim' not in st.session_state:
-    st.session_state.adim = 1
-if 'secili_urunler' not in st.session_state:
-    st.session_state.secili_urunler = []
-
 # =============================================================================
 # ADIM 1: MAĞAZA SEÇİMİ
 # =============================================================================
@@ -306,64 +303,62 @@ if magaza_secim:
     st.markdown("---")
     
     # =============================================================================
-    # ADIM 2: KAMPANYA MAİLİ
+    # ADIM 2: KAMPANYA TARİHLERİ
     # =============================================================================
-    st.markdown("### 2️⃣ Kampanya Mailini Yapıştırın")
+    st.markdown("### 2️⃣ Kampanya Tarihleri")
     
-    mail_icerik = st.text_area(
-        "Kampanya onay mailinin içeriğini buraya yapıştırın:",
-        height=200,
-        placeholder="Workflow'dan gelen kampanya mailini kopyalayıp buraya yapıştırın..."
+    col1, col2 = st.columns(2)
+    with col1:
+        baslangic_tarihi = st.date_input("Başlangıç Tarihi", value=datetime.now())
+    with col2:
+        bitis_tarihi = st.date_input("Bitiş Tarihi", value=datetime.now())
+    
+    bitis_str = bitis_tarihi.strftime("%d.%m.%Y")
+    
+    st.markdown("---")
+    
+    # =============================================================================
+    # ADIM 3: EXCEL YÜKLE
+    # =============================================================================
+    st.markdown("### 3️⃣ Kampanya Excel'i Yükle")
+    
+    st.info("💡 Kampanya mailindeki ürün tablosunu Excel'e kopyalayıp buraya yükleyin.")
+    
+    uploaded_file = st.file_uploader(
+        "Excel dosyasını seçin",
+        type=['xlsx', 'xls'],
+        help="Ürün Kodu, Ürün Adı, Satış Fiyatı, Tanıtım Fiyatı, İndirim Oranı sütunları olmalı"
     )
     
-    if mail_icerik:
-        # Parse et
-        kampanya = parse_kampanya_maili(mail_icerik)
-        
-        # Parse güven skoru
-        if kampanya['parse_guven'] < 50:
-            st.markdown(f'''
-                <div class="hata-kutusu">
-                    <strong>🔴 Parse Güven Skoru: %{kampanya['parse_guven']}</strong><br>
-                    Mail formatında sorun var. Lütfen kontrol edin.
-                </div>
-            ''', unsafe_allow_html=True)
-        elif kampanya['parse_guven'] < 80:
-            st.markdown(f'''
-                <div class="uyari-kutusu">
-                    <strong>⚠️ Parse Güven Skoru: %{kampanya['parse_guven']}</strong><br>
-                    Bazı veriler eksik olabilir.
-                </div>
-            ''', unsafe_allow_html=True)
-        else:
-            st.markdown(f'''
-                <div class="basari-kutusu">
-                    <strong>✅ Parse Güven Skoru: %{kampanya['parse_guven']}</strong><br>
-                    {len(kampanya['urunler'])} ürün başarıyla okundu.
-                </div>
-            ''', unsafe_allow_html=True)
-        
-        # Hata ve uyarıları göster
-        if kampanya['hatalar']:
-            for hata in kampanya['hatalar']:
-                st.error(hata)
-        
-        if kampanya['uyarilar']:
-            with st.expander("⚠️ Uyarılar", expanded=False):
-                for uyari in kampanya['uyarilar']:
-                    st.warning(uyari)
-        
-        # Tarih bilgisi
-        if kampanya['baslangic'] and kampanya['bitis']:
-            st.success(f"📅 Kampanya: {kampanya['baslangic']} - {kampanya['bitis']}")
-        
-        st.markdown("---")
-        
-        # =============================================================================
-        # ADIM 3: ÜRÜN SEÇİMİ
-        # =============================================================================
-        if kampanya['urunler']:
-            st.markdown("### 3️⃣ Ürün Seçimi (3-5 ürün)")
+    if uploaded_file:
+        try:
+            df = pd.read_excel(uploaded_file)
+            
+            st.success(f"✅ Dosya yüklendi: {len(df)} satır")
+            
+            # Parse et
+            kampanya = parse_excel(df)
+            
+            # Hataları göster
+            if kampanya['hatalar']:
+                for hata in kampanya['hatalar']:
+                    st.error(hata)
+                st.stop()
+            
+            # Uyarıları göster
+            if kampanya['uyarilar']:
+                with st.expander(f"⚠️ {len(kampanya['uyarilar'])} Uyarı", expanded=False):
+                    for uyari in kampanya['uyarilar']:
+                        st.warning(uyari)
+            
+            st.success(f"✅ {len(kampanya['urunler'])} ürün başarıyla okundu")
+            
+            st.markdown("---")
+            
+            # =============================================================================
+            # ADIM 4: ÜRÜN SEÇİMİ
+            # =============================================================================
+            st.markdown("### 4️⃣ Ürün Seçimi (3-5 ürün)")
             
             # Seçim rehberi
             st.markdown('''
@@ -376,51 +371,32 @@ if magaza_secim:
                 </div>
             ''', unsafe_allow_html=True)
             
-            # Ürün tablosu
-            secili_kodlar = []
-            
-            # DataFrame oluştur
-            df_data = []
-            for urun in kampanya['urunler']:
-                indirim_val = 0
-                try:
-                    indirim_val = float(urun.get('indirim', '0').replace(',', '.'))
-                except:
-                    pass
-                
-                df_data.append({
-                    'Kod': urun['kod'],
-                    'Ürün': urun['ad'][:40] + ('...' if len(urun['ad']) > 40 else ''),
-                    'Eski Fiyat': urun.get('eski_fiyat', '-'),
-                    'Yeni Fiyat': urun.get('yeni_fiyat', '-'),
-                    'İndirim %': urun.get('indirim', '-'),
-                    'indirim_val': indirim_val
-                })
-            
-            df = pd.DataFrame(df_data)
-            df_sorted = df.sort_values('indirim_val', ascending=False)
+            # Ürünleri indirime göre sırala
+            urunler_sirali = sorted(kampanya['urunler'], key=lambda x: x['indirim_num'], reverse=True)
             
             st.markdown("**En yüksek indirimli ürünler üstte:**")
             
-            # Checkbox ile seçim
-            for idx, row in df_sorted.iterrows():
-                urun_data = kampanya['urunler'][idx]
+            # Session state ile seçimleri tut
+            if 'secili_kodlar' not in st.session_state:
+                st.session_state.secili_kodlar = []
+            
+            secili_urunler = []
+            
+            for urun in urunler_sirali:
                 col1, col2 = st.columns([1, 20])
                 
                 with col1:
-                    secili = st.checkbox("", key=f"urun_{row['Kod']}")
+                    secili = st.checkbox("", key=f"urun_{urun['kod']}")
                     if secili:
-                        secili_kodlar.append(urun_data)
+                        secili_urunler.append(urun)
                 
                 with col2:
-                    emoji = get_emoji(row['Ürün'])
-                    indirim_badge = ""
-                    if row['indirim_val'] >= 30:
-                        indirim_badge = "🔥"
-                    st.write(f"{emoji} **{row['Ürün']}** - {row['Yeni Fiyat']}₺ ~~{row['Eski Fiyat']}₺~~ | %{row['İndirim %']} {indirim_badge}")
+                    emoji = get_emoji(urun['ad'])
+                    indirim_badge = "🔥" if urun['indirim_num'] >= 30 else ""
+                    st.write(f"{emoji} **{urun['ad'][:50]}** - {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {indirim_badge}")
             
             # Seçim sayısı kontrolü
-            secili_sayi = len(secili_kodlar)
+            secili_sayi = len(secili_urunler)
             
             if secili_sayi > 0:
                 if secili_sayi < 3:
@@ -433,9 +409,9 @@ if magaza_secim:
                 st.markdown("---")
                 
                 # =============================================================================
-                # ADIM 4: STOK KONTROLÜ
+                # ADIM 5: STOK KONTROLÜ
                 # =============================================================================
-                st.markdown("### 4️⃣ Stok Kontrolü")
+                st.markdown("### 5️⃣ Stok Kontrolü")
                 
                 stok_onay = st.checkbox(
                     f"✅ Seçtiğim {secili_sayi} ürün **{magaza_kodu} {magaza_adi}** mağazasında STOKTA MEVCUT",
@@ -445,13 +421,12 @@ if magaza_secim:
                 st.markdown("---")
                 
                 # =============================================================================
-                # ADIM 5: MESAJ ÖNİZLEME VE GÖNDERME
+                # ADIM 6: MESAJ ÖNİZLEME VE GÖNDERME
                 # =============================================================================
-                st.markdown("### 5️⃣ Mesaj Önizleme ve Gönderme")
+                st.markdown("### 6️⃣ Mesaj Önizleme ve Gönderme")
                 
                 # Mesajı oluştur
-                bitis = kampanya['bitis'] or "Stoklarla sınırlı"
-                mesaj = format_whatsapp_mesaji(magaza_kodu, magaza_adi, secili_kodlar, bitis)
+                mesaj = format_whatsapp_mesaji(magaza_kodu, magaza_adi, secili_urunler, bitis_str)
                 
                 st.markdown("**Mesaj önizleme:**")
                 st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
@@ -469,7 +444,7 @@ if magaza_secim:
                 )
                 
                 kontrol2 = st.checkbox(
-                    f"✅ Kampanya tarihi ({bitis}) ve fiyatlar DOĞRU",
+                    f"✅ Kampanya tarihi ({bitis_str}) ve fiyatlar DOĞRU",
                     key="kontrol2"
                 )
                 
@@ -520,6 +495,9 @@ if magaza_secim:
                     ''', unsafe_allow_html=True)
                     
                     st.warning("☝️ Gönderim için yukarıdaki tüm kontrolleri tamamlayın.")
+        
+        except Exception as e:
+            st.error(f"🔴 Excel okuma hatası: {str(e)}")
 
 else:
     st.info("👆 Önce mağazanızı seçin.")
@@ -528,7 +506,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-     Kampanya Mesaj Oluşturucu v1.0<br>
+    A101 Kampanya Mesaj Oluşturucu v1.1<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
