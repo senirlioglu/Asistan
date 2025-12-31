@@ -193,8 +193,8 @@ def get_magaza_performans(df, magaza_kodu):
         return None, None
 
     try:
-        # Mağaza kodunu bul (farklı formatlarda olabilir)
-        magaza_filter = df['Magaza_Kod'].astype(str).str.contains(magaza_kodu, case=False, na=False)
+        # Mağaza kodunu tam eşleştir (contains yerine ==)
+        magaza_filter = df['Magaza_Kod'].astype(str).str.strip() == magaza_kodu.strip()
         magaza_df = df[magaza_filter]
 
         if magaza_df.empty:
@@ -223,26 +223,21 @@ def calculate_product_scores(urun, mal_grubu_perf, urun_perf):
     """
     İki farklı puanlama:
     1. Mağaza Skoru - Mağaza satış performansına göre (her mağazada farklı)
-    2. Genel Skor - İndirim/fiyat bazlı (tüm mağazalarda aynı)
+    2. Genel Skor - İndirim bazlı (tüm mağazalarda aynı)
+
+    Düzeltmeler:
+    - Mal grubu: max'a göre normalize (en çok satan = 100)
+    - Fiyat farkı: kaldırıldı (indirim zaten var, pahalı ürünleri şişiriyordu)
+    - Ürün geçmişi: mağaza bazlı 90. percentile'a göre normalize
     """
 
-    # Ham puanları hesapla
     raw_scores = {}
 
     # 1. İndirim Puanı (0-100)
     indirim = urun.get('indirim_num', 0)
     raw_scores['indirim'] = min(indirim / 50 * 100, 100)  # %50+ = max
 
-    # 2. Fiyat Farkı Puanı (0-100)
-    try:
-        eski = float(urun.get('eski_fiyat', '0').replace('.', '').replace(',', '.'))
-        yeni = float(urun.get('yeni_fiyat', '0').replace('.', '').replace(',', '.'))
-        fark = eski - yeni
-        raw_scores['fiyat_fark'] = min(fark / 1000 * 100, 100)  # 1000₺+ = max
-    except ValueError:
-        raw_scores['fiyat_fark'] = 0
-
-    # 3. Ürün Satış Geçmişi + Mal Grubu (ürün kodu ile eşleştir)
+    # 2. Ürün Satış Geçmişi + Mal Grubu (ürün kodu ile eşleştir)
     raw_scores['urun_gecmis'] = 0
     raw_scores['mal_grubu'] = 0
     urun_mal_grubu = None
@@ -254,42 +249,46 @@ def calculate_product_scores(urun, mal_grubu_perf, urun_perf):
         if not urun_match.empty:
             # Bu ürün daha önce satılmış - gerçek mal grubunu al
             adet = urun_match['Adet'].values[0]
-            raw_scores['urun_gecmis'] = min(adet / 10 * 100, 100)  # 10+ adet = max
             urun_mal_grubu = urun_match['Mal_Grubu'].values[0]
 
-    # Mal grubu performansı (ürün kodundan bulunan gerçek mal grubu ile)
+            # Mağaza bazlı normalize: 90. percentile eşiği
+            p90 = urun_perf['Adet'].quantile(0.90)
+            if p90 > 0:
+                raw_scores['urun_gecmis'] = min((adet / p90) * 100, 100)
+            else:
+                raw_scores['urun_gecmis'] = 100 if adet > 0 else 0
+
+    # Mal grubu performansı - MAX'a göre normalize (en çok satan = 100)
     if urun_mal_grubu and mal_grubu_perf is not None and not mal_grubu_perf.empty:
         mal_match = mal_grubu_perf[mal_grubu_perf['Mal_Grubu'] == urun_mal_grubu]
         if not mal_match.empty:
-            total_adet = mal_grubu_perf['Adet'].sum()
-            if total_adet > 0:
-                raw_scores['mal_grubu'] = min((mal_match['Adet'].values[0] / total_adet) * 200, 100)
+            max_adet = mal_grubu_perf['Adet'].max()
+            if max_adet > 0:
+                raw_scores['mal_grubu'] = (mal_match['Adet'].values[0] / max_adet) * 100
 
     # === MAĞAZA SKORU (mağaza bazlı - her mağazada farklı) ===
-    # Ağırlık: Mal Grubu %35 + Ürün Geçmişi %35 + İndirim %15 + Fiyat %15
+    # Ağırlık: Mal Grubu %40 + Ürün Geçmişi %40 + İndirim %20
+    # (Fiyat farkı kaldırıldı - indirim zaten var)
     magaza_skor = (
-        raw_scores['mal_grubu'] * 0.35 +
-        raw_scores['urun_gecmis'] * 0.35 +
-        raw_scores['indirim'] * 0.15 +
-        raw_scores['fiyat_fark'] * 0.15
+        raw_scores['mal_grubu'] * 0.40 +
+        raw_scores['urun_gecmis'] * 0.40 +
+        raw_scores['indirim'] * 0.20
     )
 
     # === GENEL SKOR (indirim bazlı - tüm mağazalarda aynı) ===
-    # Ağırlık: İndirim %40 + Fiyat Farkı %35 + Mal Grubu %15 + Ürün %10
+    # Ağırlık: İndirim %60 + Mal Grubu %25 + Ürün %15
     genel_skor = (
-        raw_scores['indirim'] * 0.40 +
-        raw_scores['fiyat_fark'] * 0.35 +
-        raw_scores['mal_grubu'] * 0.15 +
-        raw_scores['urun_gecmis'] * 0.10
+        raw_scores['indirim'] * 0.60 +
+        raw_scores['mal_grubu'] * 0.25 +
+        raw_scores['urun_gecmis'] * 0.15
     )
 
     # Detaylar
     details = {
         'indirim': round(raw_scores['indirim'], 1),
-        'fiyat_fark': round(raw_scores['fiyat_fark'], 1),
         'mal_grubu': round(raw_scores['mal_grubu'], 1),
         'urun_gecmis': round(raw_scores['urun_gecmis'], 1),
-        'mal_grubu_adi': urun_mal_grubu or "Bilinmiyor"
+        'mal_grubu_adi': urun_mal_grubu or "Yeni Ürün"
     }
 
     return round(magaza_skor, 1), round(genel_skor, 1), details
@@ -542,9 +541,9 @@ if magaza_secim:
             <div class="secim-rehberi">
                 <strong>🏪 Mağaza Bazlı Puanlama:</strong><br>
                 Bu sıralama <strong>mağazanızın satış geçmişine</strong> göre yapılmıştır.<br>
-                • Mal Grubu Performansı (35%) - Bu kategoride ne kadar satıyorsunuz?<br>
-                • Ürün Satış Geçmişi (35%) - Bu ürünü daha önce sattınız mı?<br>
-                • İndirim + Fiyat Farkı (30%)<br><br>
+                • Mal Grubu Performansı (40%) - Bu kategori mağazanızda ne kadar satıyor?<br>
+                • Ürün Satış Geçmişi (40%) - Bu ürünü daha önce sattınız mı?<br>
+                • İndirim Oranı (20%)<br><br>
                 🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
             </div>
             """, unsafe_allow_html=True)
@@ -581,10 +580,10 @@ if magaza_secim:
             st.markdown("""
             <div class="secim-rehberi">
                 <strong>📊 Genel Puanlama (Tüm Mağazalar İçin Aynı):</strong><br>
-                Bu sıralama <strong>indirim oranı ve fiyat farkına</strong> göre yapılmıştır.<br>
-                • İndirim Oranı (40%)<br>
-                • Fiyat Farkı (35%)<br>
-                • Mağaza Performansı (25%)<br><br>
+                Bu sıralama <strong>indirim oranına</strong> göre yapılmıştır.<br>
+                • İndirim Oranı (60%)<br>
+                • Mal Grubu Performansı (25%)<br>
+                • Ürün Satış Geçmişi (15%)<br><br>
                 🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
             </div>
             """, unsafe_allow_html=True)
@@ -613,8 +612,8 @@ if magaza_secim:
                     detay = urun.get('puan_detay', {})
                     with st.popover("📊 Detay"):
                         st.write(f"İndirim: {detay.get('indirim', 0)}/100")
-                        st.write(f"Fiyat Farkı: {detay.get('fiyat_fark', 0)}/100")
                         st.write(f"Kategori: {detay.get('mal_grubu', 0)}/100")
+                        st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/100")
 
         # Seçim kontrolü
         secili_sayi = len(secili_urunler)
@@ -719,7 +718,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-    A101 Kampanya Mesaj Oluşturucu v3.1 - İki Sıralama<br>
+    A101 Kampanya Mesaj Oluşturucu v3.2 - Düzeltilmiş Puanlama<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
