@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd
+import re
 import urllib.parse
 from datetime import datetime
 
@@ -78,6 +78,13 @@ st.markdown("""
         padding: 20px;
         margin: 20px 0;
     }
+    .tarih-bilgi {
+        background-color: #e8f5e9;
+        border-left: 4px solid #4caf50;
+        padding: 10px 15px;
+        margin: 10px 0;
+        border-radius: 0 8px 8px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -126,6 +133,7 @@ URUN_EMOJILERI = {
     "BARDAK": "🥛", "FİNCAN": "☕", "TABAK": "🍽️", "KAVANOZ": "🫙",
     "TERMOS": "🧊", "TESTERE": "🪚", "SAATİ": "⌚", "KAMERA": "📷",
     "POWERBANK": "🔋", "DONDURUC": "🧊", "ESPRESSO": "☕",
+    "ÇAPA": "🚜", "MULTIMEDIA": "🎵", "MUG": "☕", "SEPETİ": "🧺",
 }
 
 def get_emoji(urun_adi):
@@ -137,136 +145,130 @@ def get_emoji(urun_adi):
     return "🏷️"
 
 # =============================================================================
-# EXCEL PARSER
+# MAİL PARSER - Workflow Formatı
 # =============================================================================
-def parse_excel(df):
-    """Excel dosyasını parse et"""
-    
+def parse_kampanya_maili(mail_text):
+    """Workflow kampanya mailini parse et"""
+
     result = {
+        'baslangic': None,
+        'bitis': None,
+        'onaylayan': None,
         'urunler': [],
         'hatalar': [],
         'uyarilar': []
     }
-    
-    # Sütun isimlerini normalize et
-    df.columns = df.columns.str.strip().str.lower()
-    
-    # Olası sütun isimleri
-    kod_cols = ['ürün kodu', 'urun kodu', 'kod', 'malzeme']
-    ad_cols = ['ürün adı', 'urun adi', 'ürün', 'urun', 'ad', 'tanım']
-    eski_fiyat_cols = ['satış fiyatı', 'satis fiyati', 'eski fiyat', 'liste fiyatı']
-    yeni_fiyat_cols = ['tanıtım fiyatı', 'tanitim fiyati', 'yeni fiyat', 'kampanya fiyatı', 'indirimli fiyat']
-    indirim_cols = ['indirim oranı', 'indirim orani', 'indirim', 'iskonto']
-    
-    # Sütunları bul
-    kod_col = None
-    ad_col = None
-    eski_fiyat_col = None
-    yeni_fiyat_col = None
-    indirim_col = None
-    
-    for col in df.columns:
-        if any(x in col for x in kod_cols):
-            kod_col = col
-        elif any(x in col for x in ad_cols):
-            ad_col = col
-        elif any(x in col for x in eski_fiyat_cols):
-            eski_fiyat_col = col
-        elif any(x in col for x in yeni_fiyat_cols):
-            yeni_fiyat_col = col
-        elif any(x in col for x in indirim_cols):
-            indirim_col = col
-    
-    # Sütun kontrolü
-    if not kod_col:
-        result['hatalar'].append("🔴 'Ürün Kodu' sütunu bulunamadı!")
-    if not ad_col:
-        result['hatalar'].append("🔴 'Ürün Adı' sütunu bulunamadı!")
-    if not yeni_fiyat_col:
-        result['hatalar'].append("🔴 'Tanıtım Fiyatı' sütunu bulunamadı!")
-    
-    if result['hatalar']:
-        return result
-    
-    # Verileri parse et
-    for idx, row in df.iterrows():
-        try:
-            kod = str(row.get(kod_col, '')).strip()
-            ad = str(row.get(ad_col, '')).strip()
-            
-            # Boş satırları atla
-            if not kod or kod == 'nan' or not ad or ad == 'nan':
-                continue
-            
-            # Fiyatları temizle
-            eski_fiyat = str(row.get(eski_fiyat_col, '')).replace('₺', '').replace('.', '').replace(',', '.').strip()
-            yeni_fiyat = str(row.get(yeni_fiyat_col, '')).replace('₺', '').replace('.', '').replace(',', '.').strip()
-            indirim = str(row.get(indirim_col, '')).replace('%', '').replace(',', '.').strip() if indirim_col else ''
-            
-            # Fiyatları formatla
-            try:
-                eski_fiyat_num = float(eski_fiyat) if eski_fiyat and eski_fiyat != 'nan' else 0
-                yeni_fiyat_num = float(yeni_fiyat) if yeni_fiyat and yeni_fiyat != 'nan' else 0
-                
-                eski_fiyat_str = f"{eski_fiyat_num:,.0f}".replace(',', '.')
-                yeni_fiyat_str = f"{yeni_fiyat_num:,.0f}".replace(',', '.')
-            except:
-                eski_fiyat_str = eski_fiyat
-                yeni_fiyat_str = yeni_fiyat
-                eski_fiyat_num = 0
-                yeni_fiyat_num = 0
-            
-            # İndirim hesapla (yoksa)
-            if not indirim and eski_fiyat_num > 0 and yeni_fiyat_num > 0:
-                indirim = f"{((eski_fiyat_num - yeni_fiyat_num) / eski_fiyat_num) * 100:.1f}"
-            
+
+    lines = mail_text.strip().split('\n')
+    lines = [line.strip() for line in lines if line.strip()]
+
+    # Tarihleri bul
+    for i, line in enumerate(lines):
+        if 'Başlangıç' in line and i + 1 < len(lines):
+            tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', lines[i + 1])
+            if tarih_match:
+                result['baslangic'] = tarih_match.group(1)
+
+        if 'Bitiş' in line and i + 1 < len(lines):
+            tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', lines[i + 1])
+            if tarih_match:
+                result['bitis'] = tarih_match.group(1)
+
+        if 'Onaylayan' in line and i + 1 < len(lines):
+            result['onaylayan'] = lines[i + 1]
+
+    # Ürünleri parse et
+    # Format: Kod (8 hane) → Ad → Satış Fiyatı (₺) → Tanıtım Fiyatı (₺) → İndirim (%)
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        # 8 haneli ürün kodu bul
+        if re.match(r'^\d{8}$', line):
             urun = {
-                'kod': kod,
-                'ad': ad,
-                'eski_fiyat': eski_fiyat_str,
-                'yeni_fiyat': yeni_fiyat_str,
-                'indirim': indirim,
-                'indirim_num': float(indirim) if indirim and indirim != 'nan' else 0
+                'kod': line,
+                'ad': '',
+                'eski_fiyat': '',
+                'yeni_fiyat': '',
+                'indirim': '',
+                'indirim_num': 0
             }
-            
-            # Anomali kontrolleri
-            if yeni_fiyat_num > eski_fiyat_num and eski_fiyat_num > 0:
-                result['uyarilar'].append(f"⚠️ {ad[:30]}: Yeni fiyat eskisinden yüksek!")
-            
-            if yeni_fiyat_num < 10 and yeni_fiyat_num > 0:
-                result['uyarilar'].append(f"⚠️ {ad[:30]}: Fiyat çok düşük ({yeni_fiyat_num}₺)")
-            
-            result['urunler'].append(urun)
-            
-        except Exception as e:
-            result['uyarilar'].append(f"⚠️ Satır {idx+1} okunamadı: {str(e)}")
-    
+
+            # Sonraki satırları oku
+            j = i + 1
+            while j < len(lines) and j < i + 5:
+                next_line = lines[j]
+
+                if next_line.startswith('₺') and not urun['eski_fiyat']:
+                    # Satış fiyatı
+                    urun['eski_fiyat'] = next_line.replace('₺', '').strip()
+                elif next_line.startswith('₺') and urun['eski_fiyat']:
+                    # Tanıtım fiyatı
+                    urun['yeni_fiyat'] = next_line.replace('₺', '').strip()
+                elif next_line.startswith('%'):
+                    # İndirim oranı
+                    indirim_str = next_line.replace('%', '').replace(',', '.').strip()
+                    urun['indirim'] = next_line.replace('%', '').strip()
+                    try:
+                        urun['indirim_num'] = float(indirim_str)
+                    except ValueError:
+                        urun['indirim_num'] = 0
+                elif not urun['ad'] and not next_line.startswith('₺') and not next_line.startswith('%'):
+                    # Ürün adı
+                    urun['ad'] = next_line
+
+                j += 1
+
+            # Validasyon
+            if urun['ad'] and urun['yeni_fiyat']:
+                # Fiyat kontrolü
+                try:
+                    eski = float(urun['eski_fiyat'].replace('.', '').replace(',', '.'))
+                    yeni = float(urun['yeni_fiyat'].replace('.', '').replace(',', '.'))
+                    if yeni > eski:
+                        result['uyarilar'].append(f"⚠️ {urun['ad'][:30]}: Yeni fiyat eskisinden yüksek!")
+                except ValueError:
+                    pass
+
+                result['urunler'].append(urun)
+
+            i = j
+        else:
+            i += 1
+
+    # Sonuç kontrolü
+    if not result['baslangic'] or not result['bitis']:
+        result['uyarilar'].append("⚠️ Kampanya tarihleri bulunamadı, manuel kontrol edin.")
+
     if not result['urunler']:
-        result['hatalar'].append("🔴 Hiç ürün bulunamadı!")
-    
+        result['hatalar'].append("🔴 Hiç ürün bulunamadı! Mail formatını kontrol edin.")
+
     return result
 
 # =============================================================================
 # MESAJ FORMATLAMA
 # =============================================================================
-def format_whatsapp_mesaji(magaza_kodu, magaza_adi, secili_urunler, bitis_tarihi):
+def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi):
     """WhatsApp mesajı oluştur"""
-    
+
     mesaj = f"🛒 A101 {magaza_adi}\n\n"
-    mesaj += "🔥 BUGÜN KAÇIRMA!\n\n"
-    
+    mesaj += "🔥 BUGÜNE ÖZEL!\n\n"
+
     for urun in secili_urunler:
         emoji = get_emoji(urun['ad'])
         ad_kisa = urun['ad'][:35] + "..." if len(urun['ad']) > 35 else urun['ad']
-        mesaj += f"{emoji} {ad_kisa} - {urun['yeni_fiyat']}₺"
+        mesaj += f"{emoji} {ad_kisa}\n"
+        mesaj += f"   {urun['yeni_fiyat']}₺"
         if urun.get('eski_fiyat'):
-            mesaj += f" (Eski: {urun['eski_fiyat']}₺)"
-        mesaj += "\n"
-    
-    mesaj += f"\n📅 Geçerlilik: {bitis_tarihi}\n"
-    mesaj += "📍 Mağazamızda stoklarla sınırlı!\n\n"
-    mesaj += "_Çıkmak için ÇIKIŞ yazın_"
-    
+            mesaj += f" ~~{urun['eski_fiyat']}₺~~"
+        if urun.get('indirim'):
+            mesaj += f" (%{urun['indirim']} indirim)"
+        mesaj += "\n\n"
+
+    mesaj += f"📅 Son gün: {bitis_tarihi}\n"
+    mesaj += "📍 Stoklarla sınırlıdır\n\n"
+    mesaj += "_Listeden çıkmak için ÇIKIŞ yazın_"
+
     return mesaj
 
 # =============================================================================
@@ -289,215 +291,201 @@ magaza_secim = st.selectbox(
 if magaza_secim:
     magaza_kodu = magaza_secim.split(" - ")[0]
     magaza_adi = MAGAZALAR[magaza_kodu]
-    
-    # BÜYÜK MAĞAZA BANDI
+
+    # Mağaza bandı
     st.markdown(f'''
         <div class="magaza-bandi">
-            🏪 AKTİF MAĞAZA: {magaza_kodu} - {magaza_adi.upper()}
+            🏪 {magaza_kodu} - {magaza_adi.upper()}
         </div>
     ''', unsafe_allow_html=True)
-    
-    # WhatsApp liste adı hatırlatması
+
     st.info(f"📱 WhatsApp liste adı: **{magaza_kodu}_MUSTERI**")
-    
+
     st.markdown("---")
-    
+
     # =============================================================================
-    # ADIM 2: KAMPANYA TARİHLERİ
+    # ADIM 2: KAMPANYA MAİLİ YAPIŞTIR
     # =============================================================================
-    st.markdown("### 2️⃣ Kampanya Tarihleri")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        baslangic_tarihi = st.date_input("Başlangıç Tarihi", value=datetime.now())
-    with col2:
-        bitis_tarihi = st.date_input("Bitiş Tarihi", value=datetime.now())
-    
-    bitis_str = bitis_tarihi.strftime("%d.%m.%Y")
-    
-    st.markdown("---")
-    
-    # =============================================================================
-    # ADIM 3: EXCEL YÜKLE
-    # =============================================================================
-    st.markdown("### 3️⃣ Kampanya Excel'i Yükle")
-    
-    st.info("💡 Kampanya mailindeki ürün tablosunu Excel'e kopyalayıp buraya yükleyin.")
-    
-    uploaded_file = st.file_uploader(
-        "Excel dosyasını seçin",
-        type=['xlsx', 'xls'],
-        help="Ürün Kodu, Ürün Adı, Satış Fiyatı, Tanıtım Fiyatı, İndirim Oranı sütunları olmalı"
+    st.markdown("### 2️⃣ Kampanya Mailini Yapıştırın")
+
+    st.markdown("""
+    <div class="secim-rehberi">
+        <strong>📋 Nasıl yapılır:</strong><br>
+        1. Workflow'dan gelen kampanya onay mailini açın<br>
+        2. <strong>Ctrl+A</strong> (tümünü seç) → <strong>Ctrl+C</strong> (kopyala)<br>
+        3. Aşağıdaki alana <strong>Ctrl+V</strong> (yapıştır)
+    </div>
+    """, unsafe_allow_html=True)
+
+    mail_icerik = st.text_area(
+        "Kampanya mailini buraya yapıştırın:",
+        height=200,
+        placeholder="Mağaza Bölgesel Tanıtım Sonucu\n\nTanıtım Başlangıç Tarihi\n20.12.2025\n..."
     )
-    
-    if uploaded_file:
-        try:
-            df = pd.read_excel(uploaded_file)
-            
-            st.success(f"✅ Dosya yüklendi: {len(df)} satır")
-            
-            # Parse et
-            kampanya = parse_excel(df)
-            
-            # Hataları göster
-            if kampanya['hatalar']:
-                for hata in kampanya['hatalar']:
-                    st.error(hata)
-                st.stop()
-            
-            # Uyarıları göster
-            if kampanya['uyarilar']:
-                with st.expander(f"⚠️ {len(kampanya['uyarilar'])} Uyarı", expanded=False):
-                    for uyari in kampanya['uyarilar']:
-                        st.warning(uyari)
-            
-            st.success(f"✅ {len(kampanya['urunler'])} ürün başarıyla okundu")
-            
-            st.markdown("---")
-            
-            # =============================================================================
-            # ADIM 4: ÜRÜN SEÇİMİ
-            # =============================================================================
-            st.markdown("### 4️⃣ Ürün Seçimi (3-5 ürün)")
-            
-            # Seçim rehberi
-            st.markdown('''
-                <div class="secim-rehberi">
-                    <strong>📋 Seçim Rehberi:</strong><br>
-                    • 1 <strong>çekici ürün</strong> (yüksek indirim, ilgi çekici)<br>
-                    • 1 <strong>geniş kitle</strong> (mutfak, temizlik, temel ihtiyaç)<br>
-                    • 1 <strong>sepet tamamlayıcı</strong> (küçük, uygun fiyatlı)<br>
-                    • <strong>Stok kontrolü:</strong> Seçtiğiniz ürünler mağazanızda var mı?
+
+    if mail_icerik:
+        # Parse et
+        kampanya = parse_kampanya_maili(mail_icerik)
+
+        # Hataları göster
+        if kampanya['hatalar']:
+            for hata in kampanya['hatalar']:
+                st.error(hata)
+            st.stop()
+
+        # Başarı mesajı
+        st.markdown(f'''
+            <div class="basari-kutusu">
+                <strong>✅ {len(kampanya['urunler'])} ürün okundu</strong>
+            </div>
+        ''', unsafe_allow_html=True)
+
+        # Tarih bilgisi
+        if kampanya['baslangic'] and kampanya['bitis']:
+            st.markdown(f'''
+                <div class="tarih-bilgi">
+                    📅 <strong>Kampanya:</strong> {kampanya['baslangic']} - {kampanya['bitis']}
                 </div>
             ''', unsafe_allow_html=True)
-            
-            # Ürünleri indirime göre sırala
-            urunler_sirali = sorted(kampanya['urunler'], key=lambda x: x['indirim_num'], reverse=True)
-            
-            st.markdown("**En yüksek indirimli ürünler üstte:**")
-            
-            # Session state ile seçimleri tut
-            if 'secili_kodlar' not in st.session_state:
-                st.session_state.secili_kodlar = []
-            
-            secili_urunler = []
-            
-            for urun in urunler_sirali:
-                col1, col2 = st.columns([1, 20])
-                
-                with col1:
-                    secili = st.checkbox("", key=f"urun_{urun['kod']}")
-                    if secili:
-                        secili_urunler.append(urun)
-                
-                with col2:
-                    emoji = get_emoji(urun['ad'])
-                    indirim_badge = "🔥" if urun['indirim_num'] >= 30 else ""
-                    st.write(f"{emoji} **{urun['ad'][:50]}** - {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {indirim_badge}")
-            
-            # Seçim sayısı kontrolü
-            secili_sayi = len(secili_urunler)
-            
-            if secili_sayi > 0:
-                if secili_sayi < 3:
-                    st.warning(f"⚠️ {secili_sayi} ürün seçildi. En az 3 ürün seçmeniz önerilir.")
-                elif secili_sayi > 5:
-                    st.warning(f"⚠️ {secili_sayi} ürün seçildi. En fazla 5 ürün seçmeniz önerilir.")
-                else:
-                    st.success(f"✅ {secili_sayi} ürün seçildi.")
-                
-                st.markdown("---")
-                
-                # =============================================================================
-                # ADIM 5: STOK KONTROLÜ
-                # =============================================================================
-                st.markdown("### 5️⃣ Stok Kontrolü")
-                
-                stok_onay = st.checkbox(
-                    f"✅ Seçtiğim {secili_sayi} ürün **{magaza_kodu} {magaza_adi}** mağazasında STOKTA MEVCUT",
-                    key="stok_onay"
-                )
-                
-                st.markdown("---")
-                
-                # =============================================================================
-                # ADIM 6: MESAJ ÖNİZLEME VE GÖNDERME
-                # =============================================================================
-                st.markdown("### 6️⃣ Mesaj Önizleme ve Gönderme")
-                
-                # Mesajı oluştur
-                mesaj = format_whatsapp_mesaji(magaza_kodu, magaza_adi, secili_urunler, bitis_str)
-                
-                st.markdown("**Mesaj önizleme:**")
-                st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
-                
-                # =============================================================================
-                # 2 AŞAMALI KONTROL
-                # =============================================================================
-                st.markdown("---")
-                st.markdown('<div class="kontrol-kutusu">', unsafe_allow_html=True)
-                st.markdown("### ⚠️ Gönderim Öncesi Kontrol")
-                
-                kontrol1 = st.checkbox(
-                    f"✅ Bu mesaj **{magaza_kodu} - {magaza_adi}** mağazası için hazırlandı",
-                    key="kontrol1"
-                )
-                
-                kontrol2 = st.checkbox(
-                    f"✅ Kampanya tarihi ({bitis_str}) ve fiyatlar DOĞRU",
-                    key="kontrol2"
-                )
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # WhatsApp gönder butonu
-                if stok_onay and kontrol1 and kontrol2:
-                    encoded_mesaj = urllib.parse.quote(mesaj)
-                    whatsapp_link = f"https://wa.me/{WHATSAPP_NUMBER}?text={encoded_mesaj}"
-                    
-                    st.markdown(f'''
-                        <a href="{whatsapp_link}" target="_blank" style="
-                            display: block;
-                            background-color: #25D366;
-                            color: white;
-                            padding: 20px 40px;
-                            text-decoration: none;
-                            border-radius: 10px;
-                            font-size: 20px;
-                            font-weight: bold;
-                            text-align: center;
-                            margin-top: 20px;
-                            box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
-                        ">
-                            💬 WhatsApp'ta Gönder ({magaza_kodu}_MUSTERI listesine)
-                        </a>
-                    ''', unsafe_allow_html=True)
-                    
-                    st.markdown("")
-                    st.info(f"👆 Butona tıklayınca WhatsApp açılacak. **{magaza_kodu}_MUSTERI** listesini seçip gönderin.")
-                    
-                else:
-                    st.markdown('''
-                        <div style="
-                            display: block;
-                            background-color: #ccc;
-                            color: #666;
-                            padding: 20px 40px;
-                            border-radius: 10px;
-                            font-size: 20px;
-                            font-weight: bold;
-                            text-align: center;
-                            margin-top: 20px;
-                            cursor: not-allowed;
-                        ">
-                            💬 WhatsApp'ta Gönder
-                        </div>
-                    ''', unsafe_allow_html=True)
-                    
-                    st.warning("☝️ Gönderim için yukarıdaki tüm kontrolleri tamamlayın.")
-        
-        except Exception as e:
-            st.error(f"🔴 Excel okuma hatası: {str(e)}")
+
+        # Uyarıları göster
+        if kampanya['uyarilar']:
+            with st.expander(f"⚠️ {len(kampanya['uyarilar'])} Uyarı", expanded=False):
+                for uyari in kampanya['uyarilar']:
+                    st.warning(uyari)
+
+        st.markdown("---")
+
+        # =============================================================================
+        # ADIM 3: ÜRÜN SEÇİMİ
+        # =============================================================================
+        st.markdown("### 3️⃣ Ürün Seçimi (3-5 ürün önerilir)")
+
+        st.markdown("""
+        <div class="secim-rehberi">
+            <strong>📋 Seçim İpuçları:</strong><br>
+            • 🔥 Yüksek indirimli çekici ürün<br>
+            • 🏠 Geniş kitlenin ilgisini çekecek ürün<br>
+            • 💰 Uygun fiyatlı sepet tamamlayıcı<br>
+            • ✅ <strong>Stokta olduğundan emin olun!</strong>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Ürünleri indirime göre sırala
+        urunler_sirali = sorted(kampanya['urunler'], key=lambda x: x['indirim_num'], reverse=True)
+
+        st.markdown("**En yüksek indirimli ürünler üstte:**")
+
+        secili_urunler = []
+
+        for urun in urunler_sirali:
+            col1, col2 = st.columns([1, 20])
+
+            with col1:
+                secili = st.checkbox("", key=f"urun_{urun['kod']}", label_visibility="collapsed")
+                if secili:
+                    secili_urunler.append(urun)
+
+            with col2:
+                emoji = get_emoji(urun['ad'])
+                indirim_badge = "🔥" if urun['indirim_num'] >= 25 else ""
+                st.write(f"{emoji} **{urun['ad'][:50]}** → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {indirim_badge}")
+
+        # Seçim kontrolü
+        secili_sayi = len(secili_urunler)
+
+        if secili_sayi > 0:
+            if secili_sayi < 3:
+                st.warning(f"⚠️ {secili_sayi} ürün seçildi. En az 3 ürün önerilir.")
+            elif secili_sayi > 5:
+                st.warning(f"⚠️ {secili_sayi} ürün seçildi. En fazla 5 ürün önerilir.")
+            else:
+                st.success(f"✅ {secili_sayi} ürün seçildi")
+
+            st.markdown("---")
+
+            # =============================================================================
+            # ADIM 4: STOK KONTROLÜ
+            # =============================================================================
+            st.markdown("### 4️⃣ Stok Kontrolü")
+
+            stok_onay = st.checkbox(
+                f"✅ Seçtiğim {secili_sayi} ürün **{magaza_adi}** mağazasında STOKTA VAR",
+                key="stok_onay"
+            )
+
+            st.markdown("---")
+
+            # =============================================================================
+            # ADIM 5: MESAJ ÖNİZLEME VE GÖNDERME
+            # =============================================================================
+            st.markdown("### 5️⃣ Mesaj Önizleme ve Gönderme")
+
+            # Mesajı oluştur
+            bitis = kampanya['bitis'] or "Stoklarla sınırlı"
+            mesaj = format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis)
+
+            st.markdown("**Mesaj önizleme:**")
+            st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
+
+            # Kontroller
+            st.markdown("---")
+            st.markdown('<div class="kontrol-kutusu">', unsafe_allow_html=True)
+            st.markdown("### ⚠️ Gönderim Öncesi Kontrol")
+
+            kontrol1 = st.checkbox(
+                f"✅ Bu mesaj **{magaza_kodu} - {magaza_adi}** için hazırlandı",
+                key="kontrol1"
+            )
+
+            kontrol2 = st.checkbox(
+                f"✅ Tarih ({bitis}) ve fiyatlar doğru",
+                key="kontrol2"
+            )
+
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            # WhatsApp butonu
+            if stok_onay and kontrol1 and kontrol2:
+                encoded_mesaj = urllib.parse.quote(mesaj)
+                whatsapp_link = f"https://wa.me/{WHATSAPP_NUMBER}?text={encoded_mesaj}"
+
+                st.markdown(f'''
+                    <a href="{whatsapp_link}" target="_blank" style="
+                        display: block;
+                        background-color: #25D366;
+                        color: white;
+                        padding: 20px 40px;
+                        text-decoration: none;
+                        border-radius: 10px;
+                        font-size: 20px;
+                        font-weight: bold;
+                        text-align: center;
+                        margin-top: 20px;
+                        box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
+                    ">
+                        💬 WhatsApp'ta Gönder
+                    </a>
+                ''', unsafe_allow_html=True)
+
+                st.info(f"👆 Butona tıklayınca WhatsApp açılacak. **{magaza_kodu}_MUSTERI** listesini seçip gönderin.")
+            else:
+                st.markdown('''
+                    <div style="
+                        display: block;
+                        background-color: #ccc;
+                        color: #666;
+                        padding: 20px 40px;
+                        border-radius: 10px;
+                        font-size: 20px;
+                        font-weight: bold;
+                        text-align: center;
+                        margin-top: 20px;
+                    ">
+                        💬 WhatsApp'ta Gönder
+                    </div>
+                ''', unsafe_allow_html=True)
+                st.warning("☝️ Yukarıdaki tüm kontrolleri tamamlayın.")
 
 else:
     st.info("👆 Önce mağazanızı seçin.")
@@ -506,7 +494,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-    A101 Kampanya Mesaj Oluşturucu v1.1<br>
+    A101 Kampanya Mesaj Oluşturucu v2.0<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
