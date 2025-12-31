@@ -193,8 +193,8 @@ def get_magaza_performans(df, magaza_kodu):
         return None, None
 
     try:
-        # Mağaza kodunu bul (farklı formatlarda olabilir)
-        magaza_filter = df['Magaza_Kod'].astype(str).str.contains(magaza_kodu, case=False, na=False)
+        # Mağaza kodunu tam eşleştir (contains yerine ==)
+        magaza_filter = df['Magaza_Kod'].astype(str).str.strip() == magaza_kodu.strip()
         magaza_df = df[magaza_filter]
 
         if magaza_df.empty:
@@ -219,63 +219,79 @@ def get_magaza_performans(df, magaza_kodu):
     except Exception as e:
         return None, None
 
-def calculate_product_score(urun, mal_grubu_perf, urun_perf):
+def calculate_product_scores(urun, mal_grubu_perf, urun_perf):
     """
-    Ürün puanlama algoritması
+    İki farklı puanlama:
+    1. Mağaza Skoru - Mağaza satış performansına göre (her mağazada farklı)
+    2. Genel Skor - İndirim bazlı (tüm mağazalarda aynı)
 
-    Puan = (İndirim × 0.30) + (Fiyat Farkı × 0.20) + (Mal Grubu Perf × 0.25) + (Ürün Geçmişi × 0.25)
+    Düzeltmeler:
+    - Mal grubu: max'a göre normalize (en çok satan = 100)
+    - Fiyat farkı: kaldırıldı (indirim zaten var, pahalı ürünleri şişiriyordu)
+    - Ürün geçmişi: mağaza bazlı 90. percentile'a göre normalize
     """
-    score = 0
-    score_details = {}
 
-    # 1. İndirim Puanı (0-100 arası, max 30 puan)
+    raw_scores = {}
+
+    # 1. İndirim Puanı (0-100)
     indirim = urun.get('indirim_num', 0)
-    indirim_puan = min(indirim / 50 * 100, 100)  # %50+ = max puan
-    score += indirim_puan * 0.30
-    score_details['indirim'] = round(indirim_puan * 0.30, 1)
+    raw_scores['indirim'] = min(indirim / 50 * 100, 100)  # %50+ = max
 
-    # 2. Fiyat Farkı Puanı (0-100 arası, max 20 puan)
-    try:
-        eski = float(urun.get('eski_fiyat', '0').replace('.', '').replace(',', '.'))
-        yeni = float(urun.get('yeni_fiyat', '0').replace('.', '').replace(',', '.'))
-        fark = eski - yeni
-        # 1000₺+ fark = max puan
-        fark_puan = min(fark / 1000 * 100, 100)
-        score += fark_puan * 0.20
-        score_details['fiyat_fark'] = round(fark_puan * 0.20, 1)
-    except ValueError:
-        score_details['fiyat_fark'] = 0
+    # 2. Ürün Satış Geçmişi + Mal Grubu (ürün kodu ile eşleştir)
+    raw_scores['urun_gecmis'] = 0
+    raw_scores['mal_grubu'] = 0
+    urun_mal_grubu = None
 
-    # 3. Mal Grubu Performansı (0-100 arası, max 25 puan)
-    mal_grubu_puan = 0
-    if mal_grubu_perf is not None and not mal_grubu_perf.empty:
-        urun_adi = urun.get('ad', '').upper()
-        # Ürün adından mal grubunu tahmin et
-        for _, row in mal_grubu_perf.iterrows():
-            mal_grubu = str(row['Mal_Grubu']).upper()
-            if any(keyword in urun_adi for keyword in mal_grubu.split()):
-                # Bu mal grubunun toplam içindeki payı
-                total_adet = mal_grubu_perf['Adet'].sum()
-                if total_adet > 0:
-                    mal_grubu_puan = (row['Adet'] / total_adet) * 100
-                break
-    score += min(mal_grubu_puan, 100) * 0.25
-    score_details['mal_grubu'] = round(min(mal_grubu_puan, 100) * 0.25, 1)
-
-    # 4. Ürün Satış Geçmişi (0-100 arası, max 25 puan)
-    urun_gecmis_puan = 0
     if urun_perf is not None and not urun_perf.empty:
         urun_kodu = urun.get('kod', '')
         urun_match = urun_perf[urun_perf['Urun_Kod'].astype(str) == urun_kodu]
-        if not urun_match.empty:
-            # Bu ürün daha önce satılmış
-            adet = urun_match['Adet'].values[0]
-            # 10+ adet satış = max puan
-            urun_gecmis_puan = min(adet / 10 * 100, 100)
-    score += urun_gecmis_puan * 0.25
-    score_details['urun_gecmis'] = round(urun_gecmis_puan * 0.25, 1)
 
-    return round(score, 1), score_details
+        if not urun_match.empty:
+            # Bu ürün daha önce satılmış - gerçek mal grubunu al
+            adet = urun_match['Adet'].values[0]
+            urun_mal_grubu = urun_match['Mal_Grubu'].values[0]
+
+            # Mağaza bazlı normalize: 90. percentile eşiği
+            p90 = urun_perf['Adet'].quantile(0.90)
+            if p90 > 0:
+                raw_scores['urun_gecmis'] = min((adet / p90) * 100, 100)
+            else:
+                raw_scores['urun_gecmis'] = 100 if adet > 0 else 0
+
+    # Mal grubu performansı - MAX'a göre normalize (en çok satan = 100)
+    if urun_mal_grubu and mal_grubu_perf is not None and not mal_grubu_perf.empty:
+        mal_match = mal_grubu_perf[mal_grubu_perf['Mal_Grubu'] == urun_mal_grubu]
+        if not mal_match.empty:
+            max_adet = mal_grubu_perf['Adet'].max()
+            if max_adet > 0:
+                raw_scores['mal_grubu'] = (mal_match['Adet'].values[0] / max_adet) * 100
+
+    # === MAĞAZA SKORU (mağaza bazlı - her mağazada farklı) ===
+    # Ağırlık: Mal Grubu %40 + Ürün Geçmişi %40 + İndirim %20
+    # (Fiyat farkı kaldırıldı - indirim zaten var)
+    magaza_skor = (
+        raw_scores['mal_grubu'] * 0.40 +
+        raw_scores['urun_gecmis'] * 0.40 +
+        raw_scores['indirim'] * 0.20
+    )
+
+    # === GENEL SKOR (indirim bazlı - tüm mağazalarda aynı) ===
+    # Ağırlık: İndirim %60 + Mal Grubu %25 + Ürün %15
+    genel_skor = (
+        raw_scores['indirim'] * 0.60 +
+        raw_scores['mal_grubu'] * 0.25 +
+        raw_scores['urun_gecmis'] * 0.15
+    )
+
+    # Detaylar
+    details = {
+        'indirim': round(raw_scores['indirim'], 1),
+        'mal_grubu': round(raw_scores['mal_grubu'], 1),
+        'urun_gecmis': round(raw_scores['urun_gecmis'], 1),
+        'mal_grubu_adi': urun_mal_grubu or "Yeni Ürün"
+    }
+
+    return round(magaza_skor, 1), round(genel_skor, 1), details
 
 def get_puan_badge(puan):
     """Puana göre badge HTML döndür"""
@@ -477,10 +493,11 @@ if magaza_secim:
                 st.error(hata)
             st.stop()
 
-        # Ürünleri puanla
+        # Ürünleri puanla (iki skor: mağaza + genel)
         for urun in kampanya['urunler']:
-            puan, detay = calculate_product_score(urun, mal_grubu_perf, urun_perf)
-            urun['puan'] = puan
+            magaza_skor, genel_skor, detay = calculate_product_scores(urun, mal_grubu_perf, urun_perf)
+            urun['magaza_skor'] = magaza_skor
+            urun['genel_skor'] = genel_skor
             urun['puan_detay'] = detay
 
         # Başarı mesajı
@@ -507,54 +524,96 @@ if magaza_secim:
         st.markdown("---")
 
         # =============================================================================
-        # ADIM 3: ÜRÜN SEÇİMİ (PUANLI)
+        # ADIM 3: ÜRÜN SEÇİMİ (İKİ SIRALAMA)
         # =============================================================================
-        st.markdown("### 3️⃣ Ürün Seçimi (Akıllı Puanlama ile)")
+        st.markdown("### 3️⃣ Ürün Seçimi")
 
-        st.markdown("""
-        <div class="secim-rehberi">
-            <strong>📊 Puanlama Kriterleri:</strong><br>
-            • <strong>İndirim Oranı</strong> (30%) - Yüksek indirim = yüksek puan<br>
-            • <strong>Fiyat Farkı</strong> (20%) - Büyük tasarruf = yüksek puan<br>
-            • <strong>Mal Grubu Performansı</strong> (25%) - Bu kategoride satış başarısı<br>
-            • <strong>Ürün Geçmişi</strong> (25%) - Bu ürün daha önce satıldı mı?<br><br>
-            🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Ürünleri PUANA göre sırala
-        urunler_sirali = sorted(kampanya['urunler'], key=lambda x: x.get('puan', 0), reverse=True)
-
-        st.markdown("**🏆 En yüksek puanlı ürünler üstte:**")
+        # İki tab ile iki farklı sıralama
+        tab_magaza, tab_genel = st.tabs([
+            f"🏪 {magaza_adi} İçin Önerilen",
+            "📊 Genel Öneri (İndirim Bazlı)"
+        ])
 
         secili_urunler = []
 
-        for urun in urunler_sirali:
-            col1, col2, col3 = st.columns([1, 18, 3])
+        with tab_magaza:
+            st.markdown("""
+            <div class="secim-rehberi">
+                <strong>🏪 Mağaza Bazlı Puanlama:</strong><br>
+                Bu sıralama <strong>mağazanızın satış geçmişine</strong> göre yapılmıştır.<br>
+                • Mal Grubu Performansı (40%) - Bu kategori mağazanızda ne kadar satıyor?<br>
+                • Ürün Satış Geçmişi (40%) - Bu ürünü daha önce sattınız mı?<br>
+                • İndirim Oranı (20%)<br><br>
+                🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
+            </div>
+            """, unsafe_allow_html=True)
 
-            with col1:
-                secili = st.checkbox("", key=f"urun_{urun['kod']}", label_visibility="collapsed")
-                if secili:
-                    secili_urunler.append(urun)
+            # Mağaza skoruna göre sırala
+            urunler_magaza = sorted(kampanya['urunler'], key=lambda x: x.get('magaza_skor', 0), reverse=True)
 
-            with col2:
-                emoji = get_emoji(urun['ad'])
-                puan = urun.get('puan', 0)
-                puan_badge = get_puan_badge(puan)
-                st.markdown(
-                    f"{emoji} **{urun['ad'][:45]}** → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {puan_badge}",
-                    unsafe_allow_html=True
-                )
+            for urun in urunler_magaza:
+                col1, col2, col3 = st.columns([1, 17, 4])
 
-            with col3:
-                # Puan detayını göster
-                detay = urun.get('puan_detay', {})
-                with st.popover("📊"):
-                    st.write("**Puan Detayı:**")
-                    st.write(f"İndirim: {detay.get('indirim', 0)}/30")
-                    st.write(f"Fiyat Farkı: {detay.get('fiyat_fark', 0)}/20")
-                    st.write(f"Mal Grubu: {detay.get('mal_grubu', 0)}/25")
-                    st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/25")
+                with col1:
+                    secili = st.checkbox("", key=f"m_{urun['kod']}", label_visibility="collapsed")
+                    if secili and urun not in secili_urunler:
+                        secili_urunler.append(urun)
+
+                with col2:
+                    emoji = get_emoji(urun['ad'])
+                    puan = urun.get('magaza_skor', 0)
+                    puan_badge = get_puan_badge(puan)
+                    st.markdown(
+                        f"{emoji} **{urun['ad'][:40]}** → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ {puan_badge}",
+                        unsafe_allow_html=True
+                    )
+
+                with col3:
+                    detay = urun.get('puan_detay', {})
+                    with st.popover("📊 Detay"):
+                        st.write(f"**Mal Grubu:** {detay.get('mal_grubu_adi', '-')}")
+                        st.write(f"Kategori Perf: {detay.get('mal_grubu', 0)}/100")
+                        st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/100")
+                        st.write(f"İndirim: %{urun.get('indirim', 0)}")
+
+        with tab_genel:
+            st.markdown("""
+            <div class="secim-rehberi">
+                <strong>📊 Genel Puanlama (Tüm Mağazalar İçin Aynı):</strong><br>
+                Bu sıralama <strong>indirim oranına</strong> göre yapılmıştır.<br>
+                • İndirim Oranı (60%)<br>
+                • Mal Grubu Performansı (25%)<br>
+                • Ürün Satış Geçmişi (15%)<br><br>
+                🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Genel skora göre sırala
+            urunler_genel = sorted(kampanya['urunler'], key=lambda x: x.get('genel_skor', 0), reverse=True)
+
+            for urun in urunler_genel:
+                col1, col2, col3 = st.columns([1, 17, 4])
+
+                with col1:
+                    secili = st.checkbox("", key=f"g_{urun['kod']}", label_visibility="collapsed")
+                    if secili and urun not in secili_urunler:
+                        secili_urunler.append(urun)
+
+                with col2:
+                    emoji = get_emoji(urun['ad'])
+                    puan = urun.get('genel_skor', 0)
+                    puan_badge = get_puan_badge(puan)
+                    st.markdown(
+                        f"{emoji} **{urun['ad'][:40]}** → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {puan_badge}",
+                        unsafe_allow_html=True
+                    )
+
+                with col3:
+                    detay = urun.get('puan_detay', {})
+                    with st.popover("📊 Detay"):
+                        st.write(f"İndirim: {detay.get('indirim', 0)}/100")
+                        st.write(f"Kategori: {detay.get('mal_grubu', 0)}/100")
+                        st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/100")
 
         # Seçim kontrolü
         secili_sayi = len(secili_urunler)
@@ -659,7 +718,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-    A101 Kampanya Mesaj Oluşturucu v3.0 - Akıllı Puanlama<br>
+    A101 Kampanya Mesaj Oluşturucu v3.2 - Düzeltilmiş Puanlama<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
