@@ -563,15 +563,16 @@ if magaza_secim:
                     emoji = get_emoji(urun['ad'])
                     puan = urun.get('magaza_skor', 0)
                     puan_badge = get_puan_badge(puan)
+                    detay = urun.get('puan_detay', {})
+                    mal_grubu = detay.get('mal_grubu_adi', '-')
                     st.markdown(
-                        f"{emoji} **{urun['ad'][:40]}** → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ {puan_badge}",
+                        f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ {puan_badge}",
                         unsafe_allow_html=True
                     )
 
                 with col3:
-                    detay = urun.get('puan_detay', {})
                     with st.popover("📊 Detay"):
-                        st.write(f"**Mal Grubu:** {detay.get('mal_grubu_adi', '-')}")
+                        st.write(f"**Mal Grubu:** {mal_grubu}")
                         st.write(f"Kategori Perf: {detay.get('mal_grubu', 0)}/100")
                         st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/100")
                         st.write(f"İndirim: %{urun.get('indirim', 0)}")
@@ -603,14 +604,16 @@ if magaza_secim:
                     emoji = get_emoji(urun['ad'])
                     puan = urun.get('genel_skor', 0)
                     puan_badge = get_puan_badge(puan)
+                    detay = urun.get('puan_detay', {})
+                    mal_grubu = detay.get('mal_grubu_adi', '-')
                     st.markdown(
-                        f"{emoji} **{urun['ad'][:40]}** → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {puan_badge}",
+                        f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {puan_badge}",
                         unsafe_allow_html=True
                     )
 
                 with col3:
-                    detay = urun.get('puan_detay', {})
                     with st.popover("📊 Detay"):
+                        st.write(f"**Mal Grubu:** {mal_grubu}")
                         st.write(f"İndirim: {detay.get('indirim', 0)}/100")
                         st.write(f"Kategori: {detay.get('mal_grubu', 0)}/100")
                         st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/100")
