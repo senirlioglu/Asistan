@@ -140,9 +140,8 @@ MAGAZALAR = {
 
 WHATSAPP_NUMBER = "905399311842"
 
-# Performans verisi URL'leri
-PERFORMANS_URL_2025 = "https://github.com/senirlioglu/performans/raw/main/veri_2025.parquet"
-PERFORMANS_URL_2024 = "https://github.com/senirlioglu/performans/raw/main/veri_2024.parquet"
+# Performans verisi URL'leri (Asistan reposundan)
+PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025.parquet"
 
 # =============================================================================
 # ÜRÜN EMOJİLERİ
@@ -187,6 +186,17 @@ def load_performans_data():
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
     return None
 
+@st.cache_data(ttl=3600)
+def get_urun_mal_grubu_map(_df):
+    """Tüm ürünlerin mal gruplarını döndür (ürün kodu -> mal grubu)"""
+    if _df is None:
+        return {}
+    try:
+        urun_mg = _df.groupby('Urun_Kod')['Mal_Grubu'].first().to_dict()
+        return {str(k): v for k, v in urun_mg.items()}
+    except:
+        return {}
+
 def get_magaza_performans(df, magaza_kodu):
     """Mağaza bazlı performans özeti"""
     if df is None:
@@ -219,7 +229,7 @@ def get_magaza_performans(df, magaza_kodu):
     except Exception as e:
         return None, None
 
-def calculate_product_scores(urun, mal_grubu_perf, urun_perf):
+def calculate_product_scores(urun, mal_grubu_perf, urun_perf, urun_mal_grubu_map=None):
     """
     İki farklı puanlama:
     1. Mağaza Skoru - Mağaza satış performansına göre (her mağazada farklı)
@@ -232,6 +242,7 @@ def calculate_product_scores(urun, mal_grubu_perf, urun_perf):
     """
 
     raw_scores = {}
+    urun_kodu = urun.get('kod', '')
 
     # 1. İndirim Puanı (0-100)
     indirim = urun.get('indirim_num', 0)
@@ -242,12 +253,12 @@ def calculate_product_scores(urun, mal_grubu_perf, urun_perf):
     raw_scores['mal_grubu'] = 0
     urun_mal_grubu = None
 
+    # Önce mağaza verisinde ara
     if urun_perf is not None and not urun_perf.empty:
-        urun_kodu = urun.get('kod', '')
         urun_match = urun_perf[urun_perf['Urun_Kod'].astype(str) == urun_kodu]
 
         if not urun_match.empty:
-            # Bu ürün daha önce satılmış - gerçek mal grubunu al
+            # Bu ürün bu mağazada daha önce satılmış
             adet = urun_match['Adet'].values[0]
             urun_mal_grubu = urun_match['Mal_Grubu'].values[0]
 
@@ -257,6 +268,10 @@ def calculate_product_scores(urun, mal_grubu_perf, urun_perf):
                 raw_scores['urun_gecmis'] = min((adet / p90) * 100, 100)
             else:
                 raw_scores['urun_gecmis'] = 100 if adet > 0 else 0
+
+    # Mağazada bulunamadıysa, tüm veriden mal grubunu al
+    if urun_mal_grubu is None and urun_mal_grubu_map:
+        urun_mal_grubu = urun_mal_grubu_map.get(urun_kodu)
 
     # Mal grubu performansı - MAX'a göre normalize (en çok satan = 100)
     if urun_mal_grubu and mal_grubu_perf is not None and not mal_grubu_perf.empty:
@@ -455,6 +470,7 @@ if magaza_secim:
     with st.spinner("📊 Satış performansı yükleniyor..."):
         performans_df = load_performans_data()
         mal_grubu_perf, urun_perf = get_magaza_performans(performans_df, magaza_kodu)
+        urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
 
     if mal_grubu_perf is not None:
         st.success("✅ Mağaza satış performansı yüklendi - Akıllı puanlama aktif!")
@@ -495,15 +511,22 @@ if magaza_secim:
 
         # Ürünleri puanla (iki skor: mağaza + genel)
         for urun in kampanya['urunler']:
-            magaza_skor, genel_skor, detay = calculate_product_scores(urun, mal_grubu_perf, urun_perf)
+            magaza_skor, genel_skor, detay = calculate_product_scores(urun, mal_grubu_perf, urun_perf, urun_mal_grubu_map)
             urun['magaza_skor'] = magaza_skor
             urun['genel_skor'] = genel_skor
             urun['puan_detay'] = detay
 
+        # Eşleşme sayısını hesapla
+        toplam_urun = len(kampanya['urunler'])
+        eslesen_urun = sum(1 for u in kampanya['urunler']
+                          if u.get('puan_detay', {}).get('mal_grubu_adi')
+                          and u.get('puan_detay', {}).get('mal_grubu_adi') != 'Yeni Ürün')
+
         # Başarı mesajı
         st.markdown(f'''
             <div class="basari-kutusu">
-                <strong>✅ {len(kampanya['urunler'])} ürün okundu ve puanlandı</strong>
+                <strong>✅ {toplam_urun} ürün okundu ve puanlandı</strong><br>
+                📊 Mal grubu eşleşmesi: <strong>{eslesen_urun}/{toplam_urun}</strong> ürün veritabanında bulundu
             </div>
         ''', unsafe_allow_html=True)
 
@@ -721,7 +744,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-    A101 Kampanya Mesaj Oluşturucu v3.2 - Düzeltilmiş Puanlama<br>
+    A101 Kampanya Mesaj Oluşturucu v3.4 - Asistan Repo Entegrasyonu<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
