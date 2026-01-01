@@ -516,10 +516,17 @@ if magaza_secim:
             urun['genel_skor'] = genel_skor
             urun['puan_detay'] = detay
 
+        # Eşleşme sayısını hesapla
+        toplam_urun = len(kampanya['urunler'])
+        eslesen_urun = sum(1 for u in kampanya['urunler']
+                          if u.get('puan_detay', {}).get('mal_grubu_adi')
+                          and u.get('puan_detay', {}).get('mal_grubu_adi') != 'Yeni Ürün')
+
         # Başarı mesajı
         st.markdown(f'''
             <div class="basari-kutusu">
-                <strong>✅ {len(kampanya['urunler'])} ürün okundu ve puanlandı</strong>
+                <strong>✅ {toplam_urun} ürün okundu ve puanlandı</strong><br>
+                📊 Mal grubu eşleşmesi: <strong>{eslesen_urun}/{toplam_urun}</strong> ürün veritabanında bulundu
             </div>
         ''', unsafe_allow_html=True)
 
