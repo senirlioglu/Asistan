@@ -249,6 +249,10 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
     TOTAL_ADET_bench = bench_df['Adet'].sum()
     TOTAL_CIRO_bench = bench_df['Ciro'].sum()
 
+    # Bölgedeki mağaza sayısı (ortalama için)
+    n_magaza = bench_df['Magaza_Kod'].nunique()
+    n_magaza = max(n_magaza, 1)  # Sıfıra bölme önleme
+
     # Shrinkage weight
     w = TOTAL_ADET_store / (TOTAL_ADET_store + k)
 
@@ -317,6 +321,10 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
         lift_qty = 1
         lift_ciro = 1
         sku_match = False
+        store_qty = 0
+        store_ciro = 0
+        bench_qty = 0
+        bench_ciro = 0
 
         if urun_kodu in sku_lifts:
             lift_qty = sku_lifts[urun_kodu]['lift_qty']
@@ -324,10 +332,23 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
             fit = 0.7 * math.log(max(lift_qty, 0.01)) + 0.3 * math.log(max(lift_ciro, 0.01))
             eslesen_sku += 1
             sku_match = True
+            # Ham değerler (mağaza ve bölge ortalaması)
+            store_qty = store_sku.get(urun_kodu, {}).get('Adet', 0)
+            store_ciro = store_sku.get(urun_kodu, {}).get('Ciro', 0)
+            bench_vals = bench_sku.get(urun_kodu, {'Adet': 0, 'Ciro': 0})
+            bench_qty = bench_vals['Adet'] / n_magaza  # Ortalama
+            bench_ciro = bench_vals['Ciro'] / n_magaza  # Ortalama
         elif mal_grubu and mal_grubu in mal_grubu_lifts:
             lift_qty = mal_grubu_lifts[mal_grubu]['lift_qty']
             lift_ciro = mal_grubu_lifts[mal_grubu]['lift_ciro']
             fit = 0.7 * math.log(max(lift_qty, 0.01)) + 0.3 * math.log(max(lift_ciro, 0.01))
+            # Mal grubu ham değerleri (mağaza ve bölge ortalaması)
+            store_g = store_df[store_df['Mal_Grubu'] == mal_grubu]
+            bench_g = bench_df[bench_df['Mal_Grubu'] == mal_grubu]
+            store_qty = store_g['Adet'].sum()
+            store_ciro = store_g['Ciro'].sum()
+            bench_qty = bench_g['Adet'].sum() / n_magaza  # Ortalama
+            bench_ciro = bench_g['Ciro'].sum() / n_magaza  # Ortalama
 
         # Final skor: 0.65*fit + 0.25*disc + 0.10*save
         # fit log değerinde, normalize edelim (-2 ile +2 arası genelde)
@@ -347,7 +368,11 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
             'disc_score': round(disc_score * 100, 1),
             'save_score': round(save_score * 100, 1),
             'fit': round(fit, 3),
-            'sku_match': sku_match
+            'sku_match': sku_match,
+            'store_qty': round(store_qty),
+            'store_ciro': round(store_ciro),
+            'bench_qty': round(bench_qty),
+            'bench_ciro': round(bench_ciro)
         }
 
     return kampanya_urunleri, eslesen_sku
@@ -690,11 +715,11 @@ if magaza_secim:
                 with col3:
                     with st.popover("📊 Detay"):
                         st.write(f"**Mal Grubu:** {mal_grubu}")
-                        st.write(f"**Lift Adet:** {detay.get('lift_qty', 1):.2f}x")
-                        st.write(f"**Lift Ciro:** {detay.get('lift_ciro', 1):.2f}x")
-                        st.write(f"İndirim Skoru: {detay.get('disc_score', 0)}")
-                        st.write(f"Tasarruf Skoru: {detay.get('save_score', 0)}")
-                        st.write(f"SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
+                        st.write(f"📦 **Adet:** {detay.get('store_qty', 0):,} | Ort: {detay.get('bench_qty', 0):,}")
+                        st.write(f"💰 **Ciro:** {detay.get('store_ciro', 0):,}₺ | Ort: {detay.get('bench_ciro', 0):,}₺")
+                        st.write(f"📈 **Lift:** Adet {detay.get('lift_qty', 1):.2f}x | Ciro {detay.get('lift_ciro', 1):.2f}x")
+                        st.write(f"🏷️ İndirim: {detay.get('disc_score', 0):.0f} | 💵 Tasarruf: {detay.get('save_score', 0):.0f}")
+                        st.write(f"🔍 SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
 
         with tab_genel:
             st.markdown("""
@@ -733,12 +758,11 @@ if magaza_secim:
                 with col3:
                     with st.popover("📊 Detay"):
                         st.write(f"**Mal Grubu:** {mal_grubu}")
-                        st.write(f"📦 Lift Adet: {detay.get('lift_qty', 1.0):.2f}")
-                        st.write(f"💰 Lift Ciro: {detay.get('lift_ciro', 1.0):.2f}")
-                        st.write(f"🏷️ İndirim Puanı: {detay.get('disc_score', 0):.0f}/100")
-                        st.write(f"💵 Tasarruf Puanı: {detay.get('save_score', 0):.0f}/100")
-                        sku_match = "✅" if detay.get('sku_match', False) else "❌"
-                        st.write(f"🔍 SKU Eşleşme: {sku_match}")
+                        st.write(f"📦 **Adet:** {detay.get('store_qty', 0):,} | Ort: {detay.get('bench_qty', 0):,}")
+                        st.write(f"💰 **Ciro:** {detay.get('store_ciro', 0):,}₺ | Ort: {detay.get('bench_ciro', 0):,}₺")
+                        st.write(f"📈 **Lift:** Adet {detay.get('lift_qty', 1):.2f}x | Ciro {detay.get('lift_ciro', 1):.2f}x")
+                        st.write(f"🏷️ İndirim: {detay.get('disc_score', 0):.0f} | 💵 Tasarruf: {detay.get('save_score', 0):.0f}")
+                        st.write(f"🔍 SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
 
         # Seçim kontrolü
         secili_sayi = len(secili_urunler)
