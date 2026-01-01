@@ -209,116 +209,174 @@ def get_urun_mal_grubu_map(_df):
     except:
         return {}
 
-def get_magaza_performans(df, magaza_kodu):
-    """Mağaza bazlı performans özeti"""
-    if df is None:
-        return None, None
-
+@st.cache_data(ttl=3600)
+def get_nitelikler(_df):
+    """Parquet'teki tüm Nitelik değerlerini döndür"""
+    if _df is None:
+        return []
     try:
-        # Mağaza kodunu tam eşleştir (contains yerine ==)
-        magaza_filter = df['Magaza_Kod'].astype(str).str.strip() == magaza_kodu.strip()
-        magaza_df = df[magaza_filter]
+        return sorted(_df['Nitelik'].unique().tolist())
+    except:
+        return []
 
-        if magaza_df.empty:
-            return None, None
+import math
 
-        # Mal grubu bazlı satış performansı
-        mal_grubu_perf = magaza_df.groupby('Mal_Grubu').agg({
-            'Adet': 'sum',
-            'Ciro': 'sum'
-        }).reset_index()
-        mal_grubu_perf = mal_grubu_perf.sort_values('Adet', ascending=False)
-
-        # Ürün bazlı satış performansı
-        urun_perf = magaza_df.groupby(['Urun_Kod', 'Urun_Ad', 'Mal_Grubu']).agg({
-            'Adet': 'sum',
-            'Ciro': 'sum'
-        }).reset_index()
-        urun_perf = urun_perf.sort_values('Adet', ascending=False)
-
-        return mal_grubu_perf, urun_perf
-
-    except Exception as e:
-        return None, None
-
-def calculate_product_scores(urun, mal_grubu_perf, urun_perf, urun_mal_grubu_map=None):
+def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_grubu_map):
     """
-    İki farklı puanlama:
-    1. Mağaza Skoru - Mağaza satış performansına göre (her mağazada farklı)
-    2. Genel Skor - İndirim bazlı (tüm mağazalarda aynı)
-
-    Düzeltmeler:
-    - Mal grubu: max'a göre normalize (en çok satan = 100)
-    - Fiyat farkı: kaldırıldı (indirim zaten var, pahalı ürünleri şişiriyordu)
-    - Ürün geçmişi: mağaza bazlı 90. percentile'a göre normalize
+    Lift bazlı puanlama algoritması
+    - Benchmark: Tüm mağazalar (aynı nitelik)
+    - Mağaza payı / Benchmark payı = Lift
+    - Shrinkage ile düzeltme
     """
+    if df is None or df.empty:
+        return kampanya_urunleri, 0
 
-    raw_scores = {}
-    urun_kodu = urun.get('kod', '')
+    eps = 1e-6
+    k = 200 if 'Spot' in nitelik else 500  # Spot için daha düşük k
 
-    # 1. İndirim Puanı (0-100)
-    indirim = urun.get('indirim_num', 0)
-    raw_scores['indirim'] = min(indirim / 50 * 100, 100)  # %50+ = max
+    # Mağaza ve Benchmark filtreleme (aynı nitelik)
+    store_df = df[(df['Magaza_Kod'].astype(str).str.strip() == magaza_kodu.strip()) &
+                  (df['Nitelik'] == nitelik)]
+    bench_df = df[df['Nitelik'] == nitelik]  # Tüm mağazalar = benchmark
 
-    # 2. Ürün Satış Geçmişi + Mal Grubu (ürün kodu ile eşleştir)
-    raw_scores['urun_gecmis'] = 0
-    raw_scores['mal_grubu'] = 0
-    urun_mal_grubu = None
+    if store_df.empty:
+        # Bu nitelikte mağaza verisi yok, fallback
+        return kampanya_urunleri, 0
 
-    # Önce mağaza verisinde ara
-    if urun_perf is not None and not urun_perf.empty:
-        urun_match = urun_perf[urun_perf['Urun_Kod'].astype(str) == urun_kodu]
+    # Paydalar
+    TOTAL_ADET_store = store_df['Adet'].sum()
+    TOTAL_CIRO_store = store_df['Ciro'].sum()
+    TOTAL_ADET_bench = bench_df['Adet'].sum()
+    TOTAL_CIRO_bench = bench_df['Ciro'].sum()
 
-        if not urun_match.empty:
-            # Bu ürün bu mağazada daha önce satılmış
-            adet = urun_match['Adet'].values[0]
-            urun_mal_grubu = urun_match['Mal_Grubu'].values[0]
+    # Shrinkage weight
+    w = TOTAL_ADET_store / (TOTAL_ADET_store + k)
 
-            # Mağaza bazlı normalize: 90. percentile eşiği
-            p90 = urun_perf['Adet'].quantile(0.90)
-            if p90 > 0:
-                raw_scores['urun_gecmis'] = min((adet / p90) * 100, 100)
-            else:
-                raw_scores['urun_gecmis'] = 100 if adet > 0 else 0
+    # === MAL GRUBU LIFT TABLOSU ===
+    mal_grubu_lifts = {}
+    for g in df['Mal_Grubu'].unique():
+        store_g = store_df[store_df['Mal_Grubu'] == g]
+        bench_g = bench_df[bench_df['Mal_Grubu'] == g]
 
-    # Mağazada bulunamadıysa, tüm veriden mal grubunu al
-    if urun_mal_grubu is None and urun_mal_grubu_map:
-        urun_mal_grubu = urun_mal_grubu_map.get(urun_kodu)
+        share_qty_store = (store_g['Adet'].sum() / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
+        share_qty_bench = (bench_g['Adet'].sum() / TOTAL_ADET_bench) if TOTAL_ADET_bench > 0 else 0
+        share_ciro_store = (store_g['Ciro'].sum() / TOTAL_CIRO_store) if TOTAL_CIRO_store > 0 else 0
+        share_ciro_bench = (bench_g['Ciro'].sum() / TOTAL_CIRO_bench) if TOTAL_CIRO_bench > 0 else 0
 
-    # Mal grubu performansı - MAX'a göre normalize (en çok satan = 100)
-    if urun_mal_grubu and mal_grubu_perf is not None and not mal_grubu_perf.empty:
-        mal_match = mal_grubu_perf[mal_grubu_perf['Mal_Grubu'] == urun_mal_grubu]
-        if not mal_match.empty:
-            max_adet = mal_grubu_perf['Adet'].max()
-            if max_adet > 0:
-                raw_scores['mal_grubu'] = (mal_match['Adet'].values[0] / max_adet) * 100
+        lift_qty = (share_qty_store + eps) / (share_qty_bench + eps)
+        lift_ciro = (share_ciro_store + eps) / (share_ciro_bench + eps)
 
-    # === MAĞAZA SKORU (mağaza bazlı - her mağazada farklı) ===
-    # Ağırlık: Mal Grubu %40 + Ürün Geçmişi %40 + İndirim %20
-    # (Fiyat farkı kaldırıldı - indirim zaten var)
-    magaza_skor = (
-        raw_scores['mal_grubu'] * 0.40 +
-        raw_scores['urun_gecmis'] * 0.40 +
-        raw_scores['indirim'] * 0.20
-    )
+        # Shrinkage
+        lift_qty_shr = 1 + w * (lift_qty - 1)
+        lift_ciro_shr = 1 + w * (lift_ciro - 1)
 
-    # === GENEL SKOR (indirim bazlı - tüm mağazalarda aynı) ===
-    # Ağırlık: İndirim %60 + Mal Grubu %25 + Ürün %15
-    genel_skor = (
-        raw_scores['indirim'] * 0.60 +
-        raw_scores['mal_grubu'] * 0.25 +
-        raw_scores['urun_gecmis'] * 0.15
-    )
+        mal_grubu_lifts[g] = {'lift_qty': lift_qty_shr, 'lift_ciro': lift_ciro_shr}
 
-    # Detaylar
-    details = {
-        'indirim': round(raw_scores['indirim'], 1),
-        'mal_grubu': round(raw_scores['mal_grubu'], 1),
-        'urun_gecmis': round(raw_scores['urun_gecmis'], 1),
-        'mal_grubu_adi': urun_mal_grubu or "Yeni Ürün"
-    }
+    # === SKU LIFT TABLOSU ===
+    sku_lifts = {}
+    store_sku = store_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index')
+    bench_sku = bench_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index')
 
-    return round(magaza_skor, 1), round(genel_skor, 1), details
+    for sku in store_sku.keys():
+        share_qty_store = (store_sku[sku]['Adet'] / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
+        share_ciro_store = (store_sku[sku]['Ciro'] / TOTAL_CIRO_store) if TOTAL_CIRO_store > 0 else 0
+
+        bench_vals = bench_sku.get(sku, {'Adet': 0, 'Ciro': 0})
+        share_qty_bench = (bench_vals['Adet'] / TOTAL_ADET_bench) if TOTAL_ADET_bench > 0 else 0
+        share_ciro_bench = (bench_vals['Ciro'] / TOTAL_CIRO_bench) if TOTAL_CIRO_bench > 0 else 0
+
+        lift_qty = (share_qty_store + eps) / (share_qty_bench + eps)
+        lift_ciro = (share_ciro_store + eps) / (share_ciro_bench + eps)
+
+        lift_qty_shr = 1 + w * (lift_qty - 1)
+        lift_ciro_shr = 1 + w * (lift_ciro - 1)
+
+        sku_lifts[str(sku)] = {'lift_qty': lift_qty_shr, 'lift_ciro': lift_ciro_shr}
+
+    # === KAMPANYA ÜRÜNLERİNİ SKORLA ===
+    eslesen_sku = 0
+
+    for urun in kampanya_urunleri:
+        urun_kodu = urun.get('kod', '')
+        mal_grubu = urun_mal_grubu_map.get(urun_kodu)
+
+        # İndirim skorları
+        try:
+            eski_fiyat = float(urun.get('eski_fiyat', '0').replace('.', '').replace(',', '.'))
+            yeni_fiyat = float(urun.get('yeni_fiyat', '0').replace('.', '').replace(',', '.'))
+            saving_tl = eski_fiyat - yeni_fiyat
+        except:
+            saving_tl = 0
+
+        discount_pct = urun.get('indirim_num', 0) / 100
+        disc_score = min(discount_pct / 0.35, 1)  # %35+ = 1
+        save_score = math.log1p(saving_tl) / math.log1p(3000) if saving_tl > 0 else 0
+
+        # Fit skoru (SKU varsa SKU, yoksa mal grubu)
+        fit = 0
+        lift_qty = 1
+        lift_ciro = 1
+        sku_match = False
+
+        if urun_kodu in sku_lifts:
+            lift_qty = sku_lifts[urun_kodu]['lift_qty']
+            lift_ciro = sku_lifts[urun_kodu]['lift_ciro']
+            fit = 0.7 * math.log(max(lift_qty, 0.01)) + 0.3 * math.log(max(lift_ciro, 0.01))
+            eslesen_sku += 1
+            sku_match = True
+        elif mal_grubu and mal_grubu in mal_grubu_lifts:
+            lift_qty = mal_grubu_lifts[mal_grubu]['lift_qty']
+            lift_ciro = mal_grubu_lifts[mal_grubu]['lift_ciro']
+            fit = 0.7 * math.log(max(lift_qty, 0.01)) + 0.3 * math.log(max(lift_ciro, 0.01))
+
+        # Final skor: 0.65*fit + 0.25*disc + 0.10*save
+        # fit log değerinde, normalize edelim (-2 ile +2 arası genelde)
+        fit_normalized = (fit + 2) / 4  # -2,+2 -> 0,1
+        fit_normalized = max(0, min(1, fit_normalized))
+
+        score = 0.65 * fit_normalized + 0.25 * disc_score + 0.10 * save_score
+        score_100 = round(score * 100, 1)
+
+        # Sonuçları ürüne ekle
+        urun['magaza_skor'] = score_100
+        urun['genel_skor'] = round((0.60 * disc_score + 0.25 * fit_normalized + 0.15 * save_score) * 100, 1)
+        urun['puan_detay'] = {
+            'mal_grubu_adi': mal_grubu or 'Yeni Ürün',
+            'lift_qty': round(lift_qty, 2),
+            'lift_ciro': round(lift_ciro, 2),
+            'disc_score': round(disc_score * 100, 1),
+            'save_score': round(save_score * 100, 1),
+            'fit': round(fit, 3),
+            'sku_match': sku_match
+        }
+
+    return kampanya_urunleri, eslesen_sku
+
+def apply_diversity_filter(urunler, max_per_group=2, top_n=10):
+    """İlk N öneride aynı mal grubundan max X ürün"""
+    sorted_urunler = sorted(urunler, key=lambda x: x.get('magaza_skor', 0), reverse=True)
+
+    result = []
+    group_count = {}
+
+    for urun in sorted_urunler:
+        mal_grubu = urun.get('puan_detay', {}).get('mal_grubu_adi', 'Yeni Ürün')
+
+        if len(result) < top_n:
+            # İlk 10 için çeşitlilik kuralı uygula
+            if group_count.get(mal_grubu, 0) < max_per_group:
+                result.append(urun)
+                group_count[mal_grubu] = group_count.get(mal_grubu, 0) + 1
+        else:
+            # Geri kalanı direkt ekle
+            result.append(urun)
+
+    # Çeşitlilik nedeniyle atlananları sona ekle
+    for urun in sorted_urunler:
+        if urun not in result:
+            result.append(urun)
+
+    return result
 
 def get_puan_badge(puan):
     """Puana göre badge HTML döndür"""
@@ -481,13 +539,24 @@ if magaza_secim:
     # Performans verisini yükle
     with st.spinner("📊 Satış performansı yükleniyor..."):
         performans_df = load_performans_data()
-        mal_grubu_perf, urun_perf = get_magaza_performans(performans_df, magaza_kodu)
         urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
+        nitelikler = get_nitelikler(performans_df)
 
-    if mal_grubu_perf is not None:
-        st.success("✅ Mağaza satış performansı yüklendi - Akıllı puanlama aktif!")
+    if performans_df is not None:
+        st.success("✅ Performans verisi yüklendi - Akıllı puanlama aktif!")
+
+        # Nitelik seçimi
+        st.markdown("### 📊 Kampanya Niteliği")
+        nitelik_secim = st.selectbox(
+            "Kampanya niteliğini seçin:",
+            options=nitelikler,
+            index=nitelikler.index("Grup Spot") if "Grup Spot" in nitelikler else 0,
+            key="nitelik_select",
+            help="Kampanya türüne göre seçin. Genellikle 'Grup Spot' veya 'Spot' kullanılır."
+        )
     else:
         st.warning("⚠️ Performans verisi bulunamadı - Sadece indirim bazlı sıralama yapılacak")
+        nitelik_secim = None
 
     st.markdown("---")
 
@@ -521,16 +590,27 @@ if magaza_secim:
                 st.error(hata)
             st.stop()
 
-        # Ürünleri puanla (iki skor: mağaza + genel)
-        for urun in kampanya['urunler']:
-            magaza_skor, genel_skor, detay = calculate_product_scores(urun, mal_grubu_perf, urun_perf, urun_mal_grubu_map)
-            urun['magaza_skor'] = magaza_skor
-            urun['genel_skor'] = genel_skor
-            urun['puan_detay'] = detay
+        # Ürünleri puanla (Lift bazlı algoritma)
+        if nitelik_secim and performans_df is not None:
+            kampanya['urunler'], eslesen_sku = calculate_lift_scores(
+                kampanya['urunler'],
+                magaza_kodu,
+                nitelik_secim,
+                performans_df,
+                urun_mal_grubu_map
+            )
+        else:
+            eslesen_sku = 0
+            # Fallback: sadece indirim bazlı
+            for urun in kampanya['urunler']:
+                disc = urun.get('indirim_num', 0) / 100
+                urun['magaza_skor'] = round(min(disc / 0.35, 1) * 100, 1)
+                urun['genel_skor'] = urun['magaza_skor']
+                urun['puan_detay'] = {'mal_grubu_adi': urun_mal_grubu_map.get(urun.get('kod', ''), 'Yeni Ürün')}
 
         # Eşleşme sayısını hesapla
         toplam_urun = len(kampanya['urunler'])
-        eslesen_urun = sum(1 for u in kampanya['urunler']
+        eslesen_mg = sum(1 for u in kampanya['urunler']
                           if u.get('puan_detay', {}).get('mal_grubu_adi')
                           and u.get('puan_detay', {}).get('mal_grubu_adi') != 'Yeni Ürün')
 
@@ -538,7 +618,8 @@ if magaza_secim:
         st.markdown(f'''
             <div class="basari-kutusu">
                 <strong>✅ {toplam_urun} ürün okundu ve puanlandı</strong><br>
-                📊 Mal grubu eşleşmesi: <strong>{eslesen_urun}/{toplam_urun}</strong> ürün veritabanında bulundu
+                📊 SKU eşleşmesi: <strong>{eslesen_sku}/{toplam_urun}</strong> |
+                Mal grubu eşleşmesi: <strong>{eslesen_mg}/{toplam_urun}</strong>
             </div>
         ''', unsafe_allow_html=True)
 
@@ -572,19 +653,19 @@ if magaza_secim:
         secili_urunler = []
 
         with tab_magaza:
-            st.markdown("""
+            st.markdown(f"""
             <div class="secim-rehberi">
-                <strong>🏪 Mağaza Bazlı Puanlama:</strong><br>
-                Bu sıralama <strong>mağazanızın satış geçmişine</strong> göre yapılmıştır.<br>
-                • Mal Grubu Performansı (40%) - Bu kategori mağazanızda ne kadar satıyor?<br>
-                • Ürün Satış Geçmişi (40%) - Bu ürünü daha önce sattınız mı?<br>
-                • İndirim Oranı (20%)<br><br>
+                <strong>🏪 Mağaza Bazlı Puanlama (Lift Algoritması):</strong><br>
+                Nitelik: <strong>{nitelik_secim or '-'}</strong> | Benchmark: Tüm Mağazalar<br>
+                • Müşteri Uyumu (65%) - Lift: Mağaza payı / Bölge payı<br>
+                • İndirim Çekiciliği (25%) - %35+ = maksimum<br>
+                • Tasarruf (10%) - TL bazlı (log normalize)<br><br>
                 🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
             </div>
             """, unsafe_allow_html=True)
 
-            # Mağaza skoruna göre sırala
-            urunler_magaza = sorted(kampanya['urunler'], key=lambda x: x.get('magaza_skor', 0), reverse=True)
+            # Mağaza skoruna göre sırala + çeşitlilik filtresi
+            urunler_magaza = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=10)
 
             for urun in urunler_magaza:
                 col1, col2, col3 = st.columns([1, 17, 4])
@@ -600,26 +681,29 @@ if magaza_secim:
                     puan_badge = get_puan_badge(puan)
                     detay = urun.get('puan_detay', {})
                     mal_grubu = detay.get('mal_grubu_adi', '-')
+                    sku_icon = "🎯" if detay.get('sku_match') else ""
                     st.markdown(
-                        f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ {puan_badge}",
+                        f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ {sku_icon} → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ {puan_badge}",
                         unsafe_allow_html=True
                     )
 
                 with col3:
                     with st.popover("📊 Detay"):
                         st.write(f"**Mal Grubu:** {mal_grubu}")
-                        st.write(f"Kategori Perf: {detay.get('mal_grubu', 0)}/100")
-                        st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/100")
-                        st.write(f"İndirim: %{urun.get('indirim', 0)}")
+                        st.write(f"**Lift Adet:** {detay.get('lift_qty', 1):.2f}x")
+                        st.write(f"**Lift Ciro:** {detay.get('lift_ciro', 1):.2f}x")
+                        st.write(f"İndirim Skoru: {detay.get('disc_score', 0)}")
+                        st.write(f"Tasarruf Skoru: {detay.get('save_score', 0)}")
+                        st.write(f"SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
 
         with tab_genel:
             st.markdown("""
             <div class="secim-rehberi">
-                <strong>📊 Genel Puanlama (Tüm Mağazalar İçin Aynı):</strong><br>
+                <strong>📊 Genel Puanlama (İndirim Ağırlıklı):</strong><br>
                 Bu sıralama <strong>indirim oranına</strong> göre yapılmıştır.<br>
                 • İndirim Oranı (60%)<br>
-                • Mal Grubu Performansı (25%)<br>
-                • Ürün Satış Geçmişi (15%)<br><br>
+                • Müşteri Uyumu (25%)<br>
+                • Tasarruf (15%)<br><br>
                 🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
             </div>
             """, unsafe_allow_html=True)
@@ -649,9 +733,12 @@ if magaza_secim:
                 with col3:
                     with st.popover("📊 Detay"):
                         st.write(f"**Mal Grubu:** {mal_grubu}")
-                        st.write(f"İndirim: {detay.get('indirim', 0)}/100")
-                        st.write(f"Kategori: {detay.get('mal_grubu', 0)}/100")
-                        st.write(f"Ürün Geçmişi: {detay.get('urun_gecmis', 0)}/100")
+                        st.write(f"📦 Lift Adet: {detay.get('lift_qty', 1.0):.2f}")
+                        st.write(f"💰 Lift Ciro: {detay.get('lift_ciro', 1.0):.2f}")
+                        st.write(f"🏷️ İndirim Puanı: {detay.get('disc_score', 0):.0f}/100")
+                        st.write(f"💵 Tasarruf Puanı: {detay.get('save_score', 0):.0f}/100")
+                        sku_match = "✅" if detay.get('sku_match', False) else "❌"
+                        st.write(f"🔍 SKU Eşleşme: {sku_match}")
 
         # Seçim kontrolü
         secili_sayi = len(secili_urunler)
