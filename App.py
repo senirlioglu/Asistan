@@ -147,19 +147,27 @@ PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025
 # ÜRÜN EMOJİLERİ
 # =============================================================================
 URUN_EMOJILERI = {
-    "TV": "📺", "SÜPÜRGE": "🧹", "BUZDOLABI": "❄️", "KLİMA": "❄️",
+    # Spesifik olanlar önce (uzun kelimeler)
+    "EL ARABASI": "🛒", "BUDAMA": "✂️", "AIRFRYER": "🍟", "POWERBANK": "🔋",
+    "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
+    "BİSİKLET": "🚲", "VANTİLATÖR": "🌀", "BUZDOLABI": "❄️", "DONDURUC": "🧊",
+    "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️",
+    # Genel kategoriler
+    "TV": "📺", "SÜPÜRGE": "🧹", "KLİMA": "❄️",
     "KAHVE": "☕", "ÇAY": "🍵", "TOST": "🥪", "WAFFLE": "🧇",
-    "MİKSER": "🥣", "BLENDER": "🥤", "FRİTÖZ": "🍟", "AIRFRYER": "🍟",
-    "SAÇ": "💇", "ÜTÜ": "👔", "ISITICI": "🔥", "VANTİLATÖR": "🌀",
-    "KAMP": "⛺", "BAHÇE": "🌳", "MANGAL": "🔥", "BİSİKLET": "🚲",
-    "ARABA": "🚗", "AKÜLÜ": "🚗", "OYUNCAK": "🧸", "BEBEK": "👶",
-    "GÖMLEK": "👔", "SWEATSHIRT": "🧥", "EŞOFMAN": "🏃",
-    "ÇARŞAF": "🛏️", "BATTANİYE": "🛏️", "NEVRESİM": "🛏️",
-    "PERDE": "🪟", "HALI": "🏠", "DOLAP": "🗄️", "MASA": "🪑",
-    "BARDAK": "🥛", "FİNCAN": "☕", "TABAK": "🍽️", "KAVANOZ": "🫙",
-    "TERMOS": "🧊", "TESTERE": "🪚", "SAATİ": "⌚", "KAMERA": "📷",
-    "POWERBANK": "🔋", "DONDURUC": "🧊", "ESPRESSO": "☕",
-    "ÇAPA": "🚜", "MULTIMEDIA": "🎵", "MUG": "☕", "SEPETİ": "🧺",
+    "MİKSER": "🥣", "BLENDER": "🥤", "FRİTÖZ": "🍟",
+    "SAÇ": "💇", "ÜTÜ": "👔", "ISITICI": "🔥",
+    "KAMP": "⛺", "BAHÇE": "🌿", "MANGAL": "🔥", "ŞEMSİYE": "☂️",
+    "ARABA": "🚗", "AKÜLÜ": "🔋", "OYUNCAK": "🧸", "BEBEK": "👶",
+    "GÖMLEK": "👔", "EŞOFMAN": "🏃", "PANTOLON": "👖", "MONT": "🧥",
+    "PERDE": "🪟", "HALI": "🏠", "DOLAP": "🗄️", "MASA": "🪑", "SANDALYE": "🪑",
+    "BARDAK": "🥛", "FİNCAN": "☕", "TABAK": "🍽️", "KAVANOZ": "🫙", "TENCERE": "🍳",
+    "TERMOS": "🧊", "SAAT": "⌚", "KAMERA": "📷", "TELEFON": "📱",
+    "ÇAPA": "🚜", "MUG": "☕", "SEPETİ": "🧺", "VALIZ": "🧳",
+    "KUTU": "📦", "RAF": "📚", "AYNA": "🪞", "LAMBa": "💡",
+    "DETERJAN": "🧴", "ŞAMPUAN": "🧴", "HAVLU": "🛁", "YORGAN": "🛏️",
+    "BOYA": "🎨", "FIRIN": "🔥", "OCAK": "🔥", "SET": "📦",
+    "YASTIK": "🛏️", "PASPAS": "🧹", "POŞET": "🛍️", "ÇÖP": "🗑️",
 }
 
 def get_emoji(urun_adi):
@@ -221,15 +229,19 @@ def get_nitelikler(_df):
 
 import math
 
-def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_grubu_map):
+def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_grubu_map, weights=None):
     """
     Lift bazlı puanlama algoritması
     - Benchmark: Tüm mağazalar (aynı nitelik)
     - Mağaza payı / Benchmark payı = Lift
     - Shrinkage ile düzeltme
+    - weights: (fit, disc, save) ağırlıkları - varsayılan (0.65, 0.25, 0.10)
     """
     if df is None or df.empty:
         return kampanya_urunleri, 0
+
+    # Ağırlıklar
+    w_fit, w_disc, w_save = weights if weights else (0.65, 0.25, 0.10)
 
     eps = 1e-6
     # Bugfix 3: Case-insensitive spot tespiti
@@ -445,7 +457,7 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
         fit_normalized = (fit + 2) / 4  # -2,+2 -> 0,1
         fit_normalized = max(0, min(1, fit_normalized))
 
-        score = 0.65 * fit_normalized + 0.25 * disc_score + 0.10 * save_score
+        score = w_fit * fit_normalized + w_disc * disc_score + w_save * save_score
         score_100 = round(score * 100, 1)
 
         # Mal grubu cezası uygula
@@ -569,18 +581,30 @@ def parse_kampanya_maili(mail_text):
             while j < len(lines) and j < i + 5:
                 next_line = lines[j]
 
-                if next_line.startswith('₺') and not urun['eski_fiyat']:
-                    urun['eski_fiyat'] = next_line.replace('₺', '').strip()
-                elif next_line.startswith('₺') and urun['eski_fiyat']:
-                    urun['yeni_fiyat'] = next_line.replace('₺', '').strip()
-                elif next_line.startswith('%'):
-                    indirim_str = next_line.replace('%', '').replace(',', '.').strip()
-                    urun['indirim'] = next_line.replace('%', '').strip()
-                    try:
-                        urun['indirim_num'] = float(indirim_str)
-                    except ValueError:
-                        urun['indirim_num'] = 0
-                elif not urun['ad'] and not next_line.startswith('₺') and not next_line.startswith('%'):
+                # Fiyat regex: ₺12,90 / 12,90₺ / 12.90 TL / 1.299,00₺ vs.
+                fiyat_pattern = r'[₺]?\s*([\d.,]+)\s*(?:₺|TL)?'
+                fiyat_match = re.match(fiyat_pattern, next_line.replace(' ', ''))
+
+                # İndirim kontrolü
+                indirim_pattern = r'[%]?\s*([\d.,]+)\s*%?'
+                is_indirim = '%' in next_line
+
+                if fiyat_match and ('₺' in next_line or 'TL' in next_line):
+                    fiyat_str = fiyat_match.group(1)
+                    if not urun['eski_fiyat']:
+                        urun['eski_fiyat'] = fiyat_str
+                    elif not urun['yeni_fiyat']:
+                        urun['yeni_fiyat'] = fiyat_str
+                elif is_indirim:
+                    indirim_match = re.search(r'([\d.,]+)', next_line)
+                    if indirim_match:
+                        indirim_str = indirim_match.group(1).replace(',', '.')
+                        urun['indirim'] = indirim_str
+                        try:
+                            urun['indirim_num'] = float(indirim_str)
+                        except ValueError:
+                            urun['indirim_num'] = 0
+                elif not urun['ad'] and not ('₺' in next_line or 'TL' in next_line or '%' in next_line):
                     urun['ad'] = next_line
 
                 j += 1
@@ -682,6 +706,25 @@ if magaza_secim:
             key="nitelik_select",
             help="Kampanya türüne göre seçin. Genellikle 'Grup Spot' veya 'Spot' kullanılır."
         )
+
+        # Skor ağırlıkları (gelişmiş ayarlar)
+        with st.expander("⚙️ Skor Ağırlıkları (Gelişmiş)"):
+            st.caption("Varsayılan değerler önerilir. Değiştirmek isterseniz ayarlayın.")
+            col_w1, col_w2, col_w3 = st.columns(3)
+            with col_w1:
+                weight_fit = st.slider("Müşteri Uyumu", 0, 100, 65, 5, key="w_fit", help="Lift bazlı uyum skoru") / 100
+            with col_w2:
+                weight_disc = st.slider("İndirim", 0, 100, 25, 5, key="w_disc", help="İndirim oranı skoru") / 100
+            with col_w3:
+                weight_save = st.slider("Tasarruf", 0, 100, 10, 5, key="w_save", help="TL bazlı tasarruf") / 100
+
+            # Normalize et (toplamı 1 yap)
+            total_weight = weight_fit + weight_disc + weight_save
+            if total_weight > 0:
+                weight_fit = weight_fit / total_weight
+                weight_disc = weight_disc / total_weight
+                weight_save = weight_save / total_weight
+            st.caption(f"Normalize: Uyum {weight_fit:.0%} | İndirim {weight_disc:.0%} | Tasarruf {weight_save:.0%}")
     else:
         st.warning("⚠️ Performans verisi bulunamadı - Sadece indirim bazlı sıralama yapılacak")
         nitelik_secim = None
@@ -720,12 +763,24 @@ if magaza_secim:
 
         # Ürünleri puanla (Lift bazlı algoritma)
         if nitelik_secim and performans_df is not None:
+            # Ağırlıkları session_state'den al
+            w_fit = st.session_state.get('w_fit', 65) / 100
+            w_disc = st.session_state.get('w_disc', 25) / 100
+            w_save = st.session_state.get('w_save', 10) / 100
+            # Normalize et
+            total_w = w_fit + w_disc + w_save
+            if total_w > 0:
+                weights = (w_fit/total_w, w_disc/total_w, w_save/total_w)
+            else:
+                weights = (0.65, 0.25, 0.10)
+
             kampanya['urunler'], eslesen_sku = calculate_lift_scores(
                 kampanya['urunler'],
                 magaza_kodu,
                 nitelik_secim,
                 performans_df,
-                urun_mal_grubu_map
+                urun_mal_grubu_map,
+                weights=weights
             )
         else:
             eslesen_sku = 0
@@ -772,6 +827,21 @@ if magaza_secim:
         # =============================================================================
         st.markdown("### 3️⃣ Ürün Seçimi")
 
+        # En iyi 5 öneri butonu
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+        with col_btn1:
+            if st.button("🎯 En İyi 5 Öneri", type="primary", use_container_width=True):
+                top5 = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=5)
+                st.session_state['auto_selected'] = [u['kod'] for u in top5]
+                st.rerun()
+        with col_btn2:
+            if st.button("🔄 Seçimleri Temizle", use_container_width=True):
+                st.session_state['auto_selected'] = []
+                st.rerun()
+
+        # Otomatik seçim listesi
+        auto_selected = st.session_state.get('auto_selected', [])
+
         # İki tab ile iki farklı sıralama
         tab_magaza, tab_genel = st.tabs([
             f"🏪 {magaza_adi} İçin Önerilen",
@@ -795,11 +865,17 @@ if magaza_secim:
             # Mağaza skoruna göre sırala + çeşitlilik filtresi
             urunler_magaza = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=10)
 
-            for urun in urunler_magaza:
+            # Güvenilir ve düşük güvenli ürünleri ayır
+            urunler_guvenilir = [u for u in urunler_magaza if not u.get('puan_detay', {}).get('group_warning')]
+            urunler_dusuk_guven = [u for u in urunler_magaza if u.get('puan_detay', {}).get('group_warning')]
+
+            # Önce güvenilir ürünler
+            for urun in urunler_guvenilir:
                 col1, col2, col3 = st.columns([1, 17, 4])
 
                 with col1:
-                    secili = st.checkbox("", key=f"m_{urun['kod']}", label_visibility="collapsed")
+                    default_val = urun['kod'] in auto_selected
+                    secili = st.checkbox("", key=f"m_{urun['kod']}", value=default_val, label_visibility="collapsed")
                     if secili and urun not in secili_urunler:
                         secili_urunler.append(urun)
 
@@ -843,6 +919,30 @@ if magaza_secim:
                         st.caption("ℹ️ Lift = Mağaza payı / Bölge payı")
                         st.caption("SKU az satıldıysa grup profili ağırlıklı hesaplanır")
 
+            # Düşük güvenli ürünler (varsa)
+            if urunler_dusuk_guven:
+                with st.expander(f"⚠️ Düşük Güvenli Ürünler ({len(urunler_dusuk_guven)} adet)", expanded=False):
+                    st.caption("Bu ürünler mağazada zayıf kategorilerden. Dikkatli değerlendirin.")
+                    for urun in urunler_dusuk_guven:
+                        col1, col2, col3 = st.columns([1, 17, 4])
+                        with col1:
+                            default_val = urun['kod'] in auto_selected
+                            secili = st.checkbox("", key=f"ml_{urun['kod']}", value=default_val, label_visibility="collapsed")
+                            if secili and urun not in secili_urunler:
+                                secili_urunler.append(urun)
+                        with col2:
+                            emoji = get_emoji(urun['ad'])
+                            puan = urun.get('magaza_skor', 0)
+                            puan_badge = get_puan_badge(puan)
+                            detay = urun.get('puan_detay', {})
+                            mal_grubu = detay.get('mal_grubu_adi', '-')
+                            warning = detay.get('group_warning', '')
+                            st.markdown(
+                                f"⚠️ {emoji} **{urun['ad'][:35]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ {puan_badge}",
+                                unsafe_allow_html=True
+                            )
+                            st.caption(warning)
+
         with tab_genel:
             st.markdown("""
             <div class="secim-rehberi">
@@ -862,7 +962,8 @@ if magaza_secim:
                 col1, col2, col3 = st.columns([1, 17, 4])
 
                 with col1:
-                    secili = st.checkbox("", key=f"g_{urun['kod']}", label_visibility="collapsed")
+                    default_val = urun['kod'] in auto_selected
+                    secili = st.checkbox("", key=f"g_{urun['kod']}", value=default_val, label_visibility="collapsed")
                     if secili and urun not in secili_urunler:
                         secili_urunler.append(urun)
 
@@ -941,6 +1042,11 @@ if magaza_secim:
 
             st.markdown("**Mesaj önizleme:**")
             st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
+
+            # Kopyalanabilir metin
+            with st.expander("📋 Kopyalamak için tıklayın"):
+                st.code(mesaj, language=None)
+                st.caption("👆 Sağ üst köşedeki kopyala ikonuna tıklayın")
 
             # Kontroller
             st.markdown("---")
