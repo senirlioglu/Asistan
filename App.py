@@ -635,11 +635,18 @@ def parse_kampanya_maili(mail_text):
 # =============================================================================
 # MESAJ FORMATLAMA
 # =============================================================================
-def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi):
+def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun_sayisi=None):
     """WhatsApp mesajı oluştur"""
 
     mesaj = f"🛒 A101 {magaza_adi}\n\n"
-    mesaj += "🔥 BUGÜNE ÖZEL!\n\n"
+
+    # Başlık - toplam ürün sayısı varsa göster
+    if toplam_urun_sayisi:
+        mesaj += f"🔥 BUGÜNE ÖZEL! ({toplam_urun_sayisi} Üründe İndirim)\n"
+    else:
+        mesaj += "🔥 BUGÜNE ÖZEL!\n"
+
+    mesaj += "⭐ En Çok Satanlarda Fırsatlar!\n\n"
 
     for urun in secili_urunler:
         emoji = get_emoji(urun['ad'])
@@ -1038,7 +1045,8 @@ if magaza_secim:
 
             # Mesajı oluştur
             bitis = kampanya['bitis'] or "Stoklarla sınırlı"
-            mesaj = format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis)
+            toplam_urun = len(kampanya['urunler'])
+            mesaj = format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis, toplam_urun)
 
             st.markdown("**Mesaj önizleme:**")
             st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
