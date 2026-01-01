@@ -173,11 +173,23 @@ def get_emoji(urun_adi):
 # =============================================================================
 # PERFORMANS VERİSİ
 # =============================================================================
+import os
+
 @st.cache_data(ttl=3600)  # 1 saat cache
 def load_performans_data():
-    """GitHub'dan performans verilerini yükle"""
+    """Performans verilerini yükle - önce yerel, sonra GitHub"""
+
+    # Önce yerel dosyayı dene
+    local_path = os.path.join(os.path.dirname(__file__), 'veri_2025.parquet')
+    if os.path.exists(local_path):
+        try:
+            df = pd.read_parquet(local_path)
+            return df
+        except Exception as e:
+            st.warning(f"⚠️ Yerel dosya okunamadı: {str(e)}")
+
+    # Yerel yoksa GitHub'dan çek
     try:
-        # 2025 verisini yükle
         response = requests.get(PERFORMANS_URL_2025, timeout=30)
         if response.status_code == 200:
             df = pd.read_parquet(io.BytesIO(response.content))
