@@ -278,8 +278,9 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
 
     # === SKU LIFT TABLOSU ===
     sku_lifts = {}
-    store_sku = store_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index')
-    bench_sku = bench_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index')
+    # Key'leri string yap (kampanya ürün kodları string)
+    store_sku = {str(k): v for k, v in store_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index').items()}
+    bench_sku = {str(k): v for k, v in bench_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index').items()}
 
     for sku in store_sku.keys():
         share_qty_store = (store_sku[sku]['Adet'] / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
