@@ -140,9 +140,8 @@ MAGAZALAR = {
 
 WHATSAPP_NUMBER = "905399311842"
 
-# Performans verisi URL'leri
-PERFORMANS_URL_2025 = "https://github.com/senirlioglu/performans/raw/main/veri_2025.parquet"
-PERFORMANS_URL_2024 = "https://github.com/senirlioglu/performans/raw/main/veri_2024.parquet"
+# Performans verisi URL'leri (Asistan reposundan)
+PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025.parquet"
 
 # =============================================================================
 # ÜRÜN EMOJİLERİ
@@ -721,7 +720,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-    A101 Kampanya Mesaj Oluşturucu v3.2 - Düzeltilmiş Puanlama<br>
+    A101 Kampanya Mesaj Oluşturucu v3.4 - Asistan Repo Entegrasyonu<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
