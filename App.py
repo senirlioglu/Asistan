@@ -775,12 +775,16 @@ if magaza_secim:
 
         # Nitelik seçimi
         st.markdown("### 📊 Kampanya Niteliği")
+        # Varsayılan olarak Spot seçili gelsin
+        default_nitelik = "Spot" if "Spot" in nitelikler else (nitelikler[0] if nitelikler else None)
+        default_index = nitelikler.index(default_nitelik) if default_nitelik in nitelikler else 0
+
         nitelik_secim = st.selectbox(
             "Kampanya niteliğini seçin:",
             options=nitelikler,
-            index=nitelikler.index("Grup Spot") if "Grup Spot" in nitelikler else 0,
+            index=default_index,
             key="nitelik_select",
-            help="Kampanya türüne göre seçin. Genellikle 'Grup Spot' veya 'Spot' kullanılır."
+            help="Kampanya türüne göre seçin. Genellikle 'Spot' kullanılır."
         )
 
         # Skor ağırlıkları (gelişmiş ayarlar)
