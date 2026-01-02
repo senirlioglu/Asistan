@@ -531,7 +531,7 @@ def get_puan_badge(puan):
 # MAİL PARSER - Workflow Formatı
 # =============================================================================
 def parse_kampanya_maili(mail_text):
-    """Workflow kampanya mailini parse et"""
+    """Workflow kampanya mailini parse et - hem satır hem tablo formatı destekler"""
 
     result = {
         'baslangic': None,
@@ -547,28 +547,43 @@ def parse_kampanya_maili(mail_text):
 
     # Tarihleri bul
     for i, line in enumerate(lines):
-        if 'Başlangıç' in line and i + 1 < len(lines):
-            tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', lines[i + 1])
+        # Aynı satırda tarih olabilir
+        if 'Başlangıç' in line:
+            tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', line)
             if tarih_match:
                 result['baslangic'] = tarih_match.group(1)
+            elif i + 1 < len(lines):
+                tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', lines[i + 1])
+                if tarih_match:
+                    result['baslangic'] = tarih_match.group(1)
 
-        if 'Bitiş' in line and i + 1 < len(lines):
-            tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', lines[i + 1])
+        if 'Bitiş' in line:
+            tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', line)
             if tarih_match:
                 result['bitis'] = tarih_match.group(1)
+            elif i + 1 < len(lines):
+                tarih_match = re.search(r'(\d{2}\.\d{2}\.\d{4})', lines[i + 1])
+                if tarih_match:
+                    result['bitis'] = tarih_match.group(1)
 
-        if 'Onaylayan' in line and i + 1 < len(lines):
-            result['onaylayan'] = lines[i + 1]
+        if 'Onaylayan' in line:
+            # Aynı satırda isim olabilir
+            onay_match = re.search(r'Onaylayan.*?([A-ZÇĞİÖŞÜa-zçğıöşü\s]+)\(', line)
+            if onay_match:
+                result['onaylayan'] = onay_match.group(1).strip()
+            elif i + 1 < len(lines):
+                result['onaylayan'] = lines[i + 1]
 
-    # Ürünleri parse et
-    i = 0
-    while i < len(lines):
-        line = lines[i]
+    # Ürünleri parse et - TAB-SEPARATED TABLO FORMATI
+    # Format: Ürün Kodu | Ürün Adı | Satış Fiyatı | Tanıtım Fiyatı | İndirim Oranı
+    for line in lines:
+        # Tab veya çoklu boşlukla ayrılmış satırlar
+        parts = re.split(r'\t+|\s{2,}', line)
 
-        # 8 haneli ürün kodu bul
-        if re.match(r'^\d{8}$', line):
+        # 8 haneli ürün kodu ile başlayan satır
+        if parts and re.match(r'^\d{8}$', parts[0].strip()):
             urun = {
-                'kod': line,
+                'kod': parts[0].strip(),
                 'ad': '',
                 'eski_fiyat': '',
                 'yeni_fiyat': '',
@@ -576,53 +591,103 @@ def parse_kampanya_maili(mail_text):
                 'indirim_num': 0
             }
 
-            # Sonraki satırları oku
-            j = i + 1
-            while j < len(lines) and j < i + 5:
-                next_line = lines[j]
+            # Satırdaki parçaları işle
+            for part in parts[1:]:
+                part = part.strip()
+                if not part:
+                    continue
 
-                # Fiyat regex: ₺12,90 / 12,90₺ / 12.90 TL / 1.299,00₺ vs.
-                fiyat_pattern = r'[₺]?\s*([\d.,]+)\s*(?:₺|TL)?'
-                fiyat_match = re.match(fiyat_pattern, next_line.replace(' ', ''))
+                # Fiyat kontrolü (₺149,00 veya 149,00₺ veya 149,00)
+                fiyat_match = re.search(r'₺?\s*([\d.,]+)\s*₺?', part)
 
-                # İndirim kontrolü
-                indirim_pattern = r'[%]?\s*([\d.,]+)\s*%?'
-                is_indirim = '%' in next_line
-
-                if fiyat_match and ('₺' in next_line or 'TL' in next_line):
-                    fiyat_str = fiyat_match.group(1)
-                    if not urun['eski_fiyat']:
-                        urun['eski_fiyat'] = fiyat_str
-                    elif not urun['yeni_fiyat']:
-                        urun['yeni_fiyat'] = fiyat_str
-                elif is_indirim:
-                    indirim_match = re.search(r'([\d.,]+)', next_line)
+                if '%' in part:
+                    # İndirim oranı
+                    indirim_match = re.search(r'%?\s*([\d.,]+)\s*%?', part)
                     if indirim_match:
                         indirim_str = indirim_match.group(1).replace(',', '.')
                         urun['indirim'] = indirim_str
                         try:
                             urun['indirim_num'] = float(indirim_str)
-                        except ValueError:
-                            urun['indirim_num'] = 0
-                elif not urun['ad'] and not ('₺' in next_line or 'TL' in next_line or '%' in next_line):
-                    urun['ad'] = next_line
+                        except:
+                            pass
+                elif '₺' in part and fiyat_match:
+                    # Fiyat
+                    fiyat_str = fiyat_match.group(1)
+                    if not urun['eski_fiyat']:
+                        urun['eski_fiyat'] = fiyat_str
+                    elif not urun['yeni_fiyat']:
+                        urun['yeni_fiyat'] = fiyat_str
+                elif not urun['ad'] and not re.match(r'^[\d.,₺%\s]+$', part):
+                    # Ürün adı (sayı/fiyat/yüzde içermeyen)
+                    urun['ad'] = part
 
-                j += 1
-
-            if urun['ad'] and urun['yeni_fiyat']:
-                try:
-                    eski = float(urun['eski_fiyat'].replace('.', '').replace(',', '.'))
-                    yeni = float(urun['yeni_fiyat'].replace('.', '').replace(',', '.'))
-                    if yeni > eski:
-                        result['uyarilar'].append(f"⚠️ {urun['ad'][:30]}: Yeni fiyat eskisinden yüksek!")
-                except ValueError:
-                    pass
-
+            # Ürün geçerliyse ekle
+            if urun['ad'] and (urun['yeni_fiyat'] or urun['eski_fiyat']):
+                # Fiyat kontrolü
+                if urun['eski_fiyat'] and urun['yeni_fiyat']:
+                    try:
+                        eski = float(urun['eski_fiyat'].replace('.', '').replace(',', '.'))
+                        yeni = float(urun['yeni_fiyat'].replace('.', '').replace(',', '.'))
+                        if yeni > eski:
+                            result['uyarilar'].append(f"⚠️ {urun['ad'][:30]}: Yeni fiyat eskisinden yüksek!")
+                    except:
+                        pass
                 result['urunler'].append(urun)
+                continue
 
-            i = j
-        else:
-            i += 1
+    # Eski format desteği (satır satır ayrılmış)
+    if not result['urunler']:
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+
+            # 8 haneli ürün kodu bul (tek başına satırda)
+            if re.match(r'^\d{8}$', line):
+                urun = {
+                    'kod': line,
+                    'ad': '',
+                    'eski_fiyat': '',
+                    'yeni_fiyat': '',
+                    'indirim': '',
+                    'indirim_num': 0
+                }
+
+                # Sonraki satırları oku
+                j = i + 1
+                while j < len(lines) and j < i + 5:
+                    next_line = lines[j]
+
+                    # Fiyat regex
+                    fiyat_pattern = r'[₺]?\s*([\d.,]+)\s*(?:₺|TL)?'
+                    fiyat_match = re.match(fiyat_pattern, next_line.replace(' ', ''))
+                    is_indirim = '%' in next_line
+
+                    if fiyat_match and ('₺' in next_line or 'TL' in next_line):
+                        fiyat_str = fiyat_match.group(1)
+                        if not urun['eski_fiyat']:
+                            urun['eski_fiyat'] = fiyat_str
+                        elif not urun['yeni_fiyat']:
+                            urun['yeni_fiyat'] = fiyat_str
+                    elif is_indirim:
+                        indirim_match = re.search(r'([\d.,]+)', next_line)
+                        if indirim_match:
+                            indirim_str = indirim_match.group(1).replace(',', '.')
+                            urun['indirim'] = indirim_str
+                            try:
+                                urun['indirim_num'] = float(indirim_str)
+                            except:
+                                pass
+                    elif not urun['ad'] and not ('₺' in next_line or 'TL' in next_line or '%' in next_line):
+                        urun['ad'] = next_line
+
+                    j += 1
+
+                if urun['ad'] and urun['yeni_fiyat']:
+                    result['urunler'].append(urun)
+
+                i = j
+            else:
+                i += 1
 
     if not result['baslangic'] or not result['bitis']:
         result['uyarilar'].append("⚠️ Kampanya tarihleri bulunamadı, manuel kontrol edin.")
