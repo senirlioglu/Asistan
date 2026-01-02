@@ -638,30 +638,34 @@ def parse_kampanya_maili(mail_text):
 def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun_sayisi=None):
     """WhatsApp mesajı oluştur"""
 
+    secili_sayi = len(secili_urunler)
+
     mesaj = f"🛒 A101 {magaza_adi}\n\n"
 
-    # Başlık - toplam ürün sayısı varsa göster
+    # Başlık
     if toplam_urun_sayisi:
-        mesaj += f"🔥 BUGÜNE ÖZEL! ({toplam_urun_sayisi} Üründe İndirim)\n"
+        mesaj += f"🔥 BUGÜNE ÖZEL – {toplam_urun_sayisi} üründe indirim var!\n"
     else:
         mesaj += "🔥 BUGÜNE ÖZEL!\n"
 
-    mesaj += "⭐ En Çok Satanlarda Fırsatlar!\n\n"
+    mesaj += f"⭐ Aşağıdakiler öne çıkan {secili_sayi} fırsat:\n\n"
 
+    # Ürünler
     for urun in secili_urunler:
         emoji = get_emoji(urun['ad'])
-        ad_kisa = urun['ad'][:35] + "..." if len(urun['ad']) > 35 else urun['ad']
+        ad_kisa = urun['ad'][:40] if len(urun['ad']) <= 40 else urun['ad'][:37] + "..."
+
         mesaj += f"{emoji} {ad_kisa}\n"
-        mesaj += f"   {urun['yeni_fiyat']}₺"
+        mesaj += f"✅ {urun['yeni_fiyat']}₺"
         if urun.get('eski_fiyat'):
-            mesaj += f" ~~{urun['eski_fiyat']}₺~~"
+            mesaj += f" | Eski: {urun['eski_fiyat']}₺"
         if urun.get('indirim'):
-            mesaj += f" (%{urun['indirim']} indirim)"
+            mesaj += f" (%{urun['indirim']} İNDİRİM)"
         mesaj += "\n\n"
 
-    mesaj += f"📅 Son gün: {bitis_tarihi}\n"
-    mesaj += "📍 Stoklarla sınırlıdır\n\n"
-    mesaj += "_Listeden çıkmak için ÇIKIŞ yazın_"
+    # Alt bilgi
+    mesaj += f"📅 Son gün: {bitis_tarihi} | 📍 Stoklarla sınırlıdır\n\n"
+    mesaj += "Listeden çıkmak için ÇIKIŞ yazın."
 
     return mesaj
 
