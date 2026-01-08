@@ -1363,22 +1363,20 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
                                     }
 
                                     # Lift skoru hesapla (sadece fit için, indirim yok)
-                                    nitelik = "Spot"  # Varsayılan
-
                                     # Mal grubunu bul
-                                    mal_grubu_kodu = urun_mal_grubu_map.get(urun_kodu)
+                                    mal_grubu = urun_mal_grubu_map.get(urun_kodu)
 
                                     # Basitleştirilmiş lift hesaplama
                                     try:
-                                        # Mağaza verisi
+                                        # Mağaza verisi (doğru kolon isimleri: Magaza_Kod, Nitelik, Urun_Kod, Adet, Mal_Grubu)
                                         store_data = performans_df[
-                                            (performans_df['MAGAZA_KODU'].astype(str) == magaza_kodu) &
-                                            (performans_df['NITELIK'].str.lower().str.contains('spot', na=False))
+                                            (performans_df['Magaza_Kod'].astype(str).str.strip() == magaza_kodu.strip()) &
+                                            (performans_df['Nitelik'].str.lower().str.contains('spot', na=False))
                                         ]
 
                                         # Benchmark verisi (tüm mağazalar)
                                         bench_data = performans_df[
-                                            performans_df['NITELIK'].str.lower().str.contains('spot', na=False)
+                                            performans_df['Nitelik'].str.lower().str.contains('spot', na=False)
                                         ]
 
                                         # Mağaza verisi var mı kontrol et
@@ -1402,14 +1400,14 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
                                                 neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
                                         else:
                                             # SKU bazlı lift
-                                            store_sku = store_data[store_data['URUN_KODU'].astype(str) == urun_kodu]
-                                            bench_sku = bench_data[bench_data['URUN_KODU'].astype(str) == urun_kodu]
+                                            store_sku = store_data[store_data['Urun_Kod'].astype(str) == urun_kodu]
+                                            bench_sku = bench_data[bench_data['Urun_Kod'].astype(str) == urun_kodu]
 
-                                            sku_qty = store_sku['TOPLAM_ADET'].sum() if len(store_sku) > 0 else 0
-                                            bench_qty = bench_sku['TOPLAM_ADET'].sum() if len(bench_sku) > 0 else 0
+                                            sku_qty = store_sku['Adet'].sum() if len(store_sku) > 0 else 0
+                                            bench_qty = bench_sku['Adet'].sum() if len(bench_sku) > 0 else 0
 
-                                            store_total = store_data['TOPLAM_ADET'].sum()
-                                            bench_total = bench_data['TOPLAM_ADET'].sum()
+                                            store_total = store_data['Adet'].sum()
+                                            bench_total = bench_data['Adet'].sum()
 
                                             eps = 0.0001
                                             store_share = (sku_qty / (store_total + eps)) * 100
@@ -1424,12 +1422,12 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
                                             sku_trusted = sku_qty >= 3 and bench_qty >= 30
 
                                             # Grup bazlı hesaplama (fallback)
-                                            if mal_grubu_kodu:
-                                                store_grp = store_data[store_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
-                                                bench_grp = bench_data[bench_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
+                                            if mal_grubu:
+                                                store_grp = store_data[store_data['Mal_Grubu'] == mal_grubu]
+                                                bench_grp = bench_data[bench_data['Mal_Grubu'] == mal_grubu]
 
-                                                grp_qty = store_grp['TOPLAM_ADET'].sum()
-                                                grp_bench = bench_grp['TOPLAM_ADET'].sum()
+                                                grp_qty = store_grp['Adet'].sum()
+                                                grp_bench = bench_grp['Adet'].sum()
 
                                                 grp_share = (grp_qty / (store_total + eps)) * 100
                                                 grp_bench_share = (grp_bench / (bench_total + eps)) * 100
