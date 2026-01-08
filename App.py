@@ -1381,61 +1381,81 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
                                             performans_df['NITELIK'].str.lower().str.contains('spot', na=False)
                                         ]
 
-                                        # SKU bazlı lift
-                                        store_sku = store_data[store_data['URUN_KODU'].astype(str) == urun_kodu]
-                                        bench_sku = bench_data[bench_data['URUN_KODU'].astype(str) == urun_kodu]
+                                        # Mağaza verisi var mı kontrol et
+                                        if len(store_data) == 0:
+                                            # Mağaza verisi yok - stok bazlı öneri yap
+                                            lift = 1.0
+                                            sku_trusted = False
 
-                                        sku_qty = store_sku['TOPLAM_ADET'].sum() if len(store_sku) > 0 else 0
-                                        bench_qty = bench_sku['TOPLAM_ADET'].sum() if len(bench_sku) > 0 else 0
-
-                                        store_total = store_data['TOPLAM_ADET'].sum()
-                                        bench_total = bench_data['TOPLAM_ADET'].sum()
-
-                                        eps = 0.0001
-                                        store_share = (sku_qty / (store_total + eps)) * 100
-                                        bench_share = (bench_qty / (bench_total + eps)) * 100
-
-                                        lift = (store_share + eps) / (bench_share + eps)
-
-                                        # Skor (0-100)
-                                        fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
-
-                                        # SKU güven kontrolü
-                                        sku_trusted = sku_qty >= 3 and bench_qty >= 30
-
-                                        # Grup bazlı hesaplama (fallback)
-                                        if mal_grubu_kodu:
-                                            store_grp = store_data[store_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
-                                            bench_grp = bench_data[bench_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
-
-                                            grp_qty = store_grp['TOPLAM_ADET'].sum()
-                                            grp_bench = bench_grp['TOPLAM_ADET'].sum()
-
-                                            grp_share = (grp_qty / (store_total + eps)) * 100
-                                            grp_bench_share = (grp_bench / (bench_total + eps)) * 100
-
-                                            lift_grp = (grp_share + eps) / (grp_bench_share + eps)
-                                            fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
-
-                                            # Hierarchical blend
-                                            if not sku_trusted:
-                                                alpha = sku_qty / (sku_qty + 5)
-                                                fit_score = alpha * fit_score + (1 - alpha) * fit_grp
-
-                                        # Neden öneriliyor?
-                                        if lift > 1.5:
-                                            neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
-                                        elif lift > 1.0:
-                                            neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
-                                        elif stok > 10:
-                                            neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
+                                            # Stok bazlı skor (stok miktarına göre)
+                                            if stok >= 20:
+                                                fit_score = 70
+                                                neden = f"📦 Yüksek stok ({stok} adet) - Mağaza verisi yok, stok bazlı öneri"
+                                            elif stok >= 10:
+                                                fit_score = 55
+                                                neden = f"📦 Orta stok ({stok} adet) - Mağaza verisi yok, stok bazlı öneri"
+                                            elif stok >= 5:
+                                                fit_score = 40
+                                                neden = f"📦 Düşük stok ({stok} adet) - Mağaza verisi yok"
+                                            else:
+                                                fit_score = 30
+                                                neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
                                         else:
-                                            neden = f"➖ Standart performans (lift: {lift:.1f}x)"
+                                            # SKU bazlı lift
+                                            store_sku = store_data[store_data['URUN_KODU'].astype(str) == urun_kodu]
+                                            bench_sku = bench_data[bench_data['URUN_KODU'].astype(str) == urun_kodu]
+
+                                            sku_qty = store_sku['TOPLAM_ADET'].sum() if len(store_sku) > 0 else 0
+                                            bench_qty = bench_sku['TOPLAM_ADET'].sum() if len(bench_sku) > 0 else 0
+
+                                            store_total = store_data['TOPLAM_ADET'].sum()
+                                            bench_total = bench_data['TOPLAM_ADET'].sum()
+
+                                            eps = 0.0001
+                                            store_share = (sku_qty / (store_total + eps)) * 100
+                                            bench_share = (bench_qty / (bench_total + eps)) * 100
+
+                                            lift = (store_share + eps) / (bench_share + eps)
+
+                                            # Skor (0-100)
+                                            fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
+
+                                            # SKU güven kontrolü
+                                            sku_trusted = sku_qty >= 3 and bench_qty >= 30
+
+                                            # Grup bazlı hesaplama (fallback)
+                                            if mal_grubu_kodu:
+                                                store_grp = store_data[store_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
+                                                bench_grp = bench_data[bench_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
+
+                                                grp_qty = store_grp['TOPLAM_ADET'].sum()
+                                                grp_bench = bench_grp['TOPLAM_ADET'].sum()
+
+                                                grp_share = (grp_qty / (store_total + eps)) * 100
+                                                grp_bench_share = (grp_bench / (bench_total + eps)) * 100
+
+                                                lift_grp = (grp_share + eps) / (grp_bench_share + eps)
+                                                fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
+
+                                                # Hierarchical blend
+                                                if not sku_trusted:
+                                                    alpha = sku_qty / (sku_qty + 5)
+                                                    fit_score = alpha * fit_score + (1 - alpha) * fit_grp
+
+                                            # Neden öneriliyor?
+                                            if lift > 1.5:
+                                                neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
+                                            elif lift > 1.0:
+                                                neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                            elif stok > 10:
+                                                neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
+                                            else:
+                                                neden = f"➖ Standart performans (lift: {lift:.1f}x)"
 
                                     except Exception as e:
                                         fit_score = 50  # Varsayılan
                                         lift = 1.0
-                                        neden = "⚠️ Veri yetersiz - Genel öneri"
+                                        neden = f"⚠️ Hesaplama hatası - Stok bazlı öneri ({stok} adet)"
                                         sku_trusted = False
 
                                     # Stok değeri hesapla
