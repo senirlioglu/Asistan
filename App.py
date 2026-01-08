@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Sayfa yapılandırması
 st.set_page_config(
-    page_title="A101 Kampanya Mesaj Oluşturucu",
+    page_title="A101 Kampanya Asistanı",
     page_icon="📢",
     layout="wide"
 )
@@ -738,464 +738,821 @@ def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun
 # ANA UYGULAMA
 # =============================================================================
 
-st.markdown('<p class="main-header">📢 A101 Kampanya Mesaj Oluşturucu</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header">📢 A101 Kampanya Asistanı</p>', unsafe_allow_html=True)
 
 # =============================================================================
-# ADIM 1: MAĞAZA SEÇİMİ
+# MOD SEÇİMİ
 # =============================================================================
-st.markdown("### 1️⃣ Mağaza Seçimi")
-
-magaza_secim = st.selectbox(
-    "Mağazanızı seçin:",
-    options=[""] + [f"{kod} - {ad}" for kod, ad in MAGAZALAR.items()],
-    key="magaza_select"
+mod_secim = st.radio(
+    "Ne yapmak istiyorsunuz?",
+    options=["📨 Mesaj Oluşturucu", "📊 Kampanya Oluşturucu"],
+    horizontal=True,
+    key="mod_secim",
+    help="Mesaj Oluşturucu: Mevcut kampanya için müşteri mesajı oluşturur. Kampanya Oluşturucu: Stok verilerine göre hangi ürünlere kampanya yapılmalı önerir."
 )
 
-if magaza_secim:
-    magaza_kodu = magaza_secim.split(" - ")[0]
-    magaza_adi = MAGAZALAR[magaza_kodu]
+st.markdown("---")
 
-    # Mağaza bandı
-    st.markdown(f'''
-        <div class="magaza-bandi">
-            🏪 {magaza_kodu} - {magaza_adi.upper()}
-        </div>
-    ''', unsafe_allow_html=True)
-
-    st.info(f"📱 WhatsApp liste adı: **{magaza_kodu}_MUSTERI**")
-
-    # Performans verisini yükle
-    with st.spinner("📊 Satış performansı yükleniyor..."):
-        performans_df = load_performans_data()
-        urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
-        nitelikler = get_nitelikler(performans_df)
-
-    if performans_df is not None:
-        st.success("✅ Performans verisi yüklendi - Akıllı puanlama aktif!")
-
-        # Nitelik seçimi
-        st.markdown("### 📊 Kampanya Niteliği")
-        # Varsayılan olarak Spot seçili gelsin
-        default_nitelik = "Spot" if "Spot" in nitelikler else (nitelikler[0] if nitelikler else None)
-        default_index = nitelikler.index(default_nitelik) if default_nitelik in nitelikler else 0
-
-        nitelik_secim = st.selectbox(
-            "Kampanya niteliğini seçin:",
-            options=nitelikler,
-            index=default_index,
-            key="nitelik_select",
-            help="Kampanya türüne göre seçin. Genellikle 'Spot' kullanılır."
-        )
-
-        # Skor ağırlıkları (gelişmiş ayarlar)
-        with st.expander("⚙️ Skor Ağırlıkları (Gelişmiş)"):
-            st.caption("Varsayılan değerler önerilir. Değiştirmek isterseniz ayarlayın.")
-            col_w1, col_w2, col_w3 = st.columns(3)
-            with col_w1:
-                weight_fit = st.slider("Müşteri Uyumu", 0, 100, 65, 5, key="w_fit", help="Lift bazlı uyum skoru") / 100
-            with col_w2:
-                weight_disc = st.slider("İndirim", 0, 100, 25, 5, key="w_disc", help="İndirim oranı skoru") / 100
-            with col_w3:
-                weight_save = st.slider("Tasarruf", 0, 100, 10, 5, key="w_save", help="TL bazlı tasarruf") / 100
-
-            # Normalize et (toplamı 1 yap)
-            total_weight = weight_fit + weight_disc + weight_save
-            if total_weight > 0:
-                weight_fit = weight_fit / total_weight
-                weight_disc = weight_disc / total_weight
-                weight_save = weight_save / total_weight
-            st.caption(f"Normalize: Uyum {weight_fit:.0%} | İndirim {weight_disc:.0%} | Tasarruf {weight_save:.0%}")
-    else:
-        st.warning("⚠️ Performans verisi bulunamadı - Sadece indirim bazlı sıralama yapılacak")
-        nitelik_secim = None
-
-    st.markdown("---")
-
+# =============================================================================
+# MESAJ OLUŞTURUCU MODU
+# =============================================================================
+if mod_secim == "📨 Mesaj Oluşturucu":
     # =============================================================================
-    # ADIM 2: KAMPANYA MAİLİ YAPIŞTIR
+    # ADIM 1: MAĞAZA SEÇİMİ
     # =============================================================================
-    st.markdown("### 2️⃣ Kampanya Mailini Yapıştırın")
+    st.markdown("### 1️⃣ Mağaza Seçimi")
 
-    st.markdown("""
-    <div class="secim-rehberi">
-        <strong>📋 Nasıl yapılır:</strong><br>
-        1. Workflow'dan gelen kampanya onay mailini açın<br>
-        2. <strong>Ctrl+A</strong> (tümünü seç) → <strong>Ctrl+C</strong> (kopyala)<br>
-        3. Aşağıdaki alana <strong>Ctrl+V</strong> (yapıştır)
-    </div>
-    """, unsafe_allow_html=True)
-
-    mail_icerik = st.text_area(
-        "Kampanya mailini buraya yapıştırın:",
-        height=200,
-        placeholder="Mağaza Bölgesel Tanıtım Sonucu\n\nTanıtım Başlangıç Tarihi\n20.12.2025\n..."
+    magaza_secim = st.selectbox(
+        "Mağazanızı seçin:",
+        options=[""] + [f"{kod} - {ad}" for kod, ad in MAGAZALAR.items()],
+        key="magaza_select"
     )
 
-    if mail_icerik:
-        # Parse et
-        kampanya = parse_kampanya_maili(mail_icerik)
+    if magaza_secim:
+        magaza_kodu = magaza_secim.split(" - ")[0]
+        magaza_adi = MAGAZALAR[magaza_kodu]
 
-        # Hataları göster
-        if kampanya['hatalar']:
-            for hata in kampanya['hatalar']:
-                st.error(hata)
-            st.stop()
-
-        # Ürünleri puanla (Lift bazlı algoritma)
-        if nitelik_secim and performans_df is not None:
-            # Ağırlıkları session_state'den al
-            w_fit = st.session_state.get('w_fit', 65) / 100
-            w_disc = st.session_state.get('w_disc', 25) / 100
-            w_save = st.session_state.get('w_save', 10) / 100
-            # Normalize et
-            total_w = w_fit + w_disc + w_save
-            if total_w > 0:
-                weights = (w_fit/total_w, w_disc/total_w, w_save/total_w)
-            else:
-                weights = (0.65, 0.25, 0.10)
-
-            kampanya['urunler'], eslesen_sku = calculate_lift_scores(
-                kampanya['urunler'],
-                magaza_kodu,
-                nitelik_secim,
-                performans_df,
-                urun_mal_grubu_map,
-                weights=weights
-            )
-        else:
-            eslesen_sku = 0
-            # Fallback: sadece indirim bazlı
-            for urun in kampanya['urunler']:
-                disc = urun.get('indirim_num', 0) / 100
-                urun['magaza_skor'] = round(min(disc / 0.35, 1) * 100, 1)
-                urun['genel_skor'] = urun['magaza_skor']
-                urun['puan_detay'] = {'mal_grubu_adi': urun_mal_grubu_map.get(urun.get('kod', ''), 'Yeni Ürün')}
-
-        # Eşleşme sayısını hesapla
-        toplam_urun = len(kampanya['urunler'])
-        eslesen_mg = sum(1 for u in kampanya['urunler']
-                          if u.get('puan_detay', {}).get('mal_grubu_adi')
-                          and u.get('puan_detay', {}).get('mal_grubu_adi') != 'Yeni Ürün')
-
-        # Başarı mesajı
+        # Mağaza bandı
         st.markdown(f'''
-            <div class="basari-kutusu">
-                <strong>✅ {toplam_urun} ürün okundu ve puanlandı</strong><br>
-                📊 SKU eşleşmesi: <strong>{eslesen_sku}/{toplam_urun}</strong> |
-                Mal grubu eşleşmesi: <strong>{eslesen_mg}/{toplam_urun}</strong>
+            <div class="magaza-bandi">
+                🏪 {magaza_kodu} - {magaza_adi.upper()}
             </div>
         ''', unsafe_allow_html=True)
 
-        # Tarih bilgisi
-        if kampanya['baslangic'] and kampanya['bitis']:
-            st.markdown(f'''
-                <div class="tarih-bilgi">
-                    📅 <strong>Kampanya:</strong> {kampanya['baslangic']} - {kampanya['bitis']}
-                </div>
-            ''', unsafe_allow_html=True)
+        st.info(f"📱 WhatsApp liste adı: **{magaza_kodu}_MUSTERI**")
 
-        # Uyarıları göster
-        if kampanya['uyarilar']:
-            with st.expander(f"⚠️ {len(kampanya['uyarilar'])} Uyarı", expanded=False):
-                for uyari in kampanya['uyarilar']:
-                    st.warning(uyari)
+        # Performans verisini yükle
+        with st.spinner("📊 Satış performansı yükleniyor..."):
+            performans_df = load_performans_data()
+            urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
+            nitelikler = get_nitelikler(performans_df)
+
+        if performans_df is not None:
+            st.success("✅ Performans verisi yüklendi - Akıllı puanlama aktif!")
+
+            # Nitelik seçimi
+            st.markdown("### 📊 Kampanya Niteliği")
+            # Varsayılan olarak Spot seçili gelsin
+            default_nitelik = "Spot" if "Spot" in nitelikler else (nitelikler[0] if nitelikler else None)
+            default_index = nitelikler.index(default_nitelik) if default_nitelik in nitelikler else 0
+
+            nitelik_secim = st.selectbox(
+                "Kampanya niteliğini seçin:",
+                options=nitelikler,
+                index=default_index,
+                key="nitelik_select",
+                help="Kampanya türüne göre seçin. Genellikle 'Spot' kullanılır."
+            )
+
+            # Skor ağırlıkları (gelişmiş ayarlar)
+            with st.expander("⚙️ Skor Ağırlıkları (Gelişmiş)"):
+                st.caption("Varsayılan değerler önerilir. Değiştirmek isterseniz ayarlayın.")
+                col_w1, col_w2, col_w3 = st.columns(3)
+                with col_w1:
+                    weight_fit = st.slider("Müşteri Uyumu", 0, 100, 65, 5, key="w_fit", help="Lift bazlı uyum skoru") / 100
+                with col_w2:
+                    weight_disc = st.slider("İndirim", 0, 100, 25, 5, key="w_disc", help="İndirim oranı skoru") / 100
+                with col_w3:
+                    weight_save = st.slider("Tasarruf", 0, 100, 10, 5, key="w_save", help="TL bazlı tasarruf") / 100
+
+                # Normalize et (toplamı 1 yap)
+                total_weight = weight_fit + weight_disc + weight_save
+                if total_weight > 0:
+                    weight_fit = weight_fit / total_weight
+                    weight_disc = weight_disc / total_weight
+                    weight_save = weight_save / total_weight
+                st.caption(f"Normalize: Uyum {weight_fit:.0%} | İndirim {weight_disc:.0%} | Tasarruf {weight_save:.0%}")
+        else:
+            st.warning("⚠️ Performans verisi bulunamadı - Sadece indirim bazlı sıralama yapılacak")
+            nitelik_secim = None
 
         st.markdown("---")
 
         # =============================================================================
-        # ADIM 3: ÜRÜN SEÇİMİ (İKİ SIRALAMA)
+        # ADIM 2: KAMPANYA MAİLİ YAPIŞTIR
         # =============================================================================
-        st.markdown("### 3️⃣ Ürün Seçimi")
+        st.markdown("### 2️⃣ Kampanya Mailini Yapıştırın")
 
-        # En iyi 5 öneri butonu
-        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
-        with col_btn1:
-            if st.button("🎯 En İyi 5 Öneri", type="primary", use_container_width=True):
-                top5 = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=5)
-                st.session_state['auto_selected'] = [u['kod'] for u in top5]
-                st.rerun()
-        with col_btn2:
-            if st.button("🔄 Seçimleri Temizle", use_container_width=True):
-                st.session_state['auto_selected'] = []
-                st.rerun()
+        st.markdown("""
+        <div class="secim-rehberi">
+            <strong>📋 Nasıl yapılır:</strong><br>
+            1. Workflow'dan gelen kampanya onay mailini açın<br>
+            2. <strong>Ctrl+A</strong> (tümünü seç) → <strong>Ctrl+C</strong> (kopyala)<br>
+            3. Aşağıdaki alana <strong>Ctrl+V</strong> (yapıştır)
+        </div>
+        """, unsafe_allow_html=True)
 
-        # Otomatik seçim listesi
-        auto_selected = st.session_state.get('auto_selected', [])
+        mail_icerik = st.text_area(
+            "Kampanya mailini buraya yapıştırın:",
+            height=200,
+            placeholder="Mağaza Bölgesel Tanıtım Sonucu\n\nTanıtım Başlangıç Tarihi\n20.12.2025\n..."
+        )
 
-        # İki tab ile iki farklı sıralama
-        tab_magaza, tab_genel = st.tabs([
-            f"🏪 {magaza_adi} İçin Önerilen",
-            "📊 Genel Öneri (İndirim Bazlı)"
-        ])
+        if mail_icerik:
+            # Parse et
+            kampanya = parse_kampanya_maili(mail_icerik)
 
-        secili_urunler = []
+            # Hataları göster
+            if kampanya['hatalar']:
+                for hata in kampanya['hatalar']:
+                    st.error(hata)
+                st.stop()
 
-        with tab_magaza:
-            st.markdown(f"""
-            <div class="secim-rehberi">
-                <strong>🏪 Mağaza Bazlı Puanlama (Lift Algoritması):</strong><br>
-                Nitelik: <strong>{nitelik_secim or '-'}</strong> | Benchmark: Tüm Mağazalar<br>
-                • Müşteri Uyumu (65%) - Lift: Mağaza payı / Bölge payı<br>
-                • İndirim Çekiciliği (25%) - %35+ = maksimum<br>
-                • Tasarruf (10%) - TL bazlı (log normalize)<br><br>
-                🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
-            </div>
-            """, unsafe_allow_html=True)
+            # Ürünleri puanla (Lift bazlı algoritma)
+            if nitelik_secim and performans_df is not None:
+                # Ağırlıkları session_state'den al
+                w_fit = st.session_state.get('w_fit', 65) / 100
+                w_disc = st.session_state.get('w_disc', 25) / 100
+                w_save = st.session_state.get('w_save', 10) / 100
+                # Normalize et
+                total_w = w_fit + w_disc + w_save
+                if total_w > 0:
+                    weights = (w_fit/total_w, w_disc/total_w, w_save/total_w)
+                else:
+                    weights = (0.65, 0.25, 0.10)
 
-            # Mağaza skoruna göre sırala + çeşitlilik filtresi
-            urunler_magaza = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=10)
-
-            # Güvenilir ve düşük güvenli ürünleri ayır
-            urunler_guvenilir = [u for u in urunler_magaza if not u.get('puan_detay', {}).get('group_warning')]
-            urunler_dusuk_guven = [u for u in urunler_magaza if u.get('puan_detay', {}).get('group_warning')]
-
-            # Önce güvenilir ürünler
-            for urun in urunler_guvenilir:
-                col1, col2, col3 = st.columns([1, 17, 4])
-
-                with col1:
-                    default_val = urun['kod'] in auto_selected
-                    secili = st.checkbox("", key=f"m_{urun['kod']}", value=default_val, label_visibility="collapsed")
-                    if secili and urun not in secili_urunler:
-                        secili_urunler.append(urun)
-
-                with col2:
-                    emoji = get_emoji(urun['ad'])
-                    puan = urun.get('magaza_skor', 0)
-                    puan_badge = get_puan_badge(puan)
-                    detay = urun.get('puan_detay', {})
-                    mal_grubu = detay.get('mal_grubu_adi', '-')
-                    sku_icon = "🎯" if detay.get('sku_match') else ""
-                    st.markdown(
-                        f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ {sku_icon} → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ {puan_badge}",
-                        unsafe_allow_html=True
-                    )
-
-                with col3:
-                    with st.popover("📊 Detay"):
-                        st.write(f"**Mal Grubu:** {mal_grubu}")
-                        # Uyarılar
-                        if detay.get('group_warning'):
-                            st.warning(detay.get('group_warning'))
-                        if detay.get('data_warning'):
-                            st.info(detay.get('data_warning'))
-                        st.markdown("---")
-                        st.write("**📦 ADET**")
-                        sku_raw = detay.get('sku_qty_raw')
-                        if sku_raw is not None:
-                            st.write(f"SKU Satış: {sku_raw} adet")
-                        st.write(f"Mağaza: {detay.get('store_qty', 0):,} | Pay: %{detay.get('store_share_qty', 0):.2f}")
-                        st.write(f"Bölge: {detay.get('bench_qty', 0):,} | Pay: %{detay.get('bench_share_qty', 0):.2f}")
-                        st.write(f"**Lift: {detay.get('lift_qty', 1):.2f}x**")
-                        st.markdown("---")
-                        st.write("**💰 CİRO**")
-                        st.write(f"Mağaza: {detay.get('store_ciro', 0):,}₺ | Pay: %{detay.get('store_share_ciro', 0):.2f}")
-                        st.write(f"Bölge: {detay.get('bench_ciro', 0):,}₺ | Pay: %{detay.get('bench_share_ciro', 0):.2f}")
-                        st.write(f"**Lift: {detay.get('lift_ciro', 1):.2f}x**")
-                        st.markdown("---")
-                        st.write(f"🏷️ İndirim: {detay.get('disc_score', 0):.0f} | 💵 Tasarruf: {detay.get('save_score', 0):.0f}")
-                        st.write(f"🔍 SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
-                        st.markdown("---")
-                        st.caption("ℹ️ Lift = Mağaza payı / Bölge payı")
-                        st.caption("SKU az satıldıysa grup profili ağırlıklı hesaplanır")
-
-            # Düşük güvenli ürünler (varsa)
-            if urunler_dusuk_guven:
-                with st.expander(f"⚠️ Düşük Güvenli Ürünler ({len(urunler_dusuk_guven)} adet)", expanded=False):
-                    st.caption("Bu ürünler mağazada zayıf kategorilerden. Dikkatli değerlendirin.")
-                    for urun in urunler_dusuk_guven:
-                        col1, col2, col3 = st.columns([1, 17, 4])
-                        with col1:
-                            default_val = urun['kod'] in auto_selected
-                            secili = st.checkbox("", key=f"ml_{urun['kod']}", value=default_val, label_visibility="collapsed")
-                            if secili and urun not in secili_urunler:
-                                secili_urunler.append(urun)
-                        with col2:
-                            emoji = get_emoji(urun['ad'])
-                            puan = urun.get('magaza_skor', 0)
-                            puan_badge = get_puan_badge(puan)
-                            detay = urun.get('puan_detay', {})
-                            mal_grubu = detay.get('mal_grubu_adi', '-')
-                            warning = detay.get('group_warning', '')
-                            st.markdown(
-                                f"⚠️ {emoji} **{urun['ad'][:35]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ {puan_badge}",
-                                unsafe_allow_html=True
-                            )
-                            st.caption(warning)
-
-        with tab_genel:
-            st.markdown("""
-            <div class="secim-rehberi">
-                <strong>📊 Genel Puanlama (İndirim Ağırlıklı):</strong><br>
-                Bu sıralama <strong>indirim oranına</strong> göre yapılmıştır.<br>
-                • İndirim Oranı (60%)<br>
-                • Müşteri Uyumu (25%)<br>
-                • Tasarruf (15%)<br><br>
-                🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
-            </div>
-            """, unsafe_allow_html=True)
-
-            # Genel skora göre sırala
-            urunler_genel = sorted(kampanya['urunler'], key=lambda x: x.get('genel_skor', 0), reverse=True)
-
-            for urun in urunler_genel:
-                col1, col2, col3 = st.columns([1, 17, 4])
-
-                with col1:
-                    default_val = urun['kod'] in auto_selected
-                    secili = st.checkbox("", key=f"g_{urun['kod']}", value=default_val, label_visibility="collapsed")
-                    if secili and urun not in secili_urunler:
-                        secili_urunler.append(urun)
-
-                with col2:
-                    emoji = get_emoji(urun['ad'])
-                    puan = urun.get('genel_skor', 0)
-                    puan_badge = get_puan_badge(puan)
-                    detay = urun.get('puan_detay', {})
-                    mal_grubu = detay.get('mal_grubu_adi', '-')
-                    st.markdown(
-                        f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {puan_badge}",
-                        unsafe_allow_html=True
-                    )
-
-                with col3:
-                    with st.popover("📊 Detay"):
-                        st.write(f"**Mal Grubu:** {mal_grubu}")
-                        # Uyarılar
-                        if detay.get('group_warning'):
-                            st.warning(detay.get('group_warning'))
-                        if detay.get('data_warning'):
-                            st.info(detay.get('data_warning'))
-                        st.markdown("---")
-                        st.write("**📦 ADET**")
-                        sku_raw = detay.get('sku_qty_raw')
-                        if sku_raw is not None:
-                            st.write(f"SKU Satış: {sku_raw} adet")
-                        st.write(f"Mağaza: {detay.get('store_qty', 0):,} | Pay: %{detay.get('store_share_qty', 0):.2f}")
-                        st.write(f"Bölge: {detay.get('bench_qty', 0):,} | Pay: %{detay.get('bench_share_qty', 0):.2f}")
-                        st.write(f"**Lift: {detay.get('lift_qty', 1):.2f}x**")
-                        st.markdown("---")
-                        st.write("**💰 CİRO**")
-                        st.write(f"Mağaza: {detay.get('store_ciro', 0):,}₺ | Pay: %{detay.get('store_share_ciro', 0):.2f}")
-                        st.write(f"Bölge: {detay.get('bench_ciro', 0):,}₺ | Pay: %{detay.get('bench_share_ciro', 0):.2f}")
-                        st.write(f"**Lift: {detay.get('lift_ciro', 1):.2f}x**")
-                        st.markdown("---")
-                        st.write(f"🏷️ İndirim: {detay.get('disc_score', 0):.0f} | 💵 Tasarruf: {detay.get('save_score', 0):.0f}")
-                        st.write(f"🔍 SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
-                        st.markdown("---")
-                        st.caption("ℹ️ Lift = Mağaza payı / Bölge payı")
-                        st.caption("SKU az satıldıysa grup profili ağırlıklı hesaplanır")
-
-        # Seçim kontrolü
-        secili_sayi = len(secili_urunler)
-
-        if secili_sayi > 0:
-            if secili_sayi < 3:
-                st.warning(f"⚠️ {secili_sayi} ürün seçildi. En az 3 ürün önerilir.")
-            elif secili_sayi > 5:
-                st.warning(f"⚠️ {secili_sayi} ürün seçildi. En fazla 5 ürün önerilir.")
+                kampanya['urunler'], eslesen_sku = calculate_lift_scores(
+                    kampanya['urunler'],
+                    magaza_kodu,
+                    nitelik_secim,
+                    performans_df,
+                    urun_mal_grubu_map,
+                    weights=weights
+                )
             else:
-                st.success(f"✅ {secili_sayi} ürün seçildi")
+                eslesen_sku = 0
+                # Fallback: sadece indirim bazlı
+                for urun in kampanya['urunler']:
+                    disc = urun.get('indirim_num', 0) / 100
+                    urun['magaza_skor'] = round(min(disc / 0.35, 1) * 100, 1)
+                    urun['genel_skor'] = urun['magaza_skor']
+                    urun['puan_detay'] = {'mal_grubu_adi': urun_mal_grubu_map.get(urun.get('kod', ''), 'Yeni Ürün')}
 
-            st.markdown("---")
-
-            # =============================================================================
-            # ADIM 4: STOK KONTROLÜ
-            # =============================================================================
-            st.markdown("### 4️⃣ Stok Kontrolü")
-
-            stok_onay = st.checkbox(
-                f"✅ Seçtiğim {secili_sayi} ürün **{magaza_adi}** mağazasında STOKTA VAR",
-                key="stok_onay"
-            )
-
-            st.markdown("---")
-
-            # =============================================================================
-            # ADIM 5: MESAJ ÖNİZLEME VE GÖNDERME
-            # =============================================================================
-            st.markdown("### 5️⃣ Mesaj Önizleme ve Gönderme")
-
-            # Mesajı oluştur
-            bitis = kampanya['bitis'] or "Stoklarla sınırlı"
+            # Eşleşme sayısını hesapla
             toplam_urun = len(kampanya['urunler'])
-            mesaj = format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis, toplam_urun)
+            eslesen_mg = sum(1 for u in kampanya['urunler']
+                              if u.get('puan_detay', {}).get('mal_grubu_adi')
+                              and u.get('puan_detay', {}).get('mal_grubu_adi') != 'Yeni Ürün')
 
-            st.markdown("**Mesaj önizleme:**")
-            st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
+            # Başarı mesajı
+            st.markdown(f'''
+                <div class="basari-kutusu">
+                    <strong>✅ {toplam_urun} ürün okundu ve puanlandı</strong><br>
+                    📊 SKU eşleşmesi: <strong>{eslesen_sku}/{toplam_urun}</strong> |
+                    Mal grubu eşleşmesi: <strong>{eslesen_mg}/{toplam_urun}</strong>
+                </div>
+            ''', unsafe_allow_html=True)
 
-            # Kopyalanabilir metin
-            with st.expander("📋 Kopyalamak için tıklayın"):
-                st.code(mesaj, language=None)
-                st.caption("👆 Sağ üst köşedeki kopyala ikonuna tıklayın")
-
-            # Kontroller
-            st.markdown("---")
-            st.markdown('<div class="kontrol-kutusu">', unsafe_allow_html=True)
-            st.markdown("### ⚠️ Gönderim Öncesi Kontrol")
-
-            kontrol1 = st.checkbox(
-                f"✅ Bu mesaj **{magaza_kodu} - {magaza_adi}** için hazırlandı",
-                key="kontrol1"
-            )
-
-            kontrol2 = st.checkbox(
-                f"✅ Tarih ({bitis}) ve fiyatlar doğru",
-                key="kontrol2"
-            )
-
-            st.markdown('</div>', unsafe_allow_html=True)
-
-            # WhatsApp butonu
-            if stok_onay and kontrol1 and kontrol2:
-                encoded_mesaj = urllib.parse.quote(mesaj)
-                whatsapp_link = f"https://wa.me/{WHATSAPP_NUMBER}?text={encoded_mesaj}"
-
+            # Tarih bilgisi
+            if kampanya['baslangic'] and kampanya['bitis']:
                 st.markdown(f'''
-                    <a href="{whatsapp_link}" target="_blank" style="
-                        display: block;
-                        background-color: #25D366;
-                        color: white;
-                        padding: 20px 40px;
-                        text-decoration: none;
-                        border-radius: 10px;
-                        font-size: 20px;
-                        font-weight: bold;
-                        text-align: center;
-                        margin-top: 20px;
-                        box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
-                    ">
-                        💬 WhatsApp'ta Gönder
-                    </a>
-                ''', unsafe_allow_html=True)
-
-                st.info(f"👆 Butona tıklayınca WhatsApp açılacak. **{magaza_kodu}_MUSTERI** listesini seçip gönderin.")
-            else:
-                st.markdown('''
-                    <div style="
-                        display: block;
-                        background-color: #ccc;
-                        color: #666;
-                        padding: 20px 40px;
-                        border-radius: 10px;
-                        font-size: 20px;
-                        font-weight: bold;
-                        text-align: center;
-                        margin-top: 20px;
-                    ">
-                        💬 WhatsApp'ta Gönder
+                    <div class="tarih-bilgi">
+                        📅 <strong>Kampanya:</strong> {kampanya['baslangic']} - {kampanya['bitis']}
                     </div>
                 ''', unsafe_allow_html=True)
-                st.warning("☝️ Yukarıdaki tüm kontrolleri tamamlayın.")
 
-else:
-    st.info("👆 Önce mağazanızı seçin.")
+            # Uyarıları göster
+            if kampanya['uyarilar']:
+                with st.expander(f"⚠️ {len(kampanya['uyarilar'])} Uyarı", expanded=False):
+                    for uyari in kampanya['uyarilar']:
+                        st.warning(uyari)
+
+            st.markdown("---")
+
+            # =============================================================================
+            # ADIM 3: ÜRÜN SEÇİMİ (İKİ SIRALAMA)
+            # =============================================================================
+            st.markdown("### 3️⃣ Ürün Seçimi")
+
+            # En iyi 5 öneri butonu
+            col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
+            with col_btn1:
+                if st.button("🎯 En İyi 5 Öneri", type="primary", use_container_width=True):
+                    top5 = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=5)
+                    st.session_state['auto_selected'] = [u['kod'] for u in top5]
+                    st.rerun()
+            with col_btn2:
+                if st.button("🔄 Seçimleri Temizle", use_container_width=True):
+                    st.session_state['auto_selected'] = []
+                    st.rerun()
+
+            # Otomatik seçim listesi
+            auto_selected = st.session_state.get('auto_selected', [])
+
+            # İki tab ile iki farklı sıralama
+            tab_magaza, tab_genel = st.tabs([
+                f"🏪 {magaza_adi} İçin Önerilen",
+                "📊 Genel Öneri (İndirim Bazlı)"
+            ])
+
+            secili_urunler = []
+
+            with tab_magaza:
+                st.markdown(f"""
+                <div class="secim-rehberi">
+                    <strong>🏪 Mağaza Bazlı Puanlama (Lift Algoritması):</strong><br>
+                    Nitelik: <strong>{nitelik_secim or '-'}</strong> | Benchmark: Tüm Mağazalar<br>
+                    • Müşteri Uyumu (65%) - Lift: Mağaza payı / Bölge payı<br>
+                    • İndirim Çekiciliği (25%) - %35+ = maksimum<br>
+                    • Tasarruf (10%) - TL bazlı (log normalize)<br><br>
+                    🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Mağaza skoruna göre sırala + çeşitlilik filtresi
+                urunler_magaza = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=10)
+
+                # Güvenilir ve düşük güvenli ürünleri ayır
+                urunler_guvenilir = [u for u in urunler_magaza if not u.get('puan_detay', {}).get('group_warning')]
+                urunler_dusuk_guven = [u for u in urunler_magaza if u.get('puan_detay', {}).get('group_warning')]
+
+                # Önce güvenilir ürünler
+                for urun in urunler_guvenilir:
+                    col1, col2, col3 = st.columns([1, 17, 4])
+
+                    with col1:
+                        default_val = urun['kod'] in auto_selected
+                        secili = st.checkbox("", key=f"m_{urun['kod']}", value=default_val, label_visibility="collapsed")
+                        if secili and urun not in secili_urunler:
+                            secili_urunler.append(urun)
+
+                    with col2:
+                        emoji = get_emoji(urun['ad'])
+                        puan = urun.get('magaza_skor', 0)
+                        puan_badge = get_puan_badge(puan)
+                        detay = urun.get('puan_detay', {})
+                        mal_grubu = detay.get('mal_grubu_adi', '-')
+                        sku_icon = "🎯" if detay.get('sku_match') else ""
+                        st.markdown(
+                            f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ {sku_icon} → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ {puan_badge}",
+                            unsafe_allow_html=True
+                        )
+
+                    with col3:
+                        with st.popover("📊 Detay"):
+                            st.write(f"**Mal Grubu:** {mal_grubu}")
+                            # Uyarılar
+                            if detay.get('group_warning'):
+                                st.warning(detay.get('group_warning'))
+                            if detay.get('data_warning'):
+                                st.info(detay.get('data_warning'))
+                            st.markdown("---")
+                            st.write("**📦 ADET**")
+                            sku_raw = detay.get('sku_qty_raw')
+                            if sku_raw is not None:
+                                st.write(f"SKU Satış: {sku_raw} adet")
+                            st.write(f"Mağaza: {detay.get('store_qty', 0):,} | Pay: %{detay.get('store_share_qty', 0):.2f}")
+                            st.write(f"Bölge: {detay.get('bench_qty', 0):,} | Pay: %{detay.get('bench_share_qty', 0):.2f}")
+                            st.write(f"**Lift: {detay.get('lift_qty', 1):.2f}x**")
+                            st.markdown("---")
+                            st.write("**💰 CİRO**")
+                            st.write(f"Mağaza: {detay.get('store_ciro', 0):,}₺ | Pay: %{detay.get('store_share_ciro', 0):.2f}")
+                            st.write(f"Bölge: {detay.get('bench_ciro', 0):,}₺ | Pay: %{detay.get('bench_share_ciro', 0):.2f}")
+                            st.write(f"**Lift: {detay.get('lift_ciro', 1):.2f}x**")
+                            st.markdown("---")
+                            st.write(f"🏷️ İndirim: {detay.get('disc_score', 0):.0f} | 💵 Tasarruf: {detay.get('save_score', 0):.0f}")
+                            st.write(f"🔍 SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
+                            st.markdown("---")
+                            st.caption("ℹ️ Lift = Mağaza payı / Bölge payı")
+                            st.caption("SKU az satıldıysa grup profili ağırlıklı hesaplanır")
+
+                # Düşük güvenli ürünler (varsa)
+                if urunler_dusuk_guven:
+                    with st.expander(f"⚠️ Düşük Güvenli Ürünler ({len(urunler_dusuk_guven)} adet)", expanded=False):
+                        st.caption("Bu ürünler mağazada zayıf kategorilerden. Dikkatli değerlendirin.")
+                        for urun in urunler_dusuk_guven:
+                            col1, col2, col3 = st.columns([1, 17, 4])
+                            with col1:
+                                default_val = urun['kod'] in auto_selected
+                                secili = st.checkbox("", key=f"ml_{urun['kod']}", value=default_val, label_visibility="collapsed")
+                                if secili and urun not in secili_urunler:
+                                    secili_urunler.append(urun)
+                            with col2:
+                                emoji = get_emoji(urun['ad'])
+                                puan = urun.get('magaza_skor', 0)
+                                puan_badge = get_puan_badge(puan)
+                                detay = urun.get('puan_detay', {})
+                                mal_grubu = detay.get('mal_grubu_adi', '-')
+                                warning = detay.get('group_warning', '')
+                                st.markdown(
+                                    f"⚠️ {emoji} **{urun['ad'][:35]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ {puan_badge}",
+                                    unsafe_allow_html=True
+                                )
+                                st.caption(warning)
+
+            with tab_genel:
+                st.markdown("""
+                <div class="secim-rehberi">
+                    <strong>📊 Genel Puanlama (İndirim Ağırlıklı):</strong><br>
+                    Bu sıralama <strong>indirim oranına</strong> göre yapılmıştır.<br>
+                    • İndirim Oranı (60%)<br>
+                    • Müşteri Uyumu (25%)<br>
+                    • Tasarruf (15%)<br><br>
+                    🟢 60+ Çok İyi | 🟡 35-60 Orta | 🔴 35- Düşük
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Genel skora göre sırala
+                urunler_genel = sorted(kampanya['urunler'], key=lambda x: x.get('genel_skor', 0), reverse=True)
+
+                for urun in urunler_genel:
+                    col1, col2, col3 = st.columns([1, 17, 4])
+
+                    with col1:
+                        default_val = urun['kod'] in auto_selected
+                        secili = st.checkbox("", key=f"g_{urun['kod']}", value=default_val, label_visibility="collapsed")
+                        if secili and urun not in secili_urunler:
+                            secili_urunler.append(urun)
+
+                    with col2:
+                        emoji = get_emoji(urun['ad'])
+                        puan = urun.get('genel_skor', 0)
+                        puan_badge = get_puan_badge(puan)
+                        detay = urun.get('puan_detay', {})
+                        mal_grubu = detay.get('mal_grubu_adi', '-')
+                        st.markdown(
+                            f"{emoji} **{urun['ad'][:40]}** | _{mal_grubu}_ → {urun['yeni_fiyat']}₺ ~~{urun['eski_fiyat']}₺~~ | %{urun['indirim']} {puan_badge}",
+                            unsafe_allow_html=True
+                        )
+
+                    with col3:
+                        with st.popover("📊 Detay"):
+                            st.write(f"**Mal Grubu:** {mal_grubu}")
+                            # Uyarılar
+                            if detay.get('group_warning'):
+                                st.warning(detay.get('group_warning'))
+                            if detay.get('data_warning'):
+                                st.info(detay.get('data_warning'))
+                            st.markdown("---")
+                            st.write("**📦 ADET**")
+                            sku_raw = detay.get('sku_qty_raw')
+                            if sku_raw is not None:
+                                st.write(f"SKU Satış: {sku_raw} adet")
+                            st.write(f"Mağaza: {detay.get('store_qty', 0):,} | Pay: %{detay.get('store_share_qty', 0):.2f}")
+                            st.write(f"Bölge: {detay.get('bench_qty', 0):,} | Pay: %{detay.get('bench_share_qty', 0):.2f}")
+                            st.write(f"**Lift: {detay.get('lift_qty', 1):.2f}x**")
+                            st.markdown("---")
+                            st.write("**💰 CİRO**")
+                            st.write(f"Mağaza: {detay.get('store_ciro', 0):,}₺ | Pay: %{detay.get('store_share_ciro', 0):.2f}")
+                            st.write(f"Bölge: {detay.get('bench_ciro', 0):,}₺ | Pay: %{detay.get('bench_share_ciro', 0):.2f}")
+                            st.write(f"**Lift: {detay.get('lift_ciro', 1):.2f}x**")
+                            st.markdown("---")
+                            st.write(f"🏷️ İndirim: {detay.get('disc_score', 0):.0f} | 💵 Tasarruf: {detay.get('save_score', 0):.0f}")
+                            st.write(f"🔍 SKU Eşleşme: {'✅' if detay.get('sku_match') else '❌'}")
+                            st.markdown("---")
+                            st.caption("ℹ️ Lift = Mağaza payı / Bölge payı")
+                            st.caption("SKU az satıldıysa grup profili ağırlıklı hesaplanır")
+
+            # Seçim kontrolü
+            secili_sayi = len(secili_urunler)
+
+            if secili_sayi > 0:
+                if secili_sayi < 3:
+                    st.warning(f"⚠️ {secili_sayi} ürün seçildi. En az 3 ürün önerilir.")
+                elif secili_sayi > 5:
+                    st.warning(f"⚠️ {secili_sayi} ürün seçildi. En fazla 5 ürün önerilir.")
+                else:
+                    st.success(f"✅ {secili_sayi} ürün seçildi")
+
+                st.markdown("---")
+
+                # =============================================================================
+                # ADIM 4: STOK KONTROLÜ
+                # =============================================================================
+                st.markdown("### 4️⃣ Stok Kontrolü")
+
+                stok_onay = st.checkbox(
+                    f"✅ Seçtiğim {secili_sayi} ürün **{magaza_adi}** mağazasında STOKTA VAR",
+                    key="stok_onay"
+                )
+
+                st.markdown("---")
+
+                # =============================================================================
+                # ADIM 5: MESAJ ÖNİZLEME VE GÖNDERME
+                # =============================================================================
+                st.markdown("### 5️⃣ Mesaj Önizleme ve Gönderme")
+
+                # Mesajı oluştur
+                bitis = kampanya['bitis'] or "Stoklarla sınırlı"
+                toplam_urun = len(kampanya['urunler'])
+                mesaj = format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis, toplam_urun)
+
+                st.markdown("**Mesaj önizleme:**")
+                st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
+
+                # Kopyalanabilir metin
+                with st.expander("📋 Kopyalamak için tıklayın"):
+                    st.code(mesaj, language=None)
+                    st.caption("👆 Sağ üst köşedeki kopyala ikonuna tıklayın")
+
+                # Kontroller
+                st.markdown("---")
+                st.markdown('<div class="kontrol-kutusu">', unsafe_allow_html=True)
+                st.markdown("### ⚠️ Gönderim Öncesi Kontrol")
+
+                kontrol1 = st.checkbox(
+                    f"✅ Bu mesaj **{magaza_kodu} - {magaza_adi}** için hazırlandı",
+                    key="kontrol1"
+                )
+
+                kontrol2 = st.checkbox(
+                    f"✅ Tarih ({bitis}) ve fiyatlar doğru",
+                    key="kontrol2"
+                )
+
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # WhatsApp butonu
+                if stok_onay and kontrol1 and kontrol2:
+                    encoded_mesaj = urllib.parse.quote(mesaj)
+                    whatsapp_link = f"https://wa.me/{WHATSAPP_NUMBER}?text={encoded_mesaj}"
+
+                    st.markdown(f'''
+                        <a href="{whatsapp_link}" target="_blank" style="
+                            display: block;
+                            background-color: #25D366;
+                            color: white;
+                            padding: 20px 40px;
+                            text-decoration: none;
+                            border-radius: 10px;
+                            font-size: 20px;
+                            font-weight: bold;
+                            text-align: center;
+                            margin-top: 20px;
+                            box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4);
+                        ">
+                            💬 WhatsApp'ta Gönder
+                        </a>
+                    ''', unsafe_allow_html=True)
+
+                    st.info(f"👆 Butona tıklayınca WhatsApp açılacak. **{magaza_kodu}_MUSTERI** listesini seçip gönderin.")
+                else:
+                    st.markdown('''
+                        <div style="
+                            display: block;
+                            background-color: #ccc;
+                            color: #666;
+                            padding: 20px 40px;
+                            border-radius: 10px;
+                            font-size: 20px;
+                            font-weight: bold;
+                            text-align: center;
+                            margin-top: 20px;
+                        ">
+                            💬 WhatsApp'ta Gönder
+                        </div>
+                    ''', unsafe_allow_html=True)
+                    st.warning("☝️ Yukarıdaki tüm kontrolleri tamamlayın.")
+
+    else:
+        st.info("👆 Önce mağazanızı seçin.")
+
+# =============================================================================
+# KAMPANYA OLUŞTURUCU MODU
+# =============================================================================
+else:  # mod_secim == "📊 Kampanya Oluşturucu"
+    st.markdown("""
+    <div class="secim-rehberi">
+        <strong>📊 Kampanya Oluşturucu Nasıl Çalışır?</strong><br>
+        1. Stok Excel dosyasını yükleyin<br>
+        2. SM/BS/Mağaza filtreleri ile hedef mağazaları seçin<br>
+        3. Sistem, lift algoritmasıyla hangi ürünlere kampanya yapılmalı önerir<br>
+        4. Önerilen ürünleri Excel olarak indirin ve fiyatları belirleyin
+    </div>
+    """, unsafe_allow_html=True)
+
+    # =============================================================================
+    # ADIM 1: EXCEL YÜKLEME
+    # =============================================================================
+    st.markdown("### 1️⃣ Stok Verisini Yükleyin")
+
+    uploaded_file = st.file_uploader(
+        "Stok Excel dosyasını yükleyin (.xlsx)",
+        type=['xlsx'],
+        key="stok_excel_upload",
+        help="Kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı, Marj, KDV, yeni fiyat, yeni marj, Stok TL"
+    )
+
+    if uploaded_file is not None:
+        try:
+            # Excel'i oku
+            stok_df = pd.read_excel(uploaded_file)
+
+            # Kolon isimlerini normalize et (boşlukları temizle)
+            stok_df.columns = stok_df.columns.str.strip()
+
+            # Gerekli kolonları kontrol et
+            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı']
+            eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
+
+            if eksik_kolonlar:
+                st.error(f"❌ Eksik kolonlar: {', '.join(eksik_kolonlar)}")
+                st.info("Beklenen kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı, Marj, KDV...")
+            else:
+                st.success(f"✅ {len(stok_df):,} satır yüklendi")
+
+                # Önizleme
+                with st.expander("📋 Veri Önizleme (ilk 10 satır)"):
+                    st.dataframe(stok_df.head(10))
+
+                st.markdown("---")
+
+                # =============================================================================
+                # ADIM 2: FİLTRELEME (SM → BS → MAĞAZA)
+                # =============================================================================
+                st.markdown("### 2️⃣ Mağaza Filtresi")
+
+                # SM listesi
+                sm_listesi = ["Tümü"] + sorted(stok_df['SM'].dropna().unique().tolist()) if 'SM' in stok_df.columns else ["Tümü"]
+
+                col_sm, col_bs = st.columns(2)
+
+                with col_sm:
+                    secili_sm = st.multiselect(
+                        "SM Seçin (opsiyonel):",
+                        options=sm_listesi[1:],  # "Tümü" hariç
+                        key="sm_secim",
+                        help="Boş bırakırsanız tüm SM'ler dahil edilir"
+                    )
+
+                # BS listesini SM'e göre filtrele
+                if secili_sm and 'BS' in stok_df.columns:
+                    bs_df = stok_df[stok_df['SM'].isin(secili_sm)]
+                    bs_listesi = sorted(bs_df['BS'].dropna().unique().tolist())
+                elif 'BS' in stok_df.columns:
+                    bs_listesi = sorted(stok_df['BS'].dropna().unique().tolist())
+                else:
+                    bs_listesi = []
+
+                with col_bs:
+                    secili_bs = st.multiselect(
+                        "BS Seçin (opsiyonel):",
+                        options=bs_listesi,
+                        key="bs_secim",
+                        help="Boş bırakırsanız tüm BS'ler dahil edilir"
+                    )
+
+                # Mağaza listesini SM/BS'e göre filtrele
+                magaza_df = stok_df.copy()
+                if secili_sm:
+                    magaza_df = magaza_df[magaza_df['SM'].isin(secili_sm)]
+                if secili_bs:
+                    magaza_df = magaza_df[magaza_df['BS'].isin(secili_bs)]
+
+                # Mağaza listesi (Kod - Ad formatında)
+                magazalar_unique = magaza_df[['Kod', 'Mağaza Adı']].drop_duplicates()
+                magaza_options = [f"{row['Kod']} - {row['Mağaza Adı']}" for _, row in magazalar_unique.iterrows()]
+
+                secili_magazalar = st.multiselect(
+                    "Mağaza Seçin (zorunlu):",
+                    options=sorted(magaza_options),
+                    key="magaza_coklu_secim",
+                    help="Kampanya yapılacak mağazaları seçin"
+                )
+
+                if secili_magazalar:
+                    st.success(f"✅ {len(secili_magazalar)} mağaza seçildi")
+
+                    # Seçili mağaza kodlarını al
+                    secili_magaza_kodlari = [m.split(" - ")[0] for m in secili_magazalar]
+
+                    # Veriyi filtrele
+                    filtered_df = stok_df[stok_df['Kod'].astype(str).isin([str(k) for k in secili_magaza_kodlari])]
+
+                    st.markdown("---")
+
+                    # =============================================================================
+                    # ADIM 3: ANALİZ VE ÖNERİ
+                    # =============================================================================
+                    st.markdown("### 3️⃣ Kampanya Önerisi")
+
+                    if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True):
+                        with st.spinner("🔄 Lift algoritması çalışıyor..."):
+                            # Performans verisini yükle
+                            performans_df = load_performans_data()
+                            urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
+
+                            if performans_df is None:
+                                st.error("❌ Performans verisi yüklenemedi!")
+                            else:
+                                # Her ürün-mağaza kombinasyonu için skor hesapla
+                                sonuclar = []
+
+                                for _, row in filtered_df.iterrows():
+                                    magaza_kodu = str(row['Kod'])
+                                    urun_kodu = str(row['Ürün Kodu'])
+                                    urun_adi = row['Ürün Tanımı']
+                                    stok = row.get('Stok', 0)
+                                    satis_fiyati = row.get('Satış Fiyatı', 0)
+                                    alis_fiyati = row.get('Alış', 0)
+                                    marj = row.get('Marj', 0)
+
+                                    # Fiyatı temizle
+                                    if isinstance(satis_fiyati, str):
+                                        satis_fiyati = float(satis_fiyati.replace('₺', '').replace('.', '').replace(',', '.').strip())
+
+                                    # Kampanya ürünü formatında oluştur
+                                    urun = {
+                                        'kod': urun_kodu,
+                                        'ad': urun_adi,
+                                        'eski_fiyat': str(satis_fiyati),
+                                        'yeni_fiyat': '',  # Henüz belirlenmedi
+                                        'indirim': '',
+                                        'indirim_num': 0
+                                    }
+
+                                    # Lift skoru hesapla (sadece fit için, indirim yok)
+                                    nitelik = "Spot"  # Varsayılan
+
+                                    # Mal grubunu bul
+                                    mal_grubu_kodu = urun_mal_grubu_map.get(urun_kodu)
+
+                                    # Basitleştirilmiş lift hesaplama
+                                    try:
+                                        # Mağaza verisi
+                                        store_data = performans_df[
+                                            (performans_df['MAGAZA_KODU'].astype(str) == magaza_kodu) &
+                                            (performans_df['NITELIK'].str.lower().str.contains('spot', na=False))
+                                        ]
+
+                                        # Benchmark verisi (tüm mağazalar)
+                                        bench_data = performans_df[
+                                            performans_df['NITELIK'].str.lower().str.contains('spot', na=False)
+                                        ]
+
+                                        # SKU bazlı lift
+                                        store_sku = store_data[store_data['URUN_KODU'].astype(str) == urun_kodu]
+                                        bench_sku = bench_data[bench_data['URUN_KODU'].astype(str) == urun_kodu]
+
+                                        sku_qty = store_sku['TOPLAM_ADET'].sum() if len(store_sku) > 0 else 0
+                                        bench_qty = bench_sku['TOPLAM_ADET'].sum() if len(bench_sku) > 0 else 0
+
+                                        store_total = store_data['TOPLAM_ADET'].sum()
+                                        bench_total = bench_data['TOPLAM_ADET'].sum()
+
+                                        eps = 0.0001
+                                        store_share = (sku_qty / (store_total + eps)) * 100
+                                        bench_share = (bench_qty / (bench_total + eps)) * 100
+
+                                        lift = (store_share + eps) / (bench_share + eps)
+
+                                        # Skor (0-100)
+                                        fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
+
+                                        # SKU güven kontrolü
+                                        sku_trusted = sku_qty >= 3 and bench_qty >= 30
+
+                                        # Grup bazlı hesaplama (fallback)
+                                        if mal_grubu_kodu:
+                                            store_grp = store_data[store_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
+                                            bench_grp = bench_data[bench_data['MAL_GRUBU_KODU'].astype(str) == str(mal_grubu_kodu)]
+
+                                            grp_qty = store_grp['TOPLAM_ADET'].sum()
+                                            grp_bench = bench_grp['TOPLAM_ADET'].sum()
+
+                                            grp_share = (grp_qty / (store_total + eps)) * 100
+                                            grp_bench_share = (grp_bench / (bench_total + eps)) * 100
+
+                                            lift_grp = (grp_share + eps) / (grp_bench_share + eps)
+                                            fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
+
+                                            # Hierarchical blend
+                                            if not sku_trusted:
+                                                alpha = sku_qty / (sku_qty + 5)
+                                                fit_score = alpha * fit_score + (1 - alpha) * fit_grp
+
+                                        # Neden öneriliyor?
+                                        if lift > 1.5:
+                                            neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
+                                        elif lift > 1.0:
+                                            neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                        elif stok > 10:
+                                            neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
+                                        else:
+                                            neden = f"➖ Standart performans (lift: {lift:.1f}x)"
+
+                                    except Exception as e:
+                                        fit_score = 50  # Varsayılan
+                                        lift = 1.0
+                                        neden = "⚠️ Veri yetersiz - Genel öneri"
+                                        sku_trusted = False
+
+                                    # Stok değeri hesapla
+                                    stok_tl = stok * (satis_fiyati if isinstance(satis_fiyati, (int, float)) else 0)
+
+                                    sonuclar.append({
+                                        'SM': row.get('SM', ''),
+                                        'BS': row.get('BS', ''),
+                                        'Kod': magaza_kodu,
+                                        'Mağaza Adı': row.get('Mağaza Adı', ''),
+                                        'Ürün Kodu': urun_kodu,
+                                        'Ürün Tanımı': urun_adi,
+                                        'Stok': stok,
+                                        'Alış': alis_fiyati,
+                                        'Satış Fiyatı': satis_fiyati,
+                                        'Marj': marj,
+                                        'KDV': row.get('KDV', row.get('kdv', '')),
+                                        'yeni fiyat': '',  # Kullanıcı dolduracak
+                                        'yeni marj': '',  # Kullanıcı dolduracak
+                                        'Stok TL': stok_tl,
+                                        'Lift Skoru': round(fit_score, 1),
+                                        'Lift': round(lift, 2),
+                                        'Öneri Nedeni': neden,
+                                        'SKU Güvenilir': '✅' if sku_trusted else '⚠️'
+                                    })
+
+                                # DataFrame oluştur ve sırala
+                                sonuc_df = pd.DataFrame(sonuclar)
+
+                                # Mağaza bazında grupla ve her mağaza için en iyi ürünleri seç
+                                sonuc_df = sonuc_df.sort_values(
+                                    ['Kod', 'Lift Skoru', 'Stok TL'],
+                                    ascending=[True, False, False]
+                                )
+
+                                # Session state'e kaydet
+                                st.session_state['kampanya_sonuc'] = sonuc_df
+
+                                st.success(f"✅ Analiz tamamlandı! {len(sonuc_df)} ürün-mağaza kombinasyonu değerlendirildi.")
+
+                    # Sonuçları göster
+                    if 'kampanya_sonuc' in st.session_state:
+                        sonuc_df = st.session_state['kampanya_sonuc']
+
+                        st.markdown("---")
+                        st.markdown("### 📊 Sonuçlar")
+
+                        # Özet istatistikler
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Toplam Satır", f"{len(sonuc_df):,}")
+                        with col2:
+                            st.metric("Benzersiz Ürün", f"{sonuc_df['Ürün Kodu'].nunique():,}")
+                        with col3:
+                            st.metric("Toplam Stok", f"{sonuc_df['Stok'].sum():,}")
+                        with col4:
+                            st.metric("Toplam Stok TL", f"₺{sonuc_df['Stok TL'].sum():,.0f}")
+
+                        # Filtreleme seçenekleri
+                        st.markdown("#### 🎯 Sonuç Filtresi")
+                        col_f1, col_f2 = st.columns(2)
+                        with col_f1:
+                            min_skor = st.slider("Minimum Lift Skoru", 0, 100, 30, 5, key="min_skor_filter")
+                        with col_f2:
+                            min_stok = st.number_input("Minimum Stok", 0, 1000, 1, key="min_stok_filter")
+
+                        # Filtrele
+                        filtered_sonuc = sonuc_df[
+                            (sonuc_df['Lift Skoru'] >= min_skor) &
+                            (sonuc_df['Stok'] >= min_stok)
+                        ]
+
+                        st.info(f"📋 Filtrelenmiş: {len(filtered_sonuc):,} satır (Skor ≥ {min_skor}, Stok ≥ {min_stok})")
+
+                        # Tablo göster
+                        st.dataframe(
+                            filtered_sonuc,
+                            use_container_width=True,
+                            height=400
+                        )
+
+                        # Excel indirme
+                        st.markdown("---")
+                        st.markdown("### 📥 Excel İndir")
+
+                        # Excel'e dönüştür
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            filtered_sonuc.to_excel(writer, index=False, sheet_name='Kampanya Önerisi')
+                        output.seek(0)
+
+                        st.download_button(
+                            label="📥 Kampanya Önerisini İndir (Excel)",
+                            data=output,
+                            file_name=f"kampanya_onerisi_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            type="primary",
+                            use_container_width=True
+                        )
+
+                        st.caption("💡 Excel'i indirin, 'yeni fiyat' kolonunu doldurun ve kampanyayı başlatın.")
+
+                else:
+                    st.warning("👆 En az bir mağaza seçin.")
+
+        except Exception as e:
+            st.error(f"❌ Excel okuma hatası: {str(e)}")
+            st.info("Dosya formatını kontrol edin. Beklenen kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı...")
+
+    else:
+        st.info("👆 Excel dosyası yükleyin.")
 
 # Footer
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-    A101 Kampanya Mesaj Oluşturucu v3.4 - Asistan Repo Entegrasyonu<br>
+    A101 Kampanya Asistanı v4.0 - Mesaj Oluşturucu + Kampanya Oluşturucu<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
