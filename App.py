@@ -141,7 +141,7 @@ MAGAZALAR = {
 WHATSAPP_NUMBER = "905399311842"
 
 # Performans verisi URL'leri (Asistan reposundan)
-PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025.parquet"
+PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025_yillik.parquet"
 
 # =============================================================================
 # ÜRÜN EMOJİLERİ
