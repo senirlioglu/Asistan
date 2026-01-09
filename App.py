@@ -1386,15 +1386,34 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
                     # Form submit butonu
                     apply = st.form_submit_button("🔍 Filtre Uygula", use_container_width=True)
 
+                # Form submit edildiğinde session_state'e kaydet
                 if apply and secili_magazalar:
-                    st.success(f"✅ {len(secili_magazalar)} mağaza seçildi")
+                    st.session_state['kampanya_secili_magazalar'] = secili_magazalar
+                    st.session_state['kampanya_stok_df'] = stok_df
+
+                # Session state'den oku (form submit sonrası da çalışsın)
+                if st.session_state.get('kampanya_secili_magazalar'):
+                    secili_magazalar_aktif = st.session_state['kampanya_secili_magazalar']
+                    stok_df_aktif = st.session_state.get('kampanya_stok_df', stok_df)
+
+                    col_info, col_clear = st.columns([3, 1])
+                    with col_info:
+                        st.success(f"✅ {len(secili_magazalar_aktif)} mağaza seçildi")
+                    with col_clear:
+                        if st.button("🔄 Seçimi Temizle"):
+                            del st.session_state['kampanya_secili_magazalar']
+                            if 'kampanya_stok_df' in st.session_state:
+                                del st.session_state['kampanya_stok_df']
+                            if 'kampanya_sonuc' in st.session_state:
+                                del st.session_state['kampanya_sonuc']
+                            st.rerun()
 
                     # Seçili mağaza kodlarını al
-                    secili_magaza_kodlari = [m.split(" - ")[0].strip() for m in secili_magazalar]
+                    secili_magaza_kodlari = [m.split(" - ")[0].strip() for m in secili_magazalar_aktif]
 
                     # Veriyi filtrele (strip ile)
-                    stok_df['Kod'] = stok_df['Kod'].astype(str).str.strip()
-                    filtered_df = stok_df[stok_df['Kod'].isin(secili_magaza_kodlari)]
+                    stok_df_aktif['Kod'] = stok_df_aktif['Kod'].astype(str).str.strip()
+                    filtered_df = stok_df_aktif[stok_df_aktif['Kod'].isin(secili_magaza_kodlari)]
 
                     st.markdown("---")
 
