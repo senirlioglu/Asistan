@@ -23,14 +23,14 @@ EXCEL_KLASORU = "./data/2025/"  # Değiştir
 # Çıktı dosyası
 CIKTI_DOSYASI = "./veri_2025_yillik.parquet"
 
-# Excel'deki kolon isimleri (senin dosyalarına göre ayarla)
+# Excel'deki kolon isimleri (senin dosyalarına göre ayarlandı)
 KOLON_ESLEME = {
-    'Magaza_Kod': 'Magaza_Kod',     # veya 'MAGAZA_KODU', 'Mağaza Kodu' vs.
-    'Urun_Kod': 'Urun_Kod',         # veya 'URUN_KODU', 'Ürün Kodu' vs.
-    'Mal_Grubu': 'Mal_Grubu',       # veya 'MAL_GRUBU', 'Mal Grubu' vs.
-    'Nitelik': 'Nitelik',           # veya 'NITELIK', 'Kampanya Niteliği' vs.
-    'Adet': 'Adet',                 # veya 'ADET', 'Satış Adedi' vs.
-    'Ciro': 'Ciro'                  # veya 'CIRO', 'Satış Tutarı' vs.
+    'Magaza_Kod': 'Mağaza - Anahtar',
+    'Urun_Kod': 'Malzeme Kodu',
+    'Mal_Grubu': 'MAL GRUBU',
+    'Nitelik': 'NİTELİK',
+    'Adet': 'Satış Miktarı',
+    'Ciro': 'Satış Hasılatı (VD)'
 }
 
 # =============================================================================
@@ -53,40 +53,26 @@ def excel_oku_ve_normalize(dosya_yolu, kolon_esleme):
     try:
         df = pd.read_excel(dosya_yolu)
         print(f"   Satır sayısı: {len(df):,}")
-        print(f"   Kolonlar: {list(df.columns)}")
 
-        # Kolon isimlerini normalize et
+        # Kolon isimlerini normalize et (boşlukları temizle)
         df.columns = df.columns.str.strip()
 
-        # Gerekli kolonları seç ve yeniden adlandır
-        kolonlar_mevcut = {}
+        # Gerekli kolonları kontrol et
+        eksik = []
         for hedef, kaynak in kolon_esleme.items():
-            if kaynak in df.columns:
-                kolonlar_mevcut[kaynak] = hedef
-            else:
-                # Alternatif isimler dene
-                alternatifler = {
-                    'Magaza_Kod': ['MAGAZA_KODU', 'Mağaza Kodu', 'MAGAZA_KOD', 'Magaza Kodu'],
-                    'Urun_Kod': ['URUN_KODU', 'Ürün Kodu', 'URUN_KOD', 'Urun Kodu'],
-                    'Mal_Grubu': ['MAL_GRUBU', 'Mal Grubu', 'MAL_GRUBU_ADI', 'Mal Grubu Adı'],
-                    'Nitelik': ['NITELIK', 'Kampanya Niteliği', 'NİTELİK', 'Kampanya Niteligi'],
-                    'Adet': ['ADET', 'Satış Adedi', 'SATIS_ADET', 'Toplam Adet'],
-                    'Ciro': ['CIRO', 'Satış Tutarı', 'SATIS_TUTAR', 'Toplam Ciro']
-                }
+            if kaynak not in df.columns:
+                eksik.append(f"{hedef} ({kaynak})")
 
-                for alt in alternatifler.get(hedef, []):
-                    if alt in df.columns:
-                        kolonlar_mevcut[alt] = hedef
-                        break
-
-        if len(kolonlar_mevcut) < 4:
-            print(f"   ⚠️ UYARI: Bazı kolonlar bulunamadı!")
-            print(f"   Bulunan: {list(kolonlar_mevcut.keys())}")
+        if eksik:
+            print(f"   ⚠️ UYARI: Eksik kolonlar: {eksik}")
+            print(f"   Mevcut kolonlar: {list(df.columns)}")
             return None
 
         # Sadece gerekli kolonları al ve yeniden adlandır
-        df = df[list(kolonlar_mevcut.keys())].rename(columns=kolonlar_mevcut)
+        rename_map = {v: k for k, v in kolon_esleme.items()}
+        df = df[list(kolon_esleme.values())].rename(columns=rename_map)
 
+        print(f"   ✅ Başarılı: {len(df):,} satır")
         return df
 
     except Exception as e:
