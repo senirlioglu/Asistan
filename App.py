@@ -227,6 +227,81 @@ def get_nitelikler(_df):
     except:
         return []
 
+@st.cache_data
+def build_magaza_options(stok_df_hash, sm_col, bs_col, kod_col, ad_col):
+    """Mağaza seçeneklerini cache'le - hızlı filtre için"""
+    # Bu fonksiyon stok_df'nin hash'i ile çağrılacak
+    return None  # Placeholder - gerçek implementasyon aşağıda
+
+def prepare_magaza_hierarchy(stok_df):
+    """SM/BS/Mağaza hiyerarşisini hazırla (vektörel, hızlı)"""
+    cols = ['SM', 'BS', 'Kod', 'Mağaza Adı']
+    available_cols = [c for c in cols if c in stok_df.columns]
+
+    base = stok_df[available_cols].drop_duplicates().copy()
+    base['Kod'] = base['Kod'].astype(str).str.strip()
+
+    if 'SM' in base.columns:
+        base['SM'] = base['SM'].astype(str).str.strip()
+        sm_list = sorted(base['SM'].dropna().unique().tolist())
+    else:
+        sm_list = []
+
+    if 'BS' in base.columns:
+        base['BS'] = base['BS'].astype(str).str.strip()
+        bs_all = sorted(base['BS'].dropna().unique().tolist())
+        if 'SM' in base.columns:
+            sm_to_bs = (base.groupby('SM')['BS']
+                        .apply(lambda x: sorted([b for b in x.unique() if pd.notna(b)]))
+                        .to_dict())
+        else:
+            sm_to_bs = {}
+    else:
+        bs_all = []
+        sm_to_bs = {}
+
+    # Vektörel option oluşturma (iterrows yok!)
+    base['opt'] = base['Kod'] + " - " + base['Mağaza Adı'].astype(str)
+
+    return base, sm_list, bs_all, sm_to_bs
+
+def prepare_lift_aggregations(performans_df):
+    """Lift hesaplaması için aggregasyonları önceden hazırla (döngü dışında)"""
+    # Spot verilerini filtrele (bir kere)
+    spot_mask = performans_df['Nitelik'].str.lower().str.contains('spot', na=False)
+    spot_df = performans_df[spot_mask].copy()
+
+    # String temizliği
+    spot_df['Magaza_Kod'] = spot_df['Magaza_Kod'].astype(str).str.strip()
+    spot_df['Urun_Kod'] = spot_df['Urun_Kod'].astype(str).str.strip()
+
+    # Benchmark toplam
+    bench_total = spot_df['Adet'].sum()
+
+    # Mağaza bazlı toplamlar
+    store_totals = spot_df.groupby('Magaza_Kod')['Adet'].sum().to_dict()
+
+    # SKU bazlı - mağaza
+    store_sku_qty = spot_df.groupby(['Magaza_Kod', 'Urun_Kod'])['Adet'].sum().to_dict()
+
+    # SKU bazlı - benchmark
+    bench_sku_qty = spot_df.groupby('Urun_Kod')['Adet'].sum().to_dict()
+
+    # Mal grubu bazlı - mağaza
+    store_grp_qty = spot_df.groupby(['Magaza_Kod', 'Mal_Grubu'])['Adet'].sum().to_dict()
+
+    # Mal grubu bazlı - benchmark
+    bench_grp_qty = spot_df.groupby('Mal_Grubu')['Adet'].sum().to_dict()
+
+    return {
+        'bench_total': bench_total,
+        'store_totals': store_totals,
+        'store_sku_qty': store_sku_qty,
+        'bench_sku_qty': bench_sku_qty,
+        'store_grp_qty': store_grp_qty,
+        'bench_grp_qty': bench_grp_qty
+    }
+
 import math
 
 def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_grubu_map, weights=None):
@@ -1259,71 +1334,72 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
                 st.markdown("---")
 
                 # =============================================================================
-                # ADIM 2: FİLTRELEME (SM → BS → MAĞAZA)
+                # ADIM 2: FİLTRELEME (SM → BS → MAĞAZA) - OPTİMİZE
                 # =============================================================================
                 st.markdown("### 2️⃣ Mağaza Filtresi")
 
-                # SM listesi
-                sm_listesi = ["Tümü"] + sorted(stok_df['SM'].dropna().unique().tolist()) if 'SM' in stok_df.columns else ["Tümü"]
+                # Hiyerarşiyi bir kere hazırla (vektörel, hızlı)
+                base, sm_list, bs_all, sm_to_bs = prepare_magaza_hierarchy(stok_df)
 
-                col_sm, col_bs = st.columns(2)
+                # Form ile rerun fırtınasını önle
+                with st.form("filtre_form"):
+                    col_sm, col_bs = st.columns(2)
 
-                with col_sm:
-                    secili_sm = st.multiselect(
-                        "SM Seçin (opsiyonel):",
-                        options=sm_listesi[1:],  # "Tümü" hariç
-                        key="sm_secim",
-                        help="Boş bırakırsanız tüm SM'ler dahil edilir"
+                    with col_sm:
+                        secili_sm = st.multiselect(
+                            "SM Seçin (opsiyonel):",
+                            options=sm_list,
+                            key="sm_secim_form",
+                            help="Boş bırakırsanız tüm SM'ler dahil edilir"
+                        )
+
+                    # BS listesini SM'e göre filtrele
+                    if secili_sm:
+                        bs_listesi = sorted(set().union(*[set(sm_to_bs.get(sm, [])) for sm in secili_sm]))
+                    else:
+                        bs_listesi = bs_all
+
+                    with col_bs:
+                        secili_bs = st.multiselect(
+                            "BS Seçin (opsiyonel):",
+                            options=bs_listesi,
+                            key="bs_secim_form",
+                            help="Boş bırakırsanız tüm BS'ler dahil edilir"
+                        )
+
+                    # Mağaza listesini filtrele (vektörel)
+                    filt = base.copy()
+                    if secili_sm:
+                        filt = filt[filt['SM'].isin(secili_sm)]
+                    if secili_bs:
+                        filt = filt[filt['BS'].isin(secili_bs)]
+
+                    magaza_options = sorted(filt['opt'].unique().tolist())
+
+                    secili_magazalar = st.multiselect(
+                        "Mağaza Seçin (zorunlu):",
+                        options=magaza_options,
+                        key="magaza_coklu_secim_form",
+                        help="Kampanya yapılacak mağazaları seçin"
                     )
 
-                # BS listesini SM'e göre filtrele
-                if secili_sm and 'BS' in stok_df.columns:
-                    bs_df = stok_df[stok_df['SM'].isin(secili_sm)]
-                    bs_listesi = sorted(bs_df['BS'].dropna().unique().tolist())
-                elif 'BS' in stok_df.columns:
-                    bs_listesi = sorted(stok_df['BS'].dropna().unique().tolist())
-                else:
-                    bs_listesi = []
+                    # Form submit butonu
+                    apply = st.form_submit_button("🔍 Filtre Uygula", use_container_width=True)
 
-                with col_bs:
-                    secili_bs = st.multiselect(
-                        "BS Seçin (opsiyonel):",
-                        options=bs_listesi,
-                        key="bs_secim",
-                        help="Boş bırakırsanız tüm BS'ler dahil edilir"
-                    )
-
-                # Mağaza listesini SM/BS'e göre filtrele
-                magaza_df = stok_df.copy()
-                if secili_sm:
-                    magaza_df = magaza_df[magaza_df['SM'].isin(secili_sm)]
-                if secili_bs:
-                    magaza_df = magaza_df[magaza_df['BS'].isin(secili_bs)]
-
-                # Mağaza listesi (Kod - Ad formatında)
-                magazalar_unique = magaza_df[['Kod', 'Mağaza Adı']].drop_duplicates()
-                magaza_options = [f"{row['Kod']} - {row['Mağaza Adı']}" for _, row in magazalar_unique.iterrows()]
-
-                secili_magazalar = st.multiselect(
-                    "Mağaza Seçin (zorunlu):",
-                    options=sorted(magaza_options),
-                    key="magaza_coklu_secim",
-                    help="Kampanya yapılacak mağazaları seçin"
-                )
-
-                if secili_magazalar:
+                if apply and secili_magazalar:
                     st.success(f"✅ {len(secili_magazalar)} mağaza seçildi")
 
                     # Seçili mağaza kodlarını al
-                    secili_magaza_kodlari = [m.split(" - ")[0] for m in secili_magazalar]
+                    secili_magaza_kodlari = [m.split(" - ")[0].strip() for m in secili_magazalar]
 
-                    # Veriyi filtrele
-                    filtered_df = stok_df[stok_df['Kod'].astype(str).isin([str(k) for k in secili_magaza_kodlari])]
+                    # Veriyi filtrele (strip ile)
+                    stok_df['Kod'] = stok_df['Kod'].astype(str).str.strip()
+                    filtered_df = stok_df[stok_df['Kod'].isin(secili_magaza_kodlari)]
 
                     st.markdown("---")
 
                     # =============================================================================
-                    # ADIM 3: ANALİZ VE ÖNERİ
+                    # ADIM 3: ANALİZ VE ÖNERİ - OPTİMİZE (dict lookup)
                     # =============================================================================
                     st.markdown("### 3️⃣ Kampanya Önerisi")
 
@@ -1336,125 +1412,97 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
                             if performans_df is None:
                                 st.error("❌ Performans verisi yüklenemedi!")
                             else:
-                                # Her ürün-mağaza kombinasyonu için skor hesapla
+                                # ÖNEMLİ: Aggregasyonları DÖNGÜ DIŞINDA bir kere hazırla
+                                agg = prepare_lift_aggregations(performans_df)
+                                bench_total = agg['bench_total']
+                                store_totals = agg['store_totals']
+                                store_sku_qty = agg['store_sku_qty']
+                                bench_sku_qty = agg['bench_sku_qty']
+                                store_grp_qty = agg['store_grp_qty']
+                                bench_grp_qty = agg['bench_grp_qty']
+
+                                eps = 0.0001
                                 sonuclar = []
 
+                                # Ürün kodlarını strip'le (bir kere)
+                                filtered_df['Ürün Kodu'] = filtered_df['Ürün Kodu'].astype(str).str.strip()
+
                                 for _, row in filtered_df.iterrows():
-                                    magaza_kodu = str(row['Kod'])
-                                    urun_kodu = str(row['Ürün Kodu'])
+                                    magaza_kodu = str(row['Kod']).strip()
+                                    urun_kodu = str(row['Ürün Kodu']).strip()
                                     urun_adi = row['Ürün Tanımı']
-                                    stok = row.get('Stok', 0)
+                                    stok = row.get('Stok', 0) or 0
                                     satis_fiyati = row.get('Satış Fiyatı', 0)
                                     alis_fiyati = row.get('Alış', 0)
                                     marj = row.get('Marj', 0)
 
                                     # Fiyatı temizle
                                     if isinstance(satis_fiyati, str):
-                                        satis_fiyati = float(satis_fiyati.replace('₺', '').replace('.', '').replace(',', '.').strip())
+                                        try:
+                                            satis_fiyati = float(satis_fiyati.replace('₺', '').replace('.', '').replace(',', '.').strip())
+                                        except:
+                                            satis_fiyati = 0
 
-                                    # Kampanya ürünü formatında oluştur
-                                    urun = {
-                                        'kod': urun_kodu,
-                                        'ad': urun_adi,
-                                        'eski_fiyat': str(satis_fiyati),
-                                        'yeni_fiyat': '',  # Henüz belirlenmedi
-                                        'indirim': '',
-                                        'indirim_num': 0
-                                    }
-
-                                    # Lift skoru hesapla (sadece fit için, indirim yok)
                                     # Mal grubunu bul
                                     mal_grubu = urun_mal_grubu_map.get(urun_kodu)
 
-                                    # Basitleştirilmiş lift hesaplama
-                                    try:
-                                        # Mağaza verisi (doğru kolon isimleri: Magaza_Kod, Nitelik, Urun_Kod, Adet, Mal_Grubu)
-                                        store_data = performans_df[
-                                            (performans_df['Magaza_Kod'].astype(str).str.strip() == magaza_kodu.strip()) &
-                                            (performans_df['Nitelik'].str.lower().str.contains('spot', na=False))
-                                        ]
+                                    # Dict lookup ile hızlı lift hesaplama (DataFrame slicing yok!)
+                                    store_total = store_totals.get(magaza_kodu, 0)
 
-                                        # Benchmark verisi (tüm mağazalar)
-                                        bench_data = performans_df[
-                                            performans_df['Nitelik'].str.lower().str.contains('spot', na=False)
-                                        ]
-
-                                        # Mağaza verisi var mı kontrol et
-                                        if len(store_data) == 0:
-                                            # Mağaza verisi yok - stok bazlı öneri yap
-                                            lift = 1.0
-                                            sku_trusted = False
-
-                                            # Stok bazlı skor (stok miktarına göre)
-                                            if stok >= 20:
-                                                fit_score = 70
-                                                neden = f"📦 Yüksek stok ({stok} adet) - Mağaza verisi yok, stok bazlı öneri"
-                                            elif stok >= 10:
-                                                fit_score = 55
-                                                neden = f"📦 Orta stok ({stok} adet) - Mağaza verisi yok, stok bazlı öneri"
-                                            elif stok >= 5:
-                                                fit_score = 40
-                                                neden = f"📦 Düşük stok ({stok} adet) - Mağaza verisi yok"
-                                            else:
-                                                fit_score = 30
-                                                neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
-                                        else:
-                                            # SKU bazlı lift
-                                            store_sku = store_data[store_data['Urun_Kod'].astype(str) == urun_kodu]
-                                            bench_sku = bench_data[bench_data['Urun_Kod'].astype(str) == urun_kodu]
-
-                                            sku_qty = store_sku['Adet'].sum() if len(store_sku) > 0 else 0
-                                            bench_qty = bench_sku['Adet'].sum() if len(bench_sku) > 0 else 0
-
-                                            store_total = store_data['Adet'].sum()
-                                            bench_total = bench_data['Adet'].sum()
-
-                                            eps = 0.0001
-                                            store_share = (sku_qty / (store_total + eps)) * 100
-                                            bench_share = (bench_qty / (bench_total + eps)) * 100
-
-                                            lift = (store_share + eps) / (bench_share + eps)
-
-                                            # Skor (0-100)
-                                            fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
-
-                                            # SKU güven kontrolü
-                                            sku_trusted = sku_qty >= 3 and bench_qty >= 30
-
-                                            # Grup bazlı hesaplama (fallback)
-                                            if mal_grubu:
-                                                store_grp = store_data[store_data['Mal_Grubu'] == mal_grubu]
-                                                bench_grp = bench_data[bench_data['Mal_Grubu'] == mal_grubu]
-
-                                                grp_qty = store_grp['Adet'].sum()
-                                                grp_bench = bench_grp['Adet'].sum()
-
-                                                grp_share = (grp_qty / (store_total + eps)) * 100
-                                                grp_bench_share = (grp_bench / (bench_total + eps)) * 100
-
-                                                lift_grp = (grp_share + eps) / (grp_bench_share + eps)
-                                                fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
-
-                                                # Hierarchical blend
-                                                if not sku_trusted:
-                                                    alpha = sku_qty / (sku_qty + 5)
-                                                    fit_score = alpha * fit_score + (1 - alpha) * fit_grp
-
-                                            # Neden öneriliyor?
-                                            if lift > 1.5:
-                                                neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
-                                            elif lift > 1.0:
-                                                neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
-                                            elif stok > 10:
-                                                neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
-                                            else:
-                                                neden = f"➖ Standart performans (lift: {lift:.1f}x)"
-
-                                    except Exception as e:
-                                        fit_score = 50  # Varsayılan
+                                    if store_total == 0:
+                                        # Mağaza verisi yok - stok bazlı öneri
                                         lift = 1.0
-                                        neden = f"⚠️ Hesaplama hatası - Stok bazlı öneri ({stok} adet)"
                                         sku_trusted = False
+                                        if stok >= 20:
+                                            fit_score = 70
+                                            neden = f"📦 Yüksek stok ({stok} adet) - Mağaza verisi yok"
+                                        elif stok >= 10:
+                                            fit_score = 55
+                                            neden = f"📦 Orta stok ({stok} adet) - Mağaza verisi yok"
+                                        elif stok >= 5:
+                                            fit_score = 40
+                                            neden = f"📦 Düşük stok ({stok} adet) - Mağaza verisi yok"
+                                        else:
+                                            fit_score = 30
+                                            neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
+                                    else:
+                                        # SKU bazlı lift (dict lookup - çok hızlı)
+                                        sku_qty = store_sku_qty.get((magaza_kodu, urun_kodu), 0)
+                                        bench_qty = bench_sku_qty.get(urun_kodu, 0)
+
+                                        store_share = (sku_qty / (store_total + eps)) * 100
+                                        bench_share = (bench_qty / (bench_total + eps)) * 100
+
+                                        lift = (store_share + eps) / (bench_share + eps)
+                                        fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
+
+                                        # SKU güven kontrolü
+                                        sku_trusted = sku_qty >= 3 and bench_qty >= 30
+
+                                        # Grup bazlı fallback (dict lookup)
+                                        if mal_grubu and not sku_trusted:
+                                            grp_qty = store_grp_qty.get((magaza_kodu, mal_grubu), 0)
+                                            grp_bench = bench_grp_qty.get(mal_grubu, 0)
+
+                                            grp_share = (grp_qty / (store_total + eps)) * 100
+                                            grp_bench_share = (grp_bench / (bench_total + eps)) * 100
+
+                                            lift_grp = (grp_share + eps) / (grp_bench_share + eps)
+                                            fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
+
+                                            # Hierarchical blend
+                                            alpha = sku_qty / (sku_qty + 5)
+                                            fit_score = alpha * fit_score + (1 - alpha) * fit_grp
+
+                                        # Neden öneriliyor?
+                                        if lift > 1.5:
+                                            neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
+                                        elif lift > 1.0:
+                                            neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                        elif stok > 10:
+                                            neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
+                                        else:
+                                            neden = f"➖ Standart performans (lift: {lift:.1f}x)"
 
                                     # Stok değeri hesapla
                                     stok_tl = stok * (satis_fiyati if isinstance(satis_fiyati, (int, float)) else 0)
