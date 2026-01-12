@@ -820,10 +820,10 @@ st.markdown('<p class="main-header">📢 A101 Kampanya Asistanı</p>', unsafe_al
 # =============================================================================
 mod_secim = st.radio(
     "Ne yapmak istiyorsunuz?",
-    options=["📨 Mesaj Oluşturucu", "📊 Kampanya Oluşturucu"],
+    options=["📨 Mesaj Oluşturucu", "📊 Kampanya Oluşturucu", "📱 WhatsApp Kanalı Kampanya"],
     horizontal=True,
     key="mod_secim",
-    help="Mesaj Oluşturucu: Mevcut kampanya için müşteri mesajı oluşturur. Kampanya Oluşturucu: Stok verilerine göre hangi ürünlere kampanya yapılmalı önerir."
+    help="Mesaj Oluşturucu: Müşteri mesajı oluşturur. Kampanya Oluşturucu: SM/BS/Mağaza seçerek kampanya önerir. WhatsApp Kanalı: Tüm WhatsApp mağazaları için otomatik kampanya önerir."
 )
 
 st.markdown("---")
@@ -1286,7 +1286,7 @@ if mod_secim == "📨 Mesaj Oluşturucu":
 # =============================================================================
 # KAMPANYA OLUŞTURUCU MODU
 # =============================================================================
-else:  # mod_secim == "📊 Kampanya Oluşturucu"
+elif mod_secim == "📊 Kampanya Oluşturucu":
     st.markdown("""
     <div class="secim-rehberi">
         <strong>📊 Kampanya Oluşturucu Nasıl Çalışır?</strong><br>
@@ -1630,6 +1630,231 @@ else:  # mod_secim == "📊 Kampanya Oluşturucu"
             st.error(f"❌ Excel okuma hatası: {str(e)}")
             st.info("Dosya formatını kontrol edin. Beklenen kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı...")
 
+    else:
+        st.info("👆 Excel dosyası yükleyin.")
+
+# =============================================================================
+# WHATSAPP KANALI KAMPANYA MODU
+# =============================================================================
+elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
+    st.markdown("""
+    <div class="secim-rehberi">
+        <strong>📱 WhatsApp Kanalı Kampanya Nasıl Çalışır?</strong><br>
+        1. Stok Excel dosyasını yükleyin<br>
+        2. Sistem otomatik olarak WhatsApp kanalındaki mağazaları filtreler<br>
+        3. Lift algoritmasıyla kampanya önerisi oluşturur<br>
+        4. Excel olarak indirin ve fiyatları belirleyin
+    </div>
+    """, unsafe_allow_html=True)
+
+    # WhatsApp kanalındaki mağaza kodları
+    whatsapp_magaza_kodlari = list(MAGAZALAR.keys())
+    st.info(f"📱 WhatsApp kanalında {len(whatsapp_magaza_kodlari)} mağaza var")
+
+    # Excel yükleme
+    st.markdown("### 1️⃣ Stok Verisini Yükleyin")
+
+    uploaded_file_wp = st.file_uploader(
+        "Stok Excel dosyasını yükleyin (.xlsx)",
+        type=['xlsx'],
+        key="stok_excel_upload_wp",
+        help="Kolonlar: Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Satış Fiyatı..."
+    )
+
+    if uploaded_file_wp is not None:
+        try:
+            stok_df = pd.read_excel(uploaded_file_wp)
+            stok_df.columns = stok_df.columns.str.strip()
+
+            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı']
+            eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
+
+            if eksik_kolonlar:
+                st.error(f"❌ Eksik kolonlar: {', '.join(eksik_kolonlar)}")
+            else:
+                # WhatsApp mağazalarını filtrele
+                stok_df['Kod'] = stok_df['Kod'].astype(str).str.strip()
+                filtered_df = stok_df[stok_df['Kod'].isin(whatsapp_magaza_kodlari)]
+
+                if len(filtered_df) == 0:
+                    st.warning("⚠️ Excel'de WhatsApp kanalı mağazalarından hiçbiri bulunamadı!")
+                    st.info(f"Beklenen mağaza kodları: {', '.join(whatsapp_magaza_kodlari[:5])}...")
+                else:
+                    bulunan_magazalar = filtered_df['Kod'].nunique()
+                    st.success(f"✅ {len(filtered_df):,} satır yüklendi ({bulunan_magazalar}/{len(whatsapp_magaza_kodlari)} mağaza bulundu)")
+
+                    with st.expander("📋 Veri Önizleme"):
+                        st.dataframe(filtered_df.head(10))
+
+                    st.markdown("---")
+                    st.markdown("### 2️⃣ Kampanya Önerisi")
+
+                    if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True, key="analiz_wp"):
+                        with st.spinner("🔄 Lift algoritması çalışıyor..."):
+                            performans_df = load_performans_data()
+                            urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
+
+                            if performans_df is None:
+                                st.error("❌ Performans verisi yüklenemedi!")
+                            else:
+                                agg = prepare_lift_aggregations(performans_df)
+                                bench_total = agg['bench_total']
+                                store_totals = agg['store_totals']
+                                store_sku_qty = agg['store_sku_qty']
+                                bench_sku_qty = agg['bench_sku_qty']
+                                store_grp_qty = agg['store_grp_qty']
+                                bench_grp_qty = agg['bench_grp_qty']
+
+                                eps = 0.0001
+                                sonuclar = []
+
+                                filtered_df['Ürün Kodu'] = filtered_df['Ürün Kodu'].astype(str).str.strip()
+
+                                for _, row in filtered_df.iterrows():
+                                    magaza_kodu = str(row['Kod']).strip()
+                                    urun_kodu = str(row['Ürün Kodu']).strip()
+                                    urun_adi = row['Ürün Tanımı']
+                                    stok = row.get('Stok', 0) or 0
+                                    satis_fiyati = row.get('Satış Fiyatı', 0)
+                                    alis_fiyati = row.get('Alış', 0)
+                                    marj = row.get('Marj', 0)
+
+                                    if isinstance(satis_fiyati, str):
+                                        try:
+                                            satis_fiyati = float(satis_fiyati.replace('₺', '').replace('.', '').replace(',', '.').strip())
+                                        except:
+                                            satis_fiyati = 0
+
+                                    mal_grubu = urun_mal_grubu_map.get(urun_kodu)
+                                    store_total = store_totals.get(magaza_kodu, 0)
+
+                                    if store_total == 0:
+                                        lift = 1.0
+                                        sku_trusted = False
+                                        if stok >= 20:
+                                            fit_score = 70
+                                            neden = f"📦 Yüksek stok ({stok} adet) - Mağaza verisi yok"
+                                        elif stok >= 10:
+                                            fit_score = 55
+                                            neden = f"📦 Orta stok ({stok} adet) - Mağaza verisi yok"
+                                        elif stok >= 5:
+                                            fit_score = 40
+                                            neden = f"📦 Düşük stok ({stok} adet) - Mağaza verisi yok"
+                                        else:
+                                            fit_score = 30
+                                            neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
+                                    else:
+                                        sku_qty = store_sku_qty.get((magaza_kodu, urun_kodu), 0)
+                                        bench_qty = bench_sku_qty.get(urun_kodu, 0)
+
+                                        store_share = (sku_qty / (store_total + eps)) * 100
+                                        bench_share = (bench_qty / (bench_total + eps)) * 100
+
+                                        lift = (store_share + eps) / (bench_share + eps)
+                                        fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
+
+                                        sku_trusted = sku_qty >= 3 and bench_qty >= 30
+
+                                        if mal_grubu and not sku_trusted:
+                                            grp_qty = store_grp_qty.get((magaza_kodu, mal_grubu), 0)
+                                            grp_bench = bench_grp_qty.get(mal_grubu, 0)
+
+                                            grp_share = (grp_qty / (store_total + eps)) * 100
+                                            grp_bench_share = (grp_bench / (bench_total + eps)) * 100
+
+                                            lift_grp = (grp_share + eps) / (grp_bench_share + eps)
+                                            fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
+
+                                            alpha = sku_qty / (sku_qty + 5)
+                                            fit_score = alpha * fit_score + (1 - alpha) * fit_grp
+
+                                        if lift > 1.5:
+                                            neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
+                                        elif lift > 1.0:
+                                            neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                        elif stok > 10:
+                                            neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
+                                        else:
+                                            neden = f"➖ Standart performans (lift: {lift:.1f}x)"
+
+                                    stok_tl = stok * (satis_fiyati if isinstance(satis_fiyati, (int, float)) else 0)
+                                    magaza_adi = MAGAZALAR.get(magaza_kodu, row.get('Mağaza Adı', ''))
+
+                                    sonuclar.append({
+                                        'Kod': magaza_kodu,
+                                        'Mağaza Adı': magaza_adi,
+                                        'Ürün Kodu': urun_kodu,
+                                        'Ürün Tanımı': urun_adi,
+                                        'Stok': stok,
+                                        'Alış': alis_fiyati,
+                                        'Satış Fiyatı': satis_fiyati,
+                                        'Marj': marj,
+                                        'yeni fiyat': '',
+                                        'yeni marj': '',
+                                        'Stok TL': stok_tl,
+                                        'Lift Skoru': round(fit_score, 1),
+                                        'Lift': round(lift, 2),
+                                        'Öneri Nedeni': neden,
+                                        'SKU Güvenilir': '✅' if sku_trusted else '⚠️'
+                                    })
+
+                                sonuc_df = pd.DataFrame(sonuclar)
+                                sonuc_df = sonuc_df.sort_values(['Kod', 'Lift Skoru', 'Stok TL'], ascending=[True, False, False])
+                                st.session_state['wp_kampanya_sonuc'] = sonuc_df
+                                st.success(f"✅ Analiz tamamlandı! {len(sonuc_df)} ürün-mağaza kombinasyonu")
+
+                    # Sonuçları göster
+                    if 'wp_kampanya_sonuc' in st.session_state:
+                        sonuc_df = st.session_state['wp_kampanya_sonuc']
+
+                        st.markdown("---")
+                        st.markdown("### 📊 Sonuçlar")
+
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Toplam Satır", f"{len(sonuc_df):,}")
+                        with col2:
+                            st.metric("Benzersiz Ürün", f"{sonuc_df['Ürün Kodu'].nunique():,}")
+                        with col3:
+                            st.metric("Toplam Stok", f"{sonuc_df['Stok'].sum():,}")
+                        with col4:
+                            st.metric("Toplam Stok TL", f"₺{sonuc_df['Stok TL'].sum():,.0f}")
+
+                        st.markdown("#### 🎯 Sonuç Filtresi")
+                        col_f1, col_f2 = st.columns(2)
+                        with col_f1:
+                            min_skor = st.slider("Minimum Lift Skoru", 0, 100, 30, 5, key="min_skor_wp")
+                        with col_f2:
+                            min_stok = st.number_input("Minimum Stok", 0, 1000, 1, key="min_stok_wp")
+
+                        filtered_sonuc = sonuc_df[
+                            (sonuc_df['Lift Skoru'] >= min_skor) &
+                            (sonuc_df['Stok'] >= min_stok)
+                        ]
+
+                        st.info(f"📋 Filtrelenmiş: {len(filtered_sonuc):,} satır")
+
+                        st.dataframe(filtered_sonuc, use_container_width=True, height=400)
+
+                        st.markdown("---")
+                        st.markdown("### 📥 Excel İndir")
+
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            filtered_sonuc.to_excel(writer, index=False, sheet_name='WhatsApp Kampanya')
+                        output.seek(0)
+
+                        st.download_button(
+                            label="📥 WhatsApp Kanalı Kampanya Önerisini İndir",
+                            data=output,
+                            file_name=f"whatsapp_kampanya_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            type="primary",
+                            use_container_width=True
+                        )
+
+        except Exception as e:
+            st.error(f"❌ Excel okuma hatası: {str(e)}")
     else:
         st.info("👆 Excel dosyası yükleyin.")
 
