@@ -152,6 +152,14 @@ URUN_EMOJILERI = {
     "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
     "BİSİKLET": "🚲", "VANTİLATÖR": "🌀", "BUZDOLABI": "❄️", "DONDURUC": "🧊",
     "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️",
+    # Meyve ve sebzeler
+    "MUZ": "🍌", "PATATES": "🥔", "SOĞAN": "🧅", "DOMATES": "🍅", "ELMA": "🍎",
+    "PORTAKAL": "🍊", "LİMON": "🍋", "ÜZÜM": "🍇", "ÇİLEK": "🍓", "KARPUZ": "🍉",
+    "HAVUÇ": "🥕", "MARUL": "🥬", "SALATALIK": "🥒", "BİBER": "🌶️", "MANTAR": "🍄",
+    "MISIR": "🌽", "BROKOLI": "🥦", "PATLICAN": "🍆", "AVOKADO": "🥑",
+    # Tavuk ve et
+    "TAVUK": "🍗", "BAGET": "🍗", "BUT": "🍗", "PİLİÇ": "🍗", "KANAT": "🍗",
+    "ET": "🥩", "KÖFTE": "🍖", "SUCUK": "🥓", "SOSIS": "🌭",
     # Genel kategoriler
     "TV": "📺", "SÜPÜRGE": "🧹", "KLİMA": "❄️",
     "KAHVE": "☕", "ÇAY": "🍵", "TOST": "🥪", "WAFFLE": "🧇",
