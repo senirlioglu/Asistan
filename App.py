@@ -1398,12 +1398,62 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                 st.markdown("---")
 
                 # =============================================================================
-                # ADIM 2: FİLTRELEME (SM → BS → MAĞAZA) - OPTİMİZE
+                # ADIM 2: FİLTRELEME (SM → BS → MAĞAZA) - OPTİMİZE v2
                 # =============================================================================
                 st.markdown("### 2️⃣ Mağaza Filtresi")
 
-                # Hiyerarşiyi bir kere hazırla (vektörel, hızlı)
-                base, sm_list, bs_all, sm_to_bs = prepare_magaza_hierarchy(stok_df)
+                # Hiyerarşiyi 1 KERE hesapla, session_state'e kaydet
+                stok_hash = hash(tuple(stok_df['Kod'].astype(str).head(100)))  # Basit hash
+                if st.session_state.get('stok_hash') != stok_hash:
+                    # Sadece gerekli kolonlarla küçük df
+                    small_cols = [c for c in ['SM', 'BS', 'Kod', 'Mağaza Adı'] if c in stok_df.columns]
+                    small = stok_df[small_cols].drop_duplicates().copy()
+                    small['Kod'] = small['Kod'].astype(str).str.strip()
+                    if 'SM' in small.columns:
+                        small['SM'] = small['SM'].astype(str).str.strip()
+                    if 'BS' in small.columns:
+                        small['BS'] = small['BS'].astype(str).str.strip()
+                    small['opt'] = small['Kod'] + " - " + small['Mağaza Adı'].astype(str)
+
+                    # Lookup map'ler oluştur (1 kere)
+                    sm_list = sorted(small['SM'].dropna().unique().tolist()) if 'SM' in small.columns else []
+                    bs_all = sorted(small['BS'].dropna().unique().tolist()) if 'BS' in small.columns else []
+
+                    sm_to_bs = {}
+                    sm_to_opt = {}
+                    bs_to_opt = {}
+                    smbs_to_opt = {}
+                    all_opts = sorted(small['opt'].unique().tolist())
+
+                    if 'SM' in small.columns and 'BS' in small.columns:
+                        sm_to_bs = small.groupby('SM')['BS'].apply(lambda x: sorted(x.dropna().unique().tolist())).to_dict()
+                        sm_to_opt = small.groupby('SM')['opt'].apply(lambda x: sorted(x.unique().tolist())).to_dict()
+                        bs_to_opt = small.groupby('BS')['opt'].apply(lambda x: sorted(x.unique().tolist())).to_dict()
+                        smbs_to_opt = small.groupby(['SM', 'BS'])['opt'].apply(lambda x: sorted(x.unique().tolist())).to_dict()
+                    elif 'SM' in small.columns:
+                        sm_to_opt = small.groupby('SM')['opt'].apply(lambda x: sorted(x.unique().tolist())).to_dict()
+                    elif 'BS' in small.columns:
+                        bs_to_opt = small.groupby('BS')['opt'].apply(lambda x: sorted(x.unique().tolist())).to_dict()
+
+                    # Session state'e kaydet
+                    st.session_state['stok_hash'] = stok_hash
+                    st.session_state['filter_sm_list'] = sm_list
+                    st.session_state['filter_bs_all'] = bs_all
+                    st.session_state['filter_sm_to_bs'] = sm_to_bs
+                    st.session_state['filter_sm_to_opt'] = sm_to_opt
+                    st.session_state['filter_bs_to_opt'] = bs_to_opt
+                    st.session_state['filter_smbs_to_opt'] = smbs_to_opt
+                    st.session_state['filter_all_opts'] = all_opts
+                    st.session_state['kampanya_stok_df'] = stok_df
+
+                # Session state'den oku (hızlı!)
+                sm_list = st.session_state.get('filter_sm_list', [])
+                bs_all = st.session_state.get('filter_bs_all', [])
+                sm_to_bs = st.session_state.get('filter_sm_to_bs', {})
+                sm_to_opt = st.session_state.get('filter_sm_to_opt', {})
+                bs_to_opt = st.session_state.get('filter_bs_to_opt', {})
+                smbs_to_opt = st.session_state.get('filter_smbs_to_opt', {})
+                all_opts = st.session_state.get('filter_all_opts', [])
 
                 # Form ile rerun fırtınasını önle
                 with st.form("filtre_form"):
@@ -1417,7 +1467,7 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                             help="Boş bırakırsanız tüm SM'ler dahil edilir"
                         )
 
-                    # BS listesini SM'e göre filtrele
+                    # BS listesini SM'e göre filtrele (dict lookup - hızlı!)
                     if secili_sm:
                         bs_listesi = sorted(set().union(*[set(sm_to_bs.get(sm, [])) for sm in secili_sm]))
                     else:
@@ -1431,14 +1481,18 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                             help="Boş bırakırsanız tüm BS'ler dahil edilir"
                         )
 
-                    # Mağaza listesini filtrele (vektörel)
-                    filt = base.copy()
-                    if secili_sm:
-                        filt = filt[filt['SM'].isin(secili_sm)]
-                    if secili_bs:
-                        filt = filt[filt['BS'].isin(secili_bs)]
-
-                    magaza_options = sorted(filt['opt'].unique().tolist())
+                    # Mağaza listesini dict lookup ile getir (DataFrame filtreleme YOK!)
+                    if secili_sm and secili_bs:
+                        magaza_options = sorted(set().union(*[
+                            set(smbs_to_opt.get((sm, bs), []))
+                            for sm in secili_sm for bs in secili_bs
+                        ]))
+                    elif secili_sm:
+                        magaza_options = sorted(set().union(*[set(sm_to_opt.get(sm, [])) for sm in secili_sm]))
+                    elif secili_bs:
+                        magaza_options = sorted(set().union(*[set(bs_to_opt.get(bs, [])) for bs in secili_bs]))
+                    else:
+                        magaza_options = all_opts
 
                     secili_magazalar = st.multiselect(
                         "Mağaza Seçin (zorunlu):",
@@ -1644,13 +1698,27 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                         with col4:
                             st.metric("Toplam Stok TL", f"₺{sonuc_df['Stok TL'].sum():,.0f}")
 
-                        # Filtreleme seçenekleri
+                        # Filtreleme seçenekleri - FORM ile (rerun fırtınası önlenir)
                         st.markdown("#### 🎯 Sonuç Filtresi")
-                        col_f1, col_f2 = st.columns(2)
-                        with col_f1:
-                            min_skor = st.slider("Minimum Lift Skoru", 0, 100, 30, 5, key="min_skor_filter")
-                        with col_f2:
-                            min_stok = st.number_input("Minimum Stok", 0, 1000, 1, key="min_stok_filter")
+                        with st.form("sonuc_filtre_form"):
+                            col_f1, col_f2 = st.columns(2)
+                            with col_f1:
+                                min_skor_input = st.slider("Minimum Lift Skoru", 0, 100,
+                                    st.session_state.get('kamp_min_skor', 30), 5)
+                            with col_f2:
+                                min_stok_input = st.number_input("Minimum Stok", 0, 1000,
+                                    st.session_state.get('kamp_min_stok', 1))
+                            apply_filter = st.form_submit_button("🔍 Filtre Uygula", use_container_width=True)
+
+                        if apply_filter:
+                            st.session_state['kamp_min_skor'] = min_skor_input
+                            st.session_state['kamp_min_stok'] = min_stok_input
+                            # Excel cache'ini temizle (yeni filtre = yeni excel)
+                            if 'kamp_excel_bytes' in st.session_state:
+                                del st.session_state['kamp_excel_bytes']
+
+                        min_skor = st.session_state.get('kamp_min_skor', 30)
+                        min_stok = st.session_state.get('kamp_min_stok', 1)
 
                         # Filtrele
                         filtered_sonuc = sonuc_df[
@@ -1660,30 +1728,42 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
 
                         st.info(f"📋 Filtrelenmiş: {len(filtered_sonuc):,} satır (Skor ≥ {min_skor}, Stok ≥ {min_stok})")
 
-                        # Tablo göster
+                        # Tablo göster (max 2000 satır UI için)
+                        display_df = filtered_sonuc.head(2000) if len(filtered_sonuc) > 2000 else filtered_sonuc
+                        if len(filtered_sonuc) > 2000:
+                            st.warning(f"⚠️ Tabloda ilk 2000 satır gösteriliyor. Tamamı Excel'de.")
                         st.dataframe(
-                            filtered_sonuc,
+                            display_df,
                             use_container_width=True,
                             height=400
                         )
 
-                        # Excel indirme
+                        # Excel indirme - SADECE BUTONA BASINCA OLUŞTUR
                         st.markdown("---")
                         st.markdown("### 📥 Excel İndir")
 
-                        # Excel'e dönüştür (formüllü)
-                        output = write_excel_with_formulas(filtered_sonuc, sheet_name='Kampanya Önerisi')
+                        col_prep, col_dl = st.columns([1, 2])
+                        with col_prep:
+                            if st.button("📦 Excel Hazırla", type="secondary", use_container_width=True):
+                                with st.spinner("Excel hazırlanıyor..."):
+                                    st.session_state['kamp_excel_bytes'] = write_excel_with_formulas(
+                                        filtered_sonuc, sheet_name='Kampanya Önerisi'
+                                    ).getvalue()
+                                st.success("✅ Excel hazır!")
 
-                        st.download_button(
-                            label="📥 Kampanya Önerisini İndir (Excel)",
-                            data=output,
-                            file_name=f"kampanya_onerisi_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            type="primary",
-                            use_container_width=True
-                        )
+                        with col_dl:
+                            excel_ready = 'kamp_excel_bytes' in st.session_state
+                            st.download_button(
+                                label="📥 Kampanya Önerisini İndir" if excel_ready else "📥 Önce Excel Hazırla",
+                                data=st.session_state.get('kamp_excel_bytes', b''),
+                                file_name=f"kampanya_onerisi_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=not excel_ready
+                            )
 
-                        st.caption("💡 Excel'i indirin, 'yeni fiyat' kolonunu doldurun → 'yeni marj' otomatik hesaplanır.")
+                        st.caption("💡 'Excel Hazırla' → 'İndir' → 'yeni fiyat' doldur → 'yeni marj' otomatik hesaplanır.")
 
                 else:
                     st.warning("👆 En az bir mağaza seçin.")
@@ -1886,38 +1966,67 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                         with col4:
                             st.metric("Toplam Stok TL", f"₺{sonuc_df['Stok TL'].sum():,.0f}")
 
+                        # Filtreleme seçenekleri - FORM ile (rerun fırtınası önlenir)
                         st.markdown("#### 🎯 Sonuç Filtresi")
-                        col_f1, col_f2 = st.columns(2)
-                        with col_f1:
-                            min_skor = st.slider("Minimum Lift Skoru", 0, 100, 30, 5, key="min_skor_wp")
-                        with col_f2:
-                            min_stok = st.number_input("Minimum Stok", 0, 1000, 1, key="min_stok_wp")
+                        with st.form("wp_sonuc_filtre_form"):
+                            col_f1, col_f2 = st.columns(2)
+                            with col_f1:
+                                min_skor_input = st.slider("Minimum Lift Skoru", 0, 100,
+                                    st.session_state.get('wp_min_skor', 30), 5)
+                            with col_f2:
+                                min_stok_input = st.number_input("Minimum Stok", 0, 1000,
+                                    st.session_state.get('wp_min_stok', 1))
+                            apply_filter = st.form_submit_button("🔍 Filtre Uygula", use_container_width=True)
+
+                        if apply_filter:
+                            st.session_state['wp_min_skor'] = min_skor_input
+                            st.session_state['wp_min_stok'] = min_stok_input
+                            # Excel cache'ini temizle
+                            if 'wp_excel_bytes' in st.session_state:
+                                del st.session_state['wp_excel_bytes']
+
+                        min_skor = st.session_state.get('wp_min_skor', 30)
+                        min_stok = st.session_state.get('wp_min_stok', 1)
 
                         filtered_sonuc = sonuc_df[
                             (sonuc_df['Lift Skoru'] >= min_skor) &
                             (sonuc_df['Stok'] >= min_stok)
                         ]
 
-                        st.info(f"📋 Filtrelenmiş: {len(filtered_sonuc):,} satır")
+                        st.info(f"📋 Filtrelenmiş: {len(filtered_sonuc):,} satır (Skor ≥ {min_skor}, Stok ≥ {min_stok})")
 
-                        st.dataframe(filtered_sonuc, use_container_width=True, height=400)
+                        # Tablo göster (max 2000 satır UI için)
+                        display_df = filtered_sonuc.head(2000) if len(filtered_sonuc) > 2000 else filtered_sonuc
+                        if len(filtered_sonuc) > 2000:
+                            st.warning(f"⚠️ Tabloda ilk 2000 satır gösteriliyor. Tamamı Excel'de.")
+                        st.dataframe(display_df, use_container_width=True, height=400)
 
+                        # Excel indirme - SADECE BUTONA BASINCA OLUŞTUR
                         st.markdown("---")
                         st.markdown("### 📥 Excel İndir")
 
-                        # Excel'e dönüştür (formüllü)
-                        output = write_excel_with_formulas(filtered_sonuc, sheet_name='WhatsApp Kampanya')
+                        col_prep, col_dl = st.columns([1, 2])
+                        with col_prep:
+                            if st.button("📦 Excel Hazırla", type="secondary", use_container_width=True, key="wp_excel_prep"):
+                                with st.spinner("Excel hazırlanıyor..."):
+                                    st.session_state['wp_excel_bytes'] = write_excel_with_formulas(
+                                        filtered_sonuc, sheet_name='WhatsApp Kampanya'
+                                    ).getvalue()
+                                st.success("✅ Excel hazır!")
 
-                        st.download_button(
-                            label="📥 WhatsApp Kanalı Kampanya Önerisini İndir",
-                            data=output,
-                            file_name=f"whatsapp_kampanya_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            type="primary",
-                            use_container_width=True
-                        )
+                        with col_dl:
+                            excel_ready = 'wp_excel_bytes' in st.session_state
+                            st.download_button(
+                                label="📥 WhatsApp Kampanya İndir" if excel_ready else "📥 Önce Excel Hazırla",
+                                data=st.session_state.get('wp_excel_bytes', b''),
+                                file_name=f"whatsapp_kampanya_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=not excel_ready
+                            )
 
-                        st.caption("💡 Excel'i indirin, 'yeni fiyat' kolonunu doldurun → 'yeni marj' otomatik hesaplanır.")
+                        st.caption("💡 'Excel Hazırla' → 'İndir' → 'yeni fiyat' doldur → 'yeni marj' otomatik hesaplanır.")
 
         except Exception as e:
             st.error(f"❌ Excel okuma hatası: {str(e)}")
