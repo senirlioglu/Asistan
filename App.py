@@ -310,6 +310,62 @@ def prepare_lift_aggregations(performans_df):
         'bench_grp_qty': bench_grp_qty
     }
 
+
+def write_excel_with_formulas(df, sheet_name='Kampanya Önerisi'):
+    """
+    Excel dosyası oluştur ve yeni marj kolonuna formül ekle.
+    Formül: =IF(L{row}="","",((L{row}-((L{row}/100)*(IF(K{row}=1,1,IF(K{row}=5,10,IF(K{row}=6,20,0))))))-H{row})/L{row}*100)
+
+    Kolon sırası:
+    A:SM, B:BS, C:Kod, D:Mağaza Adı, E:Ürün Kodu, F:Ürün Tanımı, G:Stok, H:Alış,
+    I:Satış Fiyatı, J:Marj, K:kdv, L:yeni fiyat, M:yeni marj, N:Stok TL,
+    O:üst mal grubu, P:mal grubu, Q:Lift Skoru, R:Lift, S:Öneri Nedeni
+    """
+    from openpyxl import Workbook
+    from openpyxl.utils.dataframe import dataframe_to_rows
+
+    # Kolon sırasını ayarla
+    kolon_sirasi = [
+        'SM', 'BS', 'Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Alış',
+        'Satış Fiyatı', 'Marj', 'kdv', 'yeni fiyat', 'yeni marj', 'Stok TL',
+        'üst mal grubu', 'mal grubu', 'Lift Skoru', 'Lift', 'Öneri Nedeni'
+    ]
+
+    # Mevcut kolonları kontrol et ve sırala
+    mevcut_kolonlar = [k for k in kolon_sirasi if k in df.columns]
+    df_ordered = df[mevcut_kolonlar].copy()
+
+    # Excel workbook oluştur
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_name
+
+    # Header yaz
+    for col_idx, col_name in enumerate(df_ordered.columns, 1):
+        ws.cell(row=1, column=col_idx, value=col_name)
+
+    # Data yaz (formül hariç)
+    yeni_marj_col_idx = None
+    if 'yeni marj' in df_ordered.columns:
+        yeni_marj_col_idx = list(df_ordered.columns).index('yeni marj') + 1
+
+    for row_idx, row in enumerate(df_ordered.itertuples(index=False), 2):
+        for col_idx, value in enumerate(row, 1):
+            if col_idx == yeni_marj_col_idx:
+                # Formül ekle - yeni marj kolonuna
+                # K=kdv (11. kolon), L=yeni fiyat (12. kolon), H=Alış (8. kolon)
+                formula = f'=IF(L{row_idx}="","",((L{row_idx}-((L{row_idx}/100)*(IF(K{row_idx}=1,1,IF(K{row_idx}=5,10,IF(K{row_idx}=6,20,0))))))-H{row_idx})/L{row_idx}*100)'
+                ws.cell(row=row_idx, column=col_idx, value=formula)
+            else:
+                ws.cell(row=row_idx, column=col_idx, value=value)
+
+    # BytesIO'ya yaz
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
 import math
 
 def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_grubu_map, weights=None):
@@ -1545,14 +1601,15 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                         'Alış': alis_fiyati,
                                         'Satış Fiyatı': satis_fiyati,
                                         'Marj': marj,
-                                        'KDV': row.get('KDV', row.get('kdv', '')),
+                                        'kdv': row.get('kdv', row.get('KDV', '')),
                                         'yeni fiyat': '',  # Kullanıcı dolduracak
-                                        'yeni marj': '',  # Kullanıcı dolduracak
+                                        'yeni marj': '',  # Formül ile hesaplanacak
                                         'Stok TL': stok_tl,
+                                        'üst mal grubu': row.get('üst mal grubu', ''),
+                                        'mal grubu': row.get('mal grubu', ''),
                                         'Lift Skoru': round(fit_score, 1),
                                         'Lift': round(lift, 2),
-                                        'Öneri Nedeni': neden,
-                                        'SKU Güvenilir': '✅' if sku_trusted else '⚠️'
+                                        'Öneri Nedeni': neden
                                     })
 
                                 # DataFrame oluştur ve sırala
@@ -1614,11 +1671,8 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                         st.markdown("---")
                         st.markdown("### 📥 Excel İndir")
 
-                        # Excel'e dönüştür
-                        output = io.BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            filtered_sonuc.to_excel(writer, index=False, sheet_name='Kampanya Önerisi')
-                        output.seek(0)
+                        # Excel'e dönüştür (formüllü)
+                        output = write_excel_with_formulas(filtered_sonuc, sheet_name='Kampanya Önerisi')
 
                         st.download_button(
                             label="📥 Kampanya Önerisini İndir (Excel)",
@@ -1629,7 +1683,7 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                             use_container_width=True
                         )
 
-                        st.caption("💡 Excel'i indirin, 'yeni fiyat' kolonunu doldurun ve kampanyayı başlatın.")
+                        st.caption("💡 Excel'i indirin, 'yeni fiyat' kolonunu doldurun → 'yeni marj' otomatik hesaplanır.")
 
                 else:
                     st.warning("👆 En az bir mağaza seçin.")
@@ -1789,6 +1843,8 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                     magaza_adi = MAGAZALAR.get(magaza_kodu, row.get('Mağaza Adı', ''))
 
                                     sonuclar.append({
+                                        'SM': row.get('SM', ''),
+                                        'BS': row.get('BS', ''),
                                         'Kod': magaza_kodu,
                                         'Mağaza Adı': magaza_adi,
                                         'Ürün Kodu': urun_kodu,
@@ -1797,13 +1853,15 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         'Alış': alis_fiyati,
                                         'Satış Fiyatı': satis_fiyati,
                                         'Marj': marj,
+                                        'kdv': row.get('kdv', row.get('KDV', '')),
                                         'yeni fiyat': '',
-                                        'yeni marj': '',
+                                        'yeni marj': '',  # Formül ile hesaplanacak
                                         'Stok TL': stok_tl,
+                                        'üst mal grubu': row.get('üst mal grubu', ''),
+                                        'mal grubu': row.get('mal grubu', ''),
                                         'Lift Skoru': round(fit_score, 1),
                                         'Lift': round(lift, 2),
-                                        'Öneri Nedeni': neden,
-                                        'SKU Güvenilir': '✅' if sku_trusted else '⚠️'
+                                        'Öneri Nedeni': neden
                                     })
 
                                 sonuc_df = pd.DataFrame(sonuclar)
@@ -1847,10 +1905,8 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                         st.markdown("---")
                         st.markdown("### 📥 Excel İndir")
 
-                        output = io.BytesIO()
-                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                            filtered_sonuc.to_excel(writer, index=False, sheet_name='WhatsApp Kampanya')
-                        output.seek(0)
+                        # Excel'e dönüştür (formüllü)
+                        output = write_excel_with_formulas(filtered_sonuc, sheet_name='WhatsApp Kampanya')
 
                         st.download_button(
                             label="📥 WhatsApp Kanalı Kampanya Önerisini İndir",
@@ -1860,6 +1916,8 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                             type="primary",
                             use_container_width=True
                         )
+
+                        st.caption("💡 Excel'i indirin, 'yeni fiyat' kolonunu doldurun → 'yeni marj' otomatik hesaplanır.")
 
         except Exception as e:
             st.error(f"❌ Excel okuma hatası: {str(e)}")
