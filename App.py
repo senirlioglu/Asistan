@@ -1398,12 +1398,12 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                 st.markdown("---")
 
                 # =============================================================================
-                # ADIM 2: FİLTRELEME (SM → BS → MAĞAZA) - OPTİMİZE v2
+                # ADIM 2: FİLTRELEME (SM → BS → MAĞAZA) - OPTİMİZE v3
                 # =============================================================================
                 st.markdown("### 2️⃣ Mağaza Filtresi")
 
                 # Hiyerarşiyi 1 KERE hesapla, session_state'e kaydet
-                stok_hash = hash(tuple(stok_df['Kod'].astype(str).head(100)))  # Basit hash
+                stok_hash = hash(tuple(stok_df['Kod'].astype(str).head(100)))
                 if st.session_state.get('stok_hash') != stok_hash:
                     # Sadece gerekli kolonlarla küçük df
                     small_cols = [c for c in ['SM', 'BS', 'Kod', 'Mağaza Adı'] if c in stok_df.columns]
@@ -1455,76 +1455,90 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                 smbs_to_opt = st.session_state.get('filter_smbs_to_opt', {})
                 all_opts = st.session_state.get('filter_all_opts', [])
 
-                # Form ile rerun fırtınasını önle
-                with st.form("filtre_form"):
-                    col_sm, col_bs = st.columns(2)
+                # FORM YOK - Anlık güncelleme için session_state kullan
+                col_sm, col_bs = st.columns(2)
 
-                    with col_sm:
-                        secili_sm = st.multiselect(
-                            "SM Seçin (opsiyonel):",
-                            options=sm_list,
-                            key="sm_secim_form",
-                            help="Boş bırakırsanız tüm SM'ler dahil edilir"
-                        )
-
-                    # BS listesini SM'e göre filtrele (dict lookup - hızlı!)
-                    if secili_sm:
-                        bs_listesi = sorted(set().union(*[set(sm_to_bs.get(sm, [])) for sm in secili_sm]))
-                    else:
-                        bs_listesi = bs_all
-
-                    with col_bs:
-                        secili_bs = st.multiselect(
-                            "BS Seçin (opsiyonel):",
-                            options=bs_listesi,
-                            key="bs_secim_form",
-                            help="Boş bırakırsanız tüm BS'ler dahil edilir"
-                        )
-
-                    # Mağaza listesini dict lookup ile getir (DataFrame filtreleme YOK!)
-                    if secili_sm and secili_bs:
-                        magaza_options = sorted(set().union(*[
-                            set(smbs_to_opt.get((sm, bs), []))
-                            for sm in secili_sm for bs in secili_bs
-                        ]))
-                    elif secili_sm:
-                        magaza_options = sorted(set().union(*[set(sm_to_opt.get(sm, [])) for sm in secili_sm]))
-                    elif secili_bs:
-                        magaza_options = sorted(set().union(*[set(bs_to_opt.get(bs, [])) for bs in secili_bs]))
-                    else:
-                        magaza_options = all_opts
-
-                    secili_magazalar = st.multiselect(
-                        "Mağaza Seçin (zorunlu):",
-                        options=magaza_options,
-                        key="magaza_coklu_secim_form",
-                        help="Kampanya yapılacak mağazaları seçin"
+                with col_sm:
+                    secili_sm = st.multiselect(
+                        "SM Seçin (opsiyonel):",
+                        options=sm_list,
+                        default=st.session_state.get('kamp_secili_sm', []),
+                        key="kamp_sm_select",
+                        help="Boş bırakırsanız tüm SM'ler dahil edilir"
                     )
+                    # Seçim değiştiyse kaydet
+                    if secili_sm != st.session_state.get('kamp_secili_sm', []):
+                        st.session_state['kamp_secili_sm'] = secili_sm
+                        st.session_state['kamp_secili_bs'] = []  # BS sıfırla
+                        st.session_state['kamp_secili_magazalar'] = []  # Mağaza sıfırla
 
-                    # Form submit butonu
-                    apply = st.form_submit_button("🔍 Filtre Uygula", use_container_width=True)
+                # BS listesini SM'e göre getir (dict lookup - anlık!)
+                secili_sm_state = st.session_state.get('kamp_secili_sm', [])
+                if secili_sm_state:
+                    bs_listesi = sorted(set().union(*[set(sm_to_bs.get(sm, [])) for sm in secili_sm_state]))
+                else:
+                    bs_listesi = bs_all
 
-                # Form submit edildiğinde session_state'e kaydet
-                if apply and secili_magazalar:
-                    st.session_state['kampanya_secili_magazalar'] = secili_magazalar
-                    st.session_state['kampanya_stok_df'] = stok_df
+                with col_bs:
+                    secili_bs = st.multiselect(
+                        "BS Seçin (opsiyonel):",
+                        options=bs_listesi,
+                        default=[b for b in st.session_state.get('kamp_secili_bs', []) if b in bs_listesi],
+                        key="kamp_bs_select",
+                        help="Boş bırakırsanız tüm BS'ler dahil edilir"
+                    )
+                    if secili_bs != st.session_state.get('kamp_secili_bs', []):
+                        st.session_state['kamp_secili_bs'] = secili_bs
+                        st.session_state['kamp_secili_magazalar'] = []  # Mağaza sıfırla
 
-                # Session state'den oku (form submit sonrası da çalışsın)
+                # Mağaza listesini dict lookup ile getir (anlık!)
+                secili_bs_state = st.session_state.get('kamp_secili_bs', [])
+                if secili_sm_state and secili_bs_state:
+                    magaza_options = sorted(set().union(*[
+                        set(smbs_to_opt.get((sm, bs), []))
+                        for sm in secili_sm_state for bs in secili_bs_state
+                    ]))
+                elif secili_sm_state:
+                    magaza_options = sorted(set().union(*[set(sm_to_opt.get(sm, [])) for sm in secili_sm_state]))
+                elif secili_bs_state:
+                    magaza_options = sorted(set().union(*[set(bs_to_opt.get(bs, [])) for bs in secili_bs_state]))
+                else:
+                    magaza_options = all_opts
+
+                secili_magazalar = st.multiselect(
+                    "Mağaza Seçin (zorunlu):",
+                    options=magaza_options,
+                    default=[m for m in st.session_state.get('kamp_secili_magazalar', []) if m in magaza_options],
+                    key="kamp_magaza_select",
+                    help="Kampanya yapılacak mağazaları seçin"
+                )
+
+                # Seçim onay butonu
+                col_onay, col_temizle = st.columns([3, 1])
+                with col_onay:
+                    if st.button("✅ Seçimi Onayla", type="primary", use_container_width=True, disabled=len(secili_magazalar) == 0):
+                        st.session_state['kamp_secili_magazalar'] = secili_magazalar
+                        st.session_state['kampanya_secili_magazalar'] = secili_magazalar
+                        # Excel cache temizle
+                        if 'kamp_excel_bytes' in st.session_state:
+                            del st.session_state['kamp_excel_bytes']
+                        if 'kampanya_sonuc' in st.session_state:
+                            del st.session_state['kampanya_sonuc']
+
+                with col_temizle:
+                    if st.button("🔄 Temizle", use_container_width=True):
+                        for key in ['kamp_secili_sm', 'kamp_secili_bs', 'kamp_secili_magazalar',
+                                    'kampanya_secili_magazalar', 'kampanya_sonuc', 'kamp_excel_bytes']:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        st.rerun()
+
+                # Session state'den oku
                 if st.session_state.get('kampanya_secili_magazalar'):
                     secili_magazalar_aktif = st.session_state['kampanya_secili_magazalar']
                     stok_df_aktif = st.session_state.get('kampanya_stok_df', stok_df)
 
-                    col_info, col_clear = st.columns([3, 1])
-                    with col_info:
-                        st.success(f"✅ {len(secili_magazalar_aktif)} mağaza seçildi")
-                    with col_clear:
-                        if st.button("🔄 Seçimi Temizle"):
-                            del st.session_state['kampanya_secili_magazalar']
-                            if 'kampanya_stok_df' in st.session_state:
-                                del st.session_state['kampanya_stok_df']
-                            if 'kampanya_sonuc' in st.session_state:
-                                del st.session_state['kampanya_sonuc']
-                            st.rerun()
+                    st.success(f"✅ {len(secili_magazalar_aktif)} mağaza onaylandı - Analiz edebilirsiniz")
 
                     # Seçili mağaza kodlarını al
                     secili_magaza_kodlari = [m.split(" - ")[0].strip() for m in secili_magazalar_aktif]
