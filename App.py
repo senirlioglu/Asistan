@@ -164,7 +164,7 @@ URUN_EMOJILERI = {
     "TAVA": "🍳", "TENCERE": "🍲", "BARDAK": "🥛", "BIÇAK": "🔪", "FİNCAN": "☕",
     "ÇATAL": "🍴", "KAŞIK": "🥄", "TABAK": "🍽️", "KAVANOZ": "🫙", "KEPÇe": "🥄",
     # Tekstil
-    "TİŞÖRT": "👕", "KAZAK": "🧥", "BERE": "🧢", "HALI": "🪴", "KİLİM": "🪴",
+    "TİŞÖRT": "👕", "KAZAK": "🧥", "BERE": "🧢", "HALI": "🛋️", "KİLİM": "🛋️",
     # Genel kategoriler
     "TV": "📺", "SÜPÜRGE": "🧹", "KLİMA": "❄️",
     "KAHVE": "☕", "ÇAY": "🍵", "TOST": "🥪", "WAFFLE": "🧇",
