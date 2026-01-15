@@ -151,7 +151,7 @@ URUN_EMOJILERI = {
     "EL ARABASI": "🛒", "BUDAMA": "✂️", "AIRFRYER": "🍟", "POWERBANK": "🔋",
     "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
     "BİSİKLET": "🚲", "VANTİLATÖR": "🌀", "BUZDOLABI": "❄️", "DONDURUC": "🧊",
-    "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️",
+    "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️", "SAKLAMA KAB": "📦",
     # Meyve ve sebzeler
     "MUZ": "🍌", "PATATES": "🥔", "SOĞAN": "🧅", "DOMATES": "🍅", "ELMA": "🍎",
     "PORTAKAL": "🍊", "LİMON": "🍋", "ÜZÜM": "🍇", "ÇİLEK": "🍓", "KARPUZ": "🍉",
@@ -160,6 +160,11 @@ URUN_EMOJILERI = {
     # Tavuk ve et
     "TAVUK": "🍗", "BAGET": "🍗", "BUT": "🍗", "PİLİÇ": "🍗", "KANAT": "🍗",
     "ET": "🥩", "KÖFTE": "🍖", "SUCUK": "🥓", "SOSIS": "🌭",
+    # Mutfak eşyaları
+    "TAVA": "🍳", "TENCERE": "🍲", "BARDAK": "🥛", "BIÇAK": "🔪", "FİNCAN": "☕",
+    "ÇATAL": "🍴", "KAŞIK": "🥄", "TABAK": "🍽️", "KAVANOZ": "🫙", "KEPÇe": "🥄",
+    # Tekstil
+    "TİŞÖRT": "👕", "KAZAK": "🧥", "BERE": "🧢", "HALI": "🪴", "KİLİM": "🪴",
     # Genel kategoriler
     "TV": "📺", "SÜPÜRGE": "🧹", "KLİMA": "❄️",
     "KAHVE": "☕", "ÇAY": "🍵", "TOST": "🥪", "WAFFLE": "🧇",
@@ -168,11 +173,10 @@ URUN_EMOJILERI = {
     "KAMP": "⛺", "BAHÇE": "🌿", "MANGAL": "🔥", "ŞEMSİYE": "☂️",
     "ARABA": "🚗", "AKÜLÜ": "🔋", "OYUNCAK": "🧸", "BEBEK": "👶",
     "GÖMLEK": "👔", "EŞOFMAN": "🏃", "PANTOLON": "👖", "MONT": "🧥",
-    "PERDE": "🪟", "HALI": "🏠", "DOLAP": "🗄️", "MASA": "🪑", "SANDALYE": "🪑",
-    "BARDAK": "🥛", "FİNCAN": "☕", "TABAK": "🍽️", "KAVANOZ": "🫙", "TENCERE": "🍳",
+    "PERDE": "🪟", "DOLAP": "🗄️", "MASA": "🪑", "SANDALYE": "🪑",
     "TERMOS": "🧊", "SAAT": "⌚", "KAMERA": "📷", "TELEFON": "📱",
     "ÇAPA": "🚜", "MUG": "☕", "SEPETİ": "🧺", "VALIZ": "🧳",
-    "KUTU": "📦", "RAF": "📚", "AYNA": "🪞", "LAMBa": "💡",
+    "KUTU": "📦", "RAF": "📚", "AYNA": "🪞", "LAMBA": "💡",
     "DETERJAN": "🧴", "ŞAMPUAN": "🧴", "HAVLU": "🛁", "YORGAN": "🛏️",
     "BOYA": "🎨", "FIRIN": "🔥", "OCAK": "🔥", "SET": "📦",
     "YASTIK": "🛏️", "PASPAS": "🧹", "POŞET": "🛍️", "ÇÖP": "🗑️",
