@@ -149,11 +149,13 @@ PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025
 URUN_EMOJILERI = {
     # Spesifik olanlar önce (uzun kelimeler) - "ET" içeren kelimeler önce!
     "SET": "📦", "SEPET": "🧺", "SEPETİ": "🧺", "KESET": "🧹",
+    "KAHVALTILIK": "🥣", "BESLENME KUTUSU": "🍱", "KASE": "🥣",
     "EL ARABASI": "🛒", "BUDAMA": "✂️", "AIRFRYER": "🍟", "POWERBANK": "🔋",
     "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
     "BİSİKLET": "🚲", "VANTİLATÖR": "🌀", "BUZDOLABI": "❄️", "DONDURUC": "🧊",
     "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️", "SAKLAMA KAB": "📦",
     "MEYVE BIÇAĞI": "🔪", "BIÇAK SETİ": "🔪", "BIÇAK SETI": "🔪",
+    "AYAKKABI": "👟", "ÇEKECEĞİ": "🪝", "APARAT": "🔧", "PONPON": "🧶",
     # Meyve ve sebzeler
     "MUZ": "🍌", "PATATES": "🥔", "SOĞAN": "🧅", "DOMATES": "🍅", "ELMA": "🍎",
     "PORTAKAL": "🍊", "LİMON": "🍋", "ÜZÜM": "🍇", "ÇİLEK": "🍓", "KARPUZ": "🍉",
