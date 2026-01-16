@@ -147,11 +147,13 @@ PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025
 # ÜRÜN EMOJİLERİ
 # =============================================================================
 URUN_EMOJILERI = {
-    # Spesifik olanlar önce (uzun kelimeler)
+    # Spesifik olanlar önce (uzun kelimeler) - "ET" içeren kelimeler önce!
+    "SET": "📦", "SEPET": "🧺", "SEPETİ": "🧺", "KESET": "🧹",
     "EL ARABASI": "🛒", "BUDAMA": "✂️", "AIRFRYER": "🍟", "POWERBANK": "🔋",
     "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
     "BİSİKLET": "🚲", "VANTİLATÖR": "🌀", "BUZDOLABI": "❄️", "DONDURUC": "🧊",
     "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️", "SAKLAMA KAB": "📦",
+    "MEYVE BIÇAĞI": "🔪", "BIÇAK SETİ": "🔪", "BIÇAK SETI": "🔪",
     # Meyve ve sebzeler
     "MUZ": "🍌", "PATATES": "🥔", "SOĞAN": "🧅", "DOMATES": "🍅", "ELMA": "🍎",
     "PORTAKAL": "🍊", "LİMON": "🍋", "ÜZÜM": "🍇", "ÇİLEK": "🍓", "KARPUZ": "🍉",
@@ -175,10 +177,10 @@ URUN_EMOJILERI = {
     "GÖMLEK": "👔", "EŞOFMAN": "🏃", "PANTOLON": "👖", "MONT": "🧥",
     "PERDE": "🪟", "DOLAP": "🗄️", "MASA": "🪑", "SANDALYE": "🪑",
     "TERMOS": "🧊", "SAAT": "⌚", "KAMERA": "📷", "TELEFON": "📱",
-    "ÇAPA": "🚜", "MUG": "☕", "SEPETİ": "🧺", "VALIZ": "🧳",
+    "ÇAPA": "🚜", "MUG": "☕", "VALIZ": "🧳",
     "KUTU": "📦", "RAF": "📚", "AYNA": "🪞", "LAMBA": "💡",
     "DETERJAN": "🧴", "ŞAMPUAN": "🧴", "HAVLU": "🛁", "YORGAN": "🛏️",
-    "BOYA": "🎨", "FIRIN": "🔥", "OCAK": "🔥", "SET": "📦",
+    "BOYA": "🎨", "FIRIN": "🔥", "OCAK": "🔥",
     "YASTIK": "🛏️", "PASPAS": "🧹", "POŞET": "🛍️", "ÇÖP": "🗑️",
 }
 
@@ -845,16 +847,20 @@ def parse_kampanya_maili(mail_text):
 # =============================================================================
 def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun_sayisi=None):
     """WhatsApp mesajı oluştur"""
+    from datetime import datetime, timedelta
+
+    # Yarının tarihini hesapla
+    yarin = (datetime.now() + timedelta(days=1)).strftime("%d.%m.%Y")
 
     secili_sayi = len(secili_urunler)
 
     mesaj = f"🛒 A101 {magaza_adi}\n\n"
 
-    # Başlık
+    # Başlık - yarına özel
     if toplam_urun_sayisi:
-        mesaj += f"🔥 BUGÜNE ÖZEL – {toplam_urun_sayisi} üründe indirim var!\n"
+        mesaj += f"🔥 YARINA ÖZEL – {toplam_urun_sayisi} üründe indirim var!\n"
     else:
-        mesaj += "🔥 BUGÜNE ÖZEL!\n"
+        mesaj += "🔥 YARINA ÖZEL!\n"
 
     mesaj += f"⭐ Aşağıdakiler öne çıkan {secili_sayi} fırsat:\n\n"
 
@@ -868,11 +874,13 @@ def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun
         if urun.get('eski_fiyat'):
             mesaj += f" | Eski: {urun['eski_fiyat']}₺"
         if urun.get('indirim'):
-            mesaj += f" (%{urun['indirim']} İNDİRİM)"
+            # İndirim küsuratını kaldır
+            indirim_int = int(float(str(urun['indirim']).replace(',', '.')))
+            mesaj += f" (%{indirim_int} İNDİRİM)"
         mesaj += "\n\n"
 
-    # Alt bilgi
-    mesaj += f"📅 Son gün: {bitis_tarihi} | 📍 Stoklarla sınırlıdır\n\n"
+    # Alt bilgi - yarın tarihi kullan
+    mesaj += f"📅 Kampanya başlangıç: {yarin} | 📍 Stoklarla sınırlıdır\n\n"
     mesaj += "Listeden çıkmak için ÇIKIŞ yazın."
 
     return mesaj
@@ -1284,10 +1292,19 @@ if mod_secim == "📨 Mesaj Oluşturucu":
                 st.markdown("**Mesaj önizleme:**")
                 st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
 
-                # Kopyalanabilir metin
-                with st.expander("📋 Kopyalamak için tıklayın"):
-                    st.code(mesaj, language=None)
-                    st.caption("👆 Sağ üst köşedeki kopyala ikonuna tıklayın")
+                # Düzenlenebilir ve kopyalanabilir metin
+                st.markdown("**📝 Mesajı Düzenle ve Kopyala:**")
+                mesaj_duzenle = st.text_area(
+                    "Mesajı düzenleyebilir, sonra Ctrl+A ile seçip Ctrl+C ile kopyalayabilirsiniz:",
+                    value=mesaj,
+                    height=300,
+                    key="mesaj_duzenle_area"
+                )
+                st.caption("💡 İpucu: Kutuya tıklayın → Ctrl+A (tümünü seç) → Ctrl+C (kopyala)")
+
+                # Session state'e düzenlenmiş mesajı kaydet
+                if mesaj_duzenle != mesaj:
+                    mesaj = mesaj_duzenle
 
                 # Kontroller
                 st.markdown("---")
