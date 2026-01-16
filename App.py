@@ -151,7 +151,7 @@ URUN_EMOJILERI = {
     "EL ARABASI": "🛒", "BUDAMA": "✂️", "AIRFRYER": "🍟", "POWERBANK": "🔋",
     "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
     "BİSİKLET": "🚲", "VANTİLATÖR": "🌀", "BUZDOLABI": "❄️", "DONDURUC": "🧊",
-    "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️",
+    "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️", "SAKLAMA KAB": "📦",
     # Meyve ve sebzeler
     "MUZ": "🍌", "PATATES": "🥔", "SOĞAN": "🧅", "DOMATES": "🍅", "ELMA": "🍎",
     "PORTAKAL": "🍊", "LİMON": "🍋", "ÜZÜM": "🍇", "ÇİLEK": "🍓", "KARPUZ": "🍉",
@@ -160,6 +160,11 @@ URUN_EMOJILERI = {
     # Tavuk ve et
     "TAVUK": "🍗", "BAGET": "🍗", "BUT": "🍗", "PİLİÇ": "🍗", "KANAT": "🍗",
     "ET": "🥩", "KÖFTE": "🍖", "SUCUK": "🥓", "SOSIS": "🌭",
+    # Mutfak eşyaları
+    "TAVA": "🍳", "TENCERE": "🍲", "BARDAK": "🥛", "BIÇAK": "🔪", "FİNCAN": "☕",
+    "ÇATAL": "🍴", "KAŞIK": "🥄", "TABAK": "🍽️", "KAVANOZ": "🫙", "KEPÇe": "🥄",
+    # Tekstil
+    "TİŞÖRT": "👕", "KAZAK": "🧥", "BERE": "🧢", "HALI": "🛋️", "KİLİM": "🛋️",
     # Genel kategoriler
     "TV": "📺", "SÜPÜRGE": "🧹", "KLİMA": "❄️",
     "KAHVE": "☕", "ÇAY": "🍵", "TOST": "🥪", "WAFFLE": "🧇",
@@ -168,11 +173,10 @@ URUN_EMOJILERI = {
     "KAMP": "⛺", "BAHÇE": "🌿", "MANGAL": "🔥", "ŞEMSİYE": "☂️",
     "ARABA": "🚗", "AKÜLÜ": "🔋", "OYUNCAK": "🧸", "BEBEK": "👶",
     "GÖMLEK": "👔", "EŞOFMAN": "🏃", "PANTOLON": "👖", "MONT": "🧥",
-    "PERDE": "🪟", "HALI": "🏠", "DOLAP": "🗄️", "MASA": "🪑", "SANDALYE": "🪑",
-    "BARDAK": "🥛", "FİNCAN": "☕", "TABAK": "🍽️", "KAVANOZ": "🫙", "TENCERE": "🍳",
+    "PERDE": "🪟", "DOLAP": "🗄️", "MASA": "🪑", "SANDALYE": "🪑",
     "TERMOS": "🧊", "SAAT": "⌚", "KAMERA": "📷", "TELEFON": "📱",
     "ÇAPA": "🚜", "MUG": "☕", "SEPETİ": "🧺", "VALIZ": "🧳",
-    "KUTU": "📦", "RAF": "📚", "AYNA": "🪞", "LAMBa": "💡",
+    "KUTU": "📦", "RAF": "📚", "AYNA": "🪞", "LAMBA": "💡",
     "DETERJAN": "🧴", "ŞAMPUAN": "🧴", "HAVLU": "🛁", "YORGAN": "🛏️",
     "BOYA": "🎨", "FIRIN": "🔥", "OCAK": "🔥", "SET": "📦",
     "YASTIK": "🛏️", "PASPAS": "🧹", "POŞET": "🛍️", "ÇÖP": "🗑️",
@@ -1881,7 +1885,9 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         except:
                                             satis_fiyati = 0
 
-                                    mal_grubu = urun_mal_grubu_map.get(urun_kodu)
+                                    # Mal grubunu bul
+                                    mal_grubu = urun_mal_grubu_map.get(urun_kodu) or row.get('mal grubu', '')
+
                                     store_total = store_totals.get(magaza_kodu, 0)
 
                                     if store_total == 0:
@@ -1900,6 +1906,7 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                             fit_score = 30
                                             neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
                                     else:
+                                        # SKU bazlı lift
                                         sku_qty = store_sku_qty.get((magaza_kodu, urun_kodu), 0)
                                         bench_qty = bench_sku_qty.get(urun_kodu, 0)
 
@@ -1907,27 +1914,33 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         bench_share = (bench_qty / (bench_total + eps)) * 100
 
                                         lift = (store_share + eps) / (bench_share + eps)
-                                        fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
+                                        fit_sku = min(max((lift - 0.5) / 1.5, 0), 1) * 100
+
+                                        # Mal grubu bazlı lift
+                                        grp_qty = store_grp_qty.get((magaza_kodu, mal_grubu), 0) if mal_grubu else 0
+                                        grp_bench = bench_grp_qty.get(mal_grubu, 0) if mal_grubu else 0
+
+                                        if grp_bench > 0:
+                                            grp_share = (grp_qty / (store_total + eps)) * 100
+                                            grp_bench_share = (grp_bench / (bench_total + eps)) * 100
+                                            lift_grp = (grp_share + eps) / (grp_bench_share + eps)
+                                            fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
+                                        else:
+                                            fit_grp = fit_sku
+
+                                        # Hierarchical blend (SKU -> mal grubu)
+                                        alpha = sku_qty / (sku_qty + 5)
+                                        fit_score = alpha * fit_sku + (1 - alpha) * fit_grp
 
                                         sku_trusted = sku_qty >= 3 and bench_qty >= 30
 
-                                        if mal_grubu and not sku_trusted:
-                                            grp_qty = store_grp_qty.get((magaza_kodu, mal_grubu), 0)
-                                            grp_bench = bench_grp_qty.get(mal_grubu, 0)
-
-                                            grp_share = (grp_qty / (store_total + eps)) * 100
-                                            grp_bench_share = (grp_bench / (bench_total + eps)) * 100
-
-                                            lift_grp = (grp_share + eps) / (grp_bench_share + eps)
-                                            fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
-
-                                            alpha = sku_qty / (sku_qty + 5)
-                                            fit_score = alpha * fit_score + (1 - alpha) * fit_grp
-
+                                        # Neden öneriliyor?
                                         if lift > 1.5:
-                                            neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
+                                            neden = f"🔥 Yüksek SKU lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
                                         elif lift > 1.0:
-                                            neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                            neden = f"✅ Pozitif SKU lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                        elif mal_grubu and fit_grp > 60:
+                                            neden = f"📈 {mal_grubu} grubunda güçlü"
                                         elif stok > 10:
                                             neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
                                         else:
