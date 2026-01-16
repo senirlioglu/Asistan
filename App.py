@@ -849,10 +849,10 @@ def parse_kampanya_maili(mail_text):
 # =============================================================================
 def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun_sayisi=None):
     """WhatsApp mesajı oluştur"""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
-    # Yarının tarihini hesapla
-    yarin = (datetime.now() + timedelta(days=1)).strftime("%d.%m.%Y")
+    # Yazım tarihi (şu an)
+    yazim_tarihi = datetime.now().strftime("%d.%m.%Y %H:%M")
 
     secili_sayi = len(secili_urunler)
 
@@ -881,8 +881,9 @@ def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun
             mesaj += f" (%{indirim_int} İNDİRİM)"
         mesaj += "\n\n"
 
-    # Alt bilgi - yarın tarihi kullan
-    mesaj += f"📅 Kampanya başlangıç: {yarin} | 📍 Stoklarla sınırlıdır\n\n"
+    # Alt bilgi - son gün ve yazım tarihi
+    mesaj += f"📅 Son gün: {bitis_tarihi} | 📍 Stoklarla sınırlıdır\n"
+    mesaj += f"✏️ Yazım: {yazim_tarihi}\n\n"
     mesaj += "Listeden çıkmak için ÇIKIŞ yazın."
 
     return mesaj
