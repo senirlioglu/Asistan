@@ -203,28 +203,57 @@ import os
 def load_performans_data():
     """Performans verilerini yükle - Google Drive'dan yıllık veri (chunk indirme)"""
     import tempfile
+    import re
 
     file_id = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
     URL = "https://drive.google.com/uc?export=download"
 
     try:
         session = requests.Session()
+
+        # İlk istek
         r = session.get(URL, params={"id": file_id}, stream=True, timeout=120)
 
-        # confirm token (büyük dosyalar için)
+        # Confirmation token bul (cookie veya HTML'den)
         token = None
+
+        # 1. Cookie'den token ara
         for k, v in r.cookies.items():
             if k.startswith("download_warning"):
                 token = v
                 break
-        if token:
-            r = session.get(URL, params={"id": file_id, "confirm": token}, stream=True, timeout=300)
 
-        # HTML geldiyse parquet okumaya çalışma
+        # 2. HTML döndüyse içinden token çıkar
         ctype = (r.headers.get("Content-Type") or "").lower()
         if "text/html" in ctype:
-            head = r.raw.read(300, decode_content=True)
-            st.warning(f"⚠️ Drive HTML döndü, parquet değil. Content-Type={ctype}")
+            html_content = r.content.decode('utf-8', errors='ignore')
+
+            # confirm token'ı HTML'den çıkar
+            # Pattern: confirm=XXXX veya &confirm=XXXX
+            match = re.search(r'confirm=([0-9A-Za-z_-]+)', html_content)
+            if match:
+                token = match.group(1)
+
+            # Alternatif: uuid pattern ara
+            if not token:
+                match = re.search(r'&uuid=([^&"\']+)', html_content)
+                if match:
+                    # uuid varsa direkt confirm=t kullan
+                    token = "t"
+
+        # Token bulunduysa yeniden dene
+        if token:
+            r = session.get(URL, params={"id": file_id, "confirm": token}, stream=True, timeout=300)
+            ctype = (r.headers.get("Content-Type") or "").lower()
+
+        # Hala HTML ise son çare: confirm=t ile dene
+        if "text/html" in ctype:
+            r = session.get(URL, params={"id": file_id, "confirm": "t"}, stream=True, timeout=300)
+            ctype = (r.headers.get("Content-Type") or "").lower()
+
+        # Hala HTML dönüyorsa hata ver
+        if "text/html" in ctype:
+            st.warning("⚠️ Drive HTML döndürmeye devam ediyor. Dosya paylaşım izinlerini kontrol edin.")
             return None
 
         # Temp dosyaya chunk chunk indir
