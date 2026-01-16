@@ -198,67 +198,36 @@ def get_emoji(urun_adi):
 # PERFORMANS VERİSİ
 # =============================================================================
 import os
-import re
 import tempfile
 
-FILE_ID = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
-DRIVE_URL = "https://drive.google.com/uc?export=download"
-
-def _get_confirm_token_from_html(html: str):
-    """Drive'ın virüs taraması uyarı sayfasından confirm token çıkar"""
-    # confirm=XXXXX pattern (linklerde geçer)
-    m = re.search(r"confirm=([0-9A-Za-z_]+)", html)
-    if m:
-        return m.group(1)
-    # name="confirm" value="XXXXX" pattern (form içinde geçer)
-    m = re.search(r'name="confirm"\s+value="([^"]+)"', html)
-    if m:
-        return m.group(1)
-    return None
-
-def _download_drive_to_file(file_id: str, out_path: str, timeout=600):
-    """Google Drive'dan dosya indir - virüs uyarısını otomatik geç"""
-    s = requests.Session()
-
-    r = s.get(DRIVE_URL, params={"id": file_id}, stream=True, timeout=timeout)
-    ctype = (r.headers.get("Content-Type") or "").lower()
-
-    # HTML geldiyse uyarı/confirm sayfasıdır: token'ı bul ve tekrar dene
-    if "text/html" in ctype:
-        html = r.text
-        if "too many users" in html.lower():
-            raise RuntimeError("Drive download quota dolu: Too many users.")
-        token = _get_confirm_token_from_html(html)
-        if not token:
-            raise RuntimeError("Drive HTML döndü ama confirm token bulunamadı.")
-        r = s.get(DRIVE_URL, params={"id": file_id, "confirm": token}, stream=True, timeout=timeout)
-        ctype = (r.headers.get("Content-Type") or "").lower()
-        if "text/html" in ctype:
-            raise RuntimeError("Confirm token denendi ama hala HTML dönüyor. İzin/limit problemi olabilir.")
-
-    # Chunk chunk diske yaz
-    with open(out_path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1MB
-            if chunk:
-                f.write(chunk)
-
-    # Parquet signature kontrol (baş ve son PAR1)
-    with open(out_path, "rb") as f:
-        start = f.read(4)
-        f.seek(-4, os.SEEK_END)
-        end = f.read(4)
-    if start != b"PAR1" or end != b"PAR1":
-        raise RuntimeError(f"İndirilen dosya parquet değil / yarım indi. start={start!r}, end={end!r}")
+PARQUET_URL = "https://tlcgcdiycgfxpxwzkwuf.supabase.co/storage/v1/object/public/Musteri/2025veri.parquet"
 
 @st.cache_data(ttl=3600)
 def load_performans_data():
-    """Performans verilerini yükle - Google Drive'dan yıllık veri"""
+    """Performans verilerini yükle - Supabase Storage'dan yıllık veri"""
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".parquet")
     tmp_path = tmp.name
     tmp.close()
 
     try:
-        _download_drive_to_file(FILE_ID, tmp_path, timeout=600)
+        # Supabase'den direkt indir (redirect yok, temiz URL)
+        r = requests.get(PARQUET_URL, stream=True, timeout=600)
+        r.raise_for_status()
+
+        # Chunk chunk diske yaz
+        with open(tmp_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1MB
+                if chunk:
+                    f.write(chunk)
+
+        # Parquet signature kontrol (baş ve son PAR1)
+        with open(tmp_path, "rb") as f:
+            start = f.read(4)
+            f.seek(-4, os.SEEK_END)
+            end = f.read(4)
+        if start != b"PAR1" or end != b"PAR1":
+            raise RuntimeError(f"Dosya parquet değil / yarım indi. start={start!r}, end={end!r}")
+
         return pd.read_parquet(tmp_path)
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
