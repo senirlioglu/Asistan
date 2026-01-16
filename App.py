@@ -140,8 +140,8 @@ MAGAZALAR = {
 
 WHATSAPP_NUMBER = "905399311842"
 
-# Performans verisi URL'leri (Asistan reposundan)
-PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025_yillik.parquet"
+# Performans verisi URL'leri (Google Drive - Yıllık veri)
+PERFORMANS_URL_2025 = "https://drive.google.com/uc?id=12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6&export=download"
 
 # =============================================================================
 # ÜRÜN EMOJİLERİ
@@ -282,7 +282,10 @@ def prepare_magaza_hierarchy(stok_df):
     return base, sm_list, bs_all, sm_to_bs
 
 def prepare_lift_aggregations(performans_df):
-    """Lift hesaplaması için aggregasyonları önceden hazırla (döngü dışında)"""
+    """
+    Lift hesaplaması için aggregasyonları önceden hazırla (döngü dışında)
+    3 Seviyeli Hiyerarşi: SKU → Mal Grubu → Üst Mal Grubu
+    """
     # Spot verilerini filtrele (bir kere)
     spot_mask = performans_df['Nitelik'].str.lower().str.contains('spot', na=False)
     spot_df = performans_df[spot_mask].copy()
@@ -292,22 +295,32 @@ def prepare_lift_aggregations(performans_df):
     spot_df['Urun_Kod'] = spot_df['Urun_Kod'].astype(str).str.strip()
 
     # Benchmark toplam
-    bench_total = spot_df['Adet'].sum()
+    bench_total = spot_df['Satis_Miktari'].sum()
 
     # Mağaza bazlı toplamlar
-    store_totals = spot_df.groupby('Magaza_Kod')['Adet'].sum().to_dict()
+    store_totals = spot_df.groupby('Magaza_Kod')['Satis_Miktari'].sum().to_dict()
 
     # SKU bazlı - mağaza
-    store_sku_qty = spot_df.groupby(['Magaza_Kod', 'Urun_Kod'])['Adet'].sum().to_dict()
+    store_sku_qty = spot_df.groupby(['Magaza_Kod', 'Urun_Kod'])['Satis_Miktari'].sum().to_dict()
 
     # SKU bazlı - benchmark
-    bench_sku_qty = spot_df.groupby('Urun_Kod')['Adet'].sum().to_dict()
+    bench_sku_qty = spot_df.groupby('Urun_Kod')['Satis_Miktari'].sum().to_dict()
 
     # Mal grubu bazlı - mağaza
-    store_grp_qty = spot_df.groupby(['Magaza_Kod', 'Mal_Grubu'])['Adet'].sum().to_dict()
+    store_grp_qty = spot_df.groupby(['Magaza_Kod', 'Mal_Grubu'])['Satis_Miktari'].sum().to_dict()
 
     # Mal grubu bazlı - benchmark
-    bench_grp_qty = spot_df.groupby('Mal_Grubu')['Adet'].sum().to_dict()
+    bench_grp_qty = spot_df.groupby('Mal_Grubu')['Satis_Miktari'].sum().to_dict()
+
+    # Üst mal grubu bazlı - mağaza
+    store_ust_grp_qty = spot_df.groupby(['Magaza_Kod', 'Ust_Mal_Grubu'])['Satis_Miktari'].sum().to_dict()
+
+    # Üst mal grubu bazlı - benchmark
+    bench_ust_grp_qty = spot_df.groupby('Ust_Mal_Grubu')['Satis_Miktari'].sum().to_dict()
+
+    # Ürün kodu -> Mal grubu ve Üst mal grubu mapping
+    urun_mal_grubu = spot_df.groupby('Urun_Kod')['Mal_Grubu'].first().to_dict()
+    urun_ust_mal_grubu = spot_df.groupby('Urun_Kod')['Ust_Mal_Grubu'].first().to_dict()
 
     return {
         'bench_total': bench_total,
@@ -315,7 +328,11 @@ def prepare_lift_aggregations(performans_df):
         'store_sku_qty': store_sku_qty,
         'bench_sku_qty': bench_sku_qty,
         'store_grp_qty': store_grp_qty,
-        'bench_grp_qty': bench_grp_qty
+        'bench_grp_qty': bench_grp_qty,
+        'store_ust_grp_qty': store_ust_grp_qty,
+        'bench_ust_grp_qty': bench_ust_grp_qty,
+        'urun_mal_grubu': urun_mal_grubu,
+        'urun_ust_mal_grubu': urun_ust_mal_grubu
     }
 
 
@@ -408,10 +425,10 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
         return kampanya_urunleri, 0
 
     # Paydalar (toplam değerler)
-    TOTAL_ADET_store = store_df['Adet'].sum()
-    TOTAL_CIRO_store = store_df['Ciro'].sum()
-    TOTAL_ADET_bench = bench_df['Adet'].sum()
-    TOTAL_CIRO_bench = bench_df['Ciro'].sum()
+    TOTAL_ADET_store = store_df['Satis_Miktari'].sum()
+    TOTAL_CIRO_store = store_df['Satis_Hasilati_VD'].sum()
+    TOTAL_ADET_bench = bench_df['Satis_Miktari'].sum()
+    TOTAL_CIRO_bench = bench_df['Satis_Hasilati_VD'].sum()
 
     # Bölgedeki mağaza sayısı (ortalama için)
     n_magaza = bench_df['Magaza_Kod'].nunique()
@@ -426,10 +443,10 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
         store_g = store_df[store_df['Mal_Grubu'] == g]
         bench_g = bench_df[bench_df['Mal_Grubu'] == g]
 
-        share_qty_store = (store_g['Adet'].sum() / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
-        share_qty_bench = (bench_g['Adet'].sum() / TOTAL_ADET_bench) if TOTAL_ADET_bench > 0 else 0
-        share_ciro_store = (store_g['Ciro'].sum() / TOTAL_CIRO_store) if TOTAL_CIRO_store > 0 else 0
-        share_ciro_bench = (bench_g['Ciro'].sum() / TOTAL_CIRO_bench) if TOTAL_CIRO_bench > 0 else 0
+        share_qty_store = (store_g['Satis_Miktari'].sum() / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
+        share_qty_bench = (bench_g['Satis_Miktari'].sum() / TOTAL_ADET_bench) if TOTAL_ADET_bench > 0 else 0
+        share_ciro_store = (store_g['Satis_Hasilati_VD'].sum() / TOTAL_CIRO_store) if TOTAL_CIRO_store > 0 else 0
+        share_ciro_bench = (bench_g['Satis_Hasilati_VD'].sum() / TOTAL_CIRO_bench) if TOTAL_CIRO_bench > 0 else 0
 
         lift_qty = (share_qty_store + eps) / (share_qty_bench + eps)
         lift_ciro = (share_ciro_store + eps) / (share_ciro_bench + eps)
@@ -443,16 +460,16 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
     # === SKU LIFT TABLOSU ===
     sku_lifts = {}
     # Key'leri string yap (kampanya ürün kodları string)
-    store_sku = {str(k): v for k, v in store_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index').items()}
-    bench_sku = {str(k): v for k, v in bench_df.groupby('Urun_Kod').agg({'Adet': 'sum', 'Ciro': 'sum'}).to_dict('index').items()}
+    store_sku = {str(k): v for k, v in store_df.groupby('Urun_Kod').agg({'Satis_Miktari': 'sum', 'Satis_Hasilati_VD': 'sum'}).to_dict('index').items()}
+    bench_sku = {str(k): v for k, v in bench_df.groupby('Urun_Kod').agg({'Satis_Miktari': 'sum', 'Satis_Hasilati_VD': 'sum'}).to_dict('index').items()}
 
     for sku in store_sku.keys():
-        share_qty_store = (store_sku[sku]['Adet'] / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
-        share_ciro_store = (store_sku[sku]['Ciro'] / TOTAL_CIRO_store) if TOTAL_CIRO_store > 0 else 0
+        share_qty_store = (store_sku[sku]['Satis_Miktari'] / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
+        share_ciro_store = (store_sku[sku]['Satis_Hasilati_VD'] / TOTAL_CIRO_store) if TOTAL_CIRO_store > 0 else 0
 
-        bench_vals = bench_sku.get(sku, {'Adet': 0, 'Ciro': 0})
-        share_qty_bench = (bench_vals['Adet'] / TOTAL_ADET_bench) if TOTAL_ADET_bench > 0 else 0
-        share_ciro_bench = (bench_vals['Ciro'] / TOTAL_CIRO_bench) if TOTAL_CIRO_bench > 0 else 0
+        bench_vals = bench_sku.get(sku, {'Satis_Miktari': 0, 'Satis_Hasilati_VD': 0})
+        share_qty_bench = (bench_vals['Satis_Miktari'] / TOTAL_ADET_bench) if TOTAL_ADET_bench > 0 else 0
+        share_ciro_bench = (bench_vals['Satis_Hasilati_VD'] / TOTAL_CIRO_bench) if TOTAL_CIRO_bench > 0 else 0
 
         lift_qty = (share_qty_store + eps) / (share_qty_bench + eps)
         lift_ciro = (share_ciro_store + eps) / (share_ciro_bench + eps)
@@ -518,8 +535,8 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
         if mal_grubu and mal_grubu in mal_grubu_lifts:
             store_g = store_df[store_df['Mal_Grubu'] == mal_grubu]
             bench_g = bench_df[bench_df['Mal_Grubu'] == mal_grubu]
-            store_group_qty = store_g['Adet'].sum()
-            store_group_ciro = store_g['Ciro'].sum()
+            store_group_qty = store_g['Satis_Miktari'].sum()
+            store_group_ciro = store_g['Satis_Hasilati_VD'].sum()
             store_group_share = (store_group_qty / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
 
             lift_qty_group = mal_grubu_lifts[mal_grubu]['lift_qty']
@@ -540,9 +557,9 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
         bench_qty_raw = 0
 
         if urun_kodu in sku_lifts:
-            sku_qty_raw = store_sku.get(urun_kodu, {}).get('Adet', 0)
-            bench_vals = bench_sku.get(urun_kodu, {'Adet': 0, 'Ciro': 0})
-            bench_qty_raw = bench_vals['Adet']
+            sku_qty_raw = store_sku.get(urun_kodu, {}).get('Satis_Miktari', 0)
+            bench_vals = bench_sku.get(urun_kodu, {'Satis_Miktari': 0, 'Satis_Hasilati_VD': 0})
+            bench_qty_raw = bench_vals['Satis_Miktari']
 
             # SKU güven kontrolü
             sku_trusted = (sku_qty_raw >= SKU_MIN_STORE) and (bench_qty_raw >= SKU_MIN_BENCH)
@@ -557,9 +574,9 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
                 eslesen_sku += 1
 
                 store_qty = sku_qty_raw
-                store_ciro = store_sku.get(urun_kodu, {}).get('Ciro', 0)
+                store_ciro = store_sku.get(urun_kodu, {}).get('Satis_Hasilati_VD', 0)
                 bench_qty = bench_qty_raw
-                bench_ciro = bench_vals['Ciro']
+                bench_ciro = bench_vals['Satis_Hasilati_VD']
             else:
                 # SKU verisi yetersiz → Hiyerarşik birleştirme
                 alpha = sku_qty_raw / (sku_qty_raw + ALPHA_K)
@@ -580,8 +597,8 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
                 # Gösterim için mal grubu değerlerini kullan
                 store_qty = store_group_qty
                 store_ciro = store_group_ciro
-                bench_qty = bench_g['Adet'].sum() if mal_grubu else 0
-                bench_ciro = bench_g['Ciro'].sum() if mal_grubu else 0
+                bench_qty = bench_g['Satis_Miktari'].sum() if mal_grubu else 0
+                bench_ciro = bench_g['Satis_Hasilati_VD'].sum() if mal_grubu else 0
 
         elif mal_grubu and mal_grubu in mal_grubu_lifts:
             # SKU yok → Mal grubu kullan
@@ -591,8 +608,8 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
 
             store_qty = store_group_qty
             store_ciro = store_group_ciro
-            bench_qty = bench_g['Adet'].sum()
-            bench_ciro = bench_g['Ciro'].sum()
+            bench_qty = bench_g['Satis_Miktari'].sum()
+            bench_ciro = bench_g['Satis_Hasilati_VD'].sum()
 
         # Pay yüzdeleri
         store_share_qty = (store_qty / TOTAL_ADET_store * 100) if TOTAL_ADET_store > 0 else 0
@@ -1643,6 +1660,10 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                 bench_sku_qty = agg['bench_sku_qty']
                                 store_grp_qty = agg['store_grp_qty']
                                 bench_grp_qty = agg['bench_grp_qty']
+                                store_ust_grp_qty = agg['store_ust_grp_qty']
+                                bench_ust_grp_qty = agg['bench_ust_grp_qty']
+                                urun_mal_grubu_agg = agg['urun_mal_grubu']
+                                urun_ust_mal_grubu_agg = agg['urun_ust_mal_grubu']
 
                                 eps = 0.0001
                                 sonuclar = []
@@ -1666,10 +1687,11 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                         except:
                                             satis_fiyati = 0
 
-                                    # Mal grubunu bul
-                                    mal_grubu = urun_mal_grubu_map.get(urun_kodu)
+                                    # Mal grubunu ve üst mal grubunu bul
+                                    mal_grubu = urun_mal_grubu_agg.get(urun_kodu) or row.get('mal grubu', '')
+                                    ust_mal_grubu = urun_ust_mal_grubu_agg.get(urun_kodu) or row.get('üst mal grubu', '')
 
-                                    # Dict lookup ile hızlı lift hesaplama (DataFrame slicing yok!)
+                                    # Dict lookup ile hızlı lift hesaplama
                                     store_total = store_totals.get(magaza_kodu, 0)
 
                                     if store_total == 0:
@@ -1689,7 +1711,9 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                             fit_score = 30
                                             neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
                                     else:
-                                        # SKU bazlı lift (dict lookup - çok hızlı)
+                                        # === 3 SEVİYELİ LIFT HESAPLAMA ===
+
+                                        # 1. SKU bazlı lift
                                         sku_qty = store_sku_qty.get((magaza_kodu, urun_kodu), 0)
                                         bench_qty = bench_sku_qty.get(urun_kodu, 0)
 
@@ -1697,31 +1721,53 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                         bench_share = (bench_qty / (bench_total + eps)) * 100
 
                                         lift = (store_share + eps) / (bench_share + eps)
-                                        fit_score = min(max((lift - 0.5) / 1.5, 0), 1) * 100
+                                        fit_sku = min(max((lift - 0.5) / 1.5, 0), 1) * 100
 
-                                        # SKU güven kontrolü
-                                        sku_trusted = sku_qty >= 3 and bench_qty >= 30
+                                        # 2. Mal grubu bazlı lift
+                                        grp_qty = store_grp_qty.get((magaza_kodu, mal_grubu), 0) if mal_grubu else 0
+                                        grp_bench = bench_grp_qty.get(mal_grubu, 0) if mal_grubu else 0
 
-                                        # Grup bazlı fallback (dict lookup)
-                                        if mal_grubu and not sku_trusted:
-                                            grp_qty = store_grp_qty.get((magaza_kodu, mal_grubu), 0)
-                                            grp_bench = bench_grp_qty.get(mal_grubu, 0)
-
+                                        if grp_bench > 0:
                                             grp_share = (grp_qty / (store_total + eps)) * 100
                                             grp_bench_share = (grp_bench / (bench_total + eps)) * 100
-
                                             lift_grp = (grp_share + eps) / (grp_bench_share + eps)
                                             fit_grp = min(max((lift_grp - 0.5) / 1.5, 0), 1) * 100
+                                        else:
+                                            fit_grp = fit_sku
 
-                                            # Hierarchical blend
-                                            alpha = sku_qty / (sku_qty + 5)
-                                            fit_score = alpha * fit_score + (1 - alpha) * fit_grp
+                                        # 3. Üst mal grubu bazlı lift
+                                        ust_grp_qty = store_ust_grp_qty.get((magaza_kodu, ust_mal_grubu), 0) if ust_mal_grubu else 0
+                                        ust_grp_bench = bench_ust_grp_qty.get(ust_mal_grubu, 0) if ust_mal_grubu else 0
+
+                                        if ust_grp_bench > 0:
+                                            ust_grp_share = (ust_grp_qty / (store_total + eps)) * 100
+                                            ust_grp_bench_share = (ust_grp_bench / (bench_total + eps)) * 100
+                                            lift_ust = (ust_grp_share + eps) / (ust_grp_bench_share + eps)
+                                            fit_ust = min(max((lift_ust - 0.5) / 1.5, 0), 1) * 100
+                                        else:
+                                            fit_ust = fit_grp
+
+                                        # === 3 SEVİYELİ HİERARŞİK BLEND ===
+                                        alpha_sku = sku_qty / (sku_qty + 5)
+                                        alpha_grp = grp_qty / (grp_qty + 20)
+
+                                        fit_score = (
+                                            alpha_sku * fit_sku +
+                                            (1 - alpha_sku) * alpha_grp * fit_grp +
+                                            (1 - alpha_sku) * (1 - alpha_grp) * fit_ust
+                                        )
+
+                                        sku_trusted = sku_qty >= 3 and bench_qty >= 30
 
                                         # Neden öneriliyor?
                                         if lift > 1.5:
-                                            neden = f"🔥 Yüksek lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
+                                            neden = f"🔥 Yüksek SKU lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
                                         elif lift > 1.0:
-                                            neden = f"✅ Pozitif lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                            neden = f"✅ Pozitif SKU lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                        elif ust_mal_grubu and fit_ust > 60:
+                                            neden = f"📊 {ust_mal_grubu} kategorisinde güçlü"
+                                        elif mal_grubu and fit_grp > 60:
+                                            neden = f"📈 {mal_grubu} grubunda güçlü"
                                         elif stok > 10:
                                             neden = f"📦 Yüksek stok ({stok} adet) - Eritilmeli"
                                         else:
@@ -1932,6 +1978,10 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                 bench_sku_qty = agg['bench_sku_qty']
                                 store_grp_qty = agg['store_grp_qty']
                                 bench_grp_qty = agg['bench_grp_qty']
+                                store_ust_grp_qty = agg['store_ust_grp_qty']
+                                bench_ust_grp_qty = agg['bench_ust_grp_qty']
+                                urun_mal_grubu_agg = agg['urun_mal_grubu']
+                                urun_ust_mal_grubu_agg = agg['urun_ust_mal_grubu']
 
                                 eps = 0.0001
                                 sonuclar = []
@@ -1953,8 +2003,9 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         except:
                                             satis_fiyati = 0
 
-                                    # Mal grubunu bul
-                                    mal_grubu = urun_mal_grubu_map.get(urun_kodu) or row.get('mal grubu', '')
+                                    # Mal grubunu ve üst mal grubunu bul
+                                    mal_grubu = urun_mal_grubu_agg.get(urun_kodu) or row.get('mal grubu', '')
+                                    ust_mal_grubu = urun_ust_mal_grubu_agg.get(urun_kodu) or row.get('üst mal grubu', '')
 
                                     store_total = store_totals.get(magaza_kodu, 0)
 
@@ -1974,7 +2025,9 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                             fit_score = 30
                                             neden = f"➖ Az stok ({stok} adet) - Mağaza verisi yok"
                                     else:
-                                        # SKU bazlı lift
+                                        # === 3 SEVİYELİ LIFT HESAPLAMA ===
+
+                                        # 1. SKU bazlı lift
                                         sku_qty = store_sku_qty.get((magaza_kodu, urun_kodu), 0)
                                         bench_qty = bench_sku_qty.get(urun_kodu, 0)
 
@@ -1984,7 +2037,7 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         lift = (store_share + eps) / (bench_share + eps)
                                         fit_sku = min(max((lift - 0.5) / 1.5, 0), 1) * 100
 
-                                        # Mal grubu bazlı lift
+                                        # 2. Mal grubu bazlı lift
                                         grp_qty = store_grp_qty.get((magaza_kodu, mal_grubu), 0) if mal_grubu else 0
                                         grp_bench = bench_grp_qty.get(mal_grubu, 0) if mal_grubu else 0
 
@@ -1996,9 +2049,27 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         else:
                                             fit_grp = fit_sku
 
-                                        # Hierarchical blend (SKU -> mal grubu)
-                                        alpha = sku_qty / (sku_qty + 5)
-                                        fit_score = alpha * fit_sku + (1 - alpha) * fit_grp
+                                        # 3. Üst mal grubu bazlı lift
+                                        ust_grp_qty = store_ust_grp_qty.get((magaza_kodu, ust_mal_grubu), 0) if ust_mal_grubu else 0
+                                        ust_grp_bench = bench_ust_grp_qty.get(ust_mal_grubu, 0) if ust_mal_grubu else 0
+
+                                        if ust_grp_bench > 0:
+                                            ust_grp_share = (ust_grp_qty / (store_total + eps)) * 100
+                                            ust_grp_bench_share = (ust_grp_bench / (bench_total + eps)) * 100
+                                            lift_ust = (ust_grp_share + eps) / (ust_grp_bench_share + eps)
+                                            fit_ust = min(max((lift_ust - 0.5) / 1.5, 0), 1) * 100
+                                        else:
+                                            fit_ust = fit_grp
+
+                                        # === 3 SEVİYELİ HİERARŞİK BLEND ===
+                                        alpha_sku = sku_qty / (sku_qty + 5)
+                                        alpha_grp = grp_qty / (grp_qty + 20)
+
+                                        fit_score = (
+                                            alpha_sku * fit_sku +
+                                            (1 - alpha_sku) * alpha_grp * fit_grp +
+                                            (1 - alpha_sku) * (1 - alpha_grp) * fit_ust
+                                        )
 
                                         sku_trusted = sku_qty >= 3 and bench_qty >= 30
 
@@ -2007,6 +2078,8 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                             neden = f"🔥 Yüksek SKU lift ({lift:.1f}x) - Mağaza bu üründe güçlü"
                                         elif lift > 1.0:
                                             neden = f"✅ Pozitif SKU lift ({lift:.1f}x) - Ortalamanın üstünde"
+                                        elif ust_mal_grubu and fit_ust > 60:
+                                            neden = f"📊 {ust_mal_grubu} kategorisinde güçlü"
                                         elif mal_grubu and fit_grp > 60:
                                             neden = f"📈 {mal_grubu} grubunda güçlü"
                                         elif stok > 10:
