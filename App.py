@@ -203,14 +203,31 @@ import os
 def load_performans_data():
     """Performans verilerini yükle - Google Drive'dan yıllık veri"""
 
-    # Google Drive'dan çek (yıllık veri)
+    def download_from_drive(file_id):
+        """Google Drive'dan büyük dosya indir (confirm token ile)"""
+        URL = "https://drive.google.com/uc?export=download"
+        session = requests.Session()
+
+        response = session.get(URL, params={'id': file_id}, stream=True, timeout=60)
+
+        # Büyük dosyalar için confirmation token gerekiyor
+        token = None
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                token = value
+                break
+
+        if token:
+            response = session.get(URL, params={'id': file_id, 'confirm': token}, stream=True, timeout=120)
+
+        return response.content
+
     try:
-        response = requests.get(PERFORMANS_URL_2025, timeout=60)
-        if response.status_code == 200:
-            df = pd.read_parquet(io.BytesIO(response.content))
-            return df
-        else:
-            st.warning(f"⚠️ Drive'dan indirilemedi: HTTP {response.status_code}")
+        # Google Drive File ID
+        file_id = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
+        content = download_from_drive(file_id)
+        df = pd.read_parquet(io.BytesIO(content))
+        return df
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
     return None
