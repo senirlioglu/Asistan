@@ -149,11 +149,13 @@ PERFORMANS_URL_2025 = "https://github.com/senirlioglu/Asistan/raw/main/veri_2025
 URUN_EMOJILERI = {
     # Spesifik olanlar önce (uzun kelimeler) - "ET" içeren kelimeler önce!
     "SET": "📦", "SEPET": "🧺", "SEPETİ": "🧺", "KESET": "🧹",
+    "KAHVALTILIK": "🥣", "BESLENME KUTUSU": "🍱", "KASE": "🥣",
     "EL ARABASI": "🛒", "BUDAMA": "✂️", "AIRFRYER": "🍟", "POWERBANK": "🔋",
     "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
     "BİSİKLET": "🚲", "VANTİLATÖR": "🌀", "BUZDOLABI": "❄️", "DONDURUC": "🧊",
     "MULTIMEDIA": "🎵", "TESTERE": "🪚", "ÇARŞAF": "🛏️", "SAKLAMA KAB": "📦",
     "MEYVE BIÇAĞI": "🔪", "BIÇAK SETİ": "🔪", "BIÇAK SETI": "🔪",
+    "AYAKKABI": "👟", "ÇEKECEĞİ": "🪝", "APARAT": "🔧", "PONPON": "🧶",
     # Meyve ve sebzeler
     "MUZ": "🍌", "PATATES": "🥔", "SOĞAN": "🧅", "DOMATES": "🍅", "ELMA": "🍎",
     "PORTAKAL": "🍊", "LİMON": "🍋", "ÜZÜM": "🍇", "ÇİLEK": "🍓", "KARPUZ": "🍉",
@@ -663,6 +665,42 @@ def apply_diversity_filter(urunler, max_per_group=2, top_n=10):
 
     return result
 
+def dedupe_similar_products(urunler):
+    """
+    Benzer ürünleri filtrele - sadece en yüksek skorluyu tut.
+    Örnek: "KAHVALTILIK 14 CM TOKIO YEŞİL" ve "KAHVALTILIK 12 CM TOKIO YEŞİL"
+    → Sadece yüksek skorlu olan kalır
+    """
+    import re
+
+    def normalize_name(ad):
+        """Ürün adından boyut bilgisini çıkar"""
+        ad_upper = str(ad).upper()
+        # Boyut patternlerini kaldır: 14 CM, 12,5 CM, 11.5CM, 14CM vb.
+        ad_clean = re.sub(r'\d+[,.]?\d*\s*CM', '', ad_upper)
+        # Çoklu boşlukları tek boşluğa indir
+        ad_clean = re.sub(r'\s+', ' ', ad_clean).strip()
+        return ad_clean
+
+    # Normalize edilmiş isme göre grupla
+    groups = {}
+    for urun in urunler:
+        ad = urun.get('ad', '')
+        normalized = normalize_name(ad)
+        skor = urun.get('magaza_skor', 0)
+
+        if normalized not in groups:
+            groups[normalized] = urun
+        else:
+            # Daha yüksek skorlu olanı tut
+            if skor > groups[normalized].get('magaza_skor', 0):
+                groups[normalized] = urun
+
+    # Orijinal sıralamayı koru (skora göre)
+    result = list(groups.values())
+    result.sort(key=lambda x: x.get('magaza_skor', 0), reverse=True)
+    return result
+
 def get_puan_badge(puan):
     """Puana göre badge HTML döndür"""
     if puan >= 60:
@@ -847,11 +885,6 @@ def parse_kampanya_maili(mail_text):
 # =============================================================================
 def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun_sayisi=None):
     """WhatsApp mesajı oluştur"""
-    from datetime import datetime, timedelta
-
-    # Yarının tarihini hesapla
-    yarin = (datetime.now() + timedelta(days=1)).strftime("%d.%m.%Y")
-
     secili_sayi = len(secili_urunler)
 
     mesaj = f"🛒 A101 {magaza_adi}\n\n"
@@ -879,8 +912,8 @@ def format_whatsapp_mesaji(magaza_adi, secili_urunler, bitis_tarihi, toplam_urun
             mesaj += f" (%{indirim_int} İNDİRİM)"
         mesaj += "\n\n"
 
-    # Alt bilgi - yarın tarihi kullan
-    mesaj += f"📅 Kampanya başlangıç: {yarin} | 📍 Stoklarla sınırlıdır\n\n"
+    # Alt bilgi - son gün
+    mesaj += f"📅 Son gün: {bitis_tarihi} | 📍 Stoklarla sınırlıdır\n\n"
     mesaj += "Listeden çıkmak için ÇIKIŞ yazın."
 
     return mesaj
@@ -1079,7 +1112,9 @@ if mod_secim == "📨 Mesaj Oluşturucu":
             col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 2])
             with col_btn1:
                 if st.button("🎯 En İyi 5 Öneri", type="primary", use_container_width=True):
-                    top5 = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=5)
+                    # Önce benzer ürünleri filtrele, sonra çeşitlilik uygula
+                    deduped = dedupe_similar_products(kampanya['urunler'])
+                    top5 = apply_diversity_filter(deduped, max_per_group=2, top_n=5)
                     st.session_state['auto_selected'] = [u['kod'] for u in top5]
                     st.rerun()
             with col_btn2:
@@ -1110,8 +1145,9 @@ if mod_secim == "📨 Mesaj Oluşturucu":
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Mağaza skoruna göre sırala + çeşitlilik filtresi
-                urunler_magaza = apply_diversity_filter(kampanya['urunler'], max_per_group=2, top_n=10)
+                # Önce benzer ürünleri filtrele, sonra çeşitlilik uygula
+                deduped_urunler = dedupe_similar_products(kampanya['urunler'])
+                urunler_magaza = apply_diversity_filter(deduped_urunler, max_per_group=2, top_n=10)
 
                 # Güvenilir ve düşük güvenli ürünleri ayır
                 urunler_guvenilir = [u for u in urunler_magaza if not u.get('puan_detay', {}).get('group_warning')]
@@ -1203,8 +1239,9 @@ if mod_secim == "📨 Mesaj Oluşturucu":
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Genel skora göre sırala
-                urunler_genel = sorted(kampanya['urunler'], key=lambda x: x.get('genel_skor', 0), reverse=True)
+                # Benzer ürünleri filtrele ve genel skora göre sırala
+                urunler_genel = dedupe_similar_products(kampanya['urunler'])
+                urunler_genel = sorted(urunler_genel, key=lambda x: x.get('genel_skor', 0), reverse=True)
 
                 for urun in urunler_genel:
                     col1, col2, col3 = st.columns([1, 17, 4])
@@ -1292,19 +1329,33 @@ if mod_secim == "📨 Mesaj Oluşturucu":
                 st.markdown("**Mesaj önizleme:**")
                 st.markdown(f'<div class="mesaj-onizleme">{mesaj}</div>', unsafe_allow_html=True)
 
-                # Düzenlenebilir ve kopyalanabilir metin
-                st.markdown("**📝 Mesajı Düzenle ve Kopyala:**")
-                mesaj_duzenle = st.text_area(
-                    "Mesajı düzenleyebilir, sonra Ctrl+A ile seçip Ctrl+C ile kopyalayabilirsiniz:",
-                    value=mesaj,
-                    height=300,
-                    key="mesaj_duzenle_area"
-                )
-                st.caption("💡 İpucu: Kutuya tıklayın → Ctrl+A (tümünü seç) → Ctrl+C (kopyala)")
+                # Kopyala ve Düzenle butonları
+                col_kopyala, col_duzenle = st.columns(2)
+                with col_kopyala:
+                    if st.button("📋 Mesajı Kopyala", type="primary", use_container_width=True):
+                        st.session_state['mesaj_kopyala_goster'] = True
+                        st.session_state['mesaj_duzenle_goster'] = False
+                with col_duzenle:
+                    if st.button("✏️ Mesajı Düzenle", use_container_width=True):
+                        st.session_state['mesaj_duzenle_goster'] = True
+                        st.session_state['mesaj_kopyala_goster'] = False
 
-                # Session state'e düzenlenmiş mesajı kaydet
-                if mesaj_duzenle != mesaj:
-                    mesaj = mesaj_duzenle
+                # Kopyala modu
+                if st.session_state.get('mesaj_kopyala_goster', False):
+                    st.code(mesaj, language=None)
+                    st.caption("👆 Sağ üst köşedeki 📋 ikonuna tıklayarak kopyalayın")
+
+                # Düzenle modu
+                if st.session_state.get('mesaj_duzenle_goster', False):
+                    mesaj_duzenle = st.text_area(
+                        "Mesajı düzenleyin:",
+                        value=mesaj,
+                        height=300,
+                        key="mesaj_duzenle_area"
+                    )
+                    if mesaj_duzenle != mesaj:
+                        mesaj = mesaj_duzenle
+                    st.caption("💡 Düzenledikten sonra Ctrl+A → Ctrl+C ile kopyalayın")
 
                 # Kontroller
                 st.markdown("---")
