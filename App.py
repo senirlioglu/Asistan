@@ -198,89 +198,76 @@ def get_emoji(urun_adi):
 # PERFORMANS VERİSİ
 # =============================================================================
 import os
+import re
+import tempfile
 
-@st.cache_data(ttl=3600)  # 1 saat cache
-def load_performans_data():
-    """Performans verilerini yükle - Google Drive'dan yıllık veri (chunk indirme)"""
-    import tempfile
-    import re
+FILE_ID = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
+DRIVE_URL = "https://drive.google.com/uc?export=download"
 
-    file_id = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
-    URL = "https://drive.google.com/uc?export=download"
+def _get_confirm_token_from_html(html: str):
+    """Drive'ın virüs taraması uyarı sayfasından confirm token çıkar"""
+    # confirm=XXXXX pattern (linklerde geçer)
+    m = re.search(r"confirm=([0-9A-Za-z_]+)", html)
+    if m:
+        return m.group(1)
+    # name="confirm" value="XXXXX" pattern (form içinde geçer)
+    m = re.search(r'name="confirm"\s+value="([^"]+)"', html)
+    if m:
+        return m.group(1)
+    return None
 
-    try:
-        session = requests.Session()
+def _download_drive_to_file(file_id: str, out_path: str, timeout=600):
+    """Google Drive'dan dosya indir - virüs uyarısını otomatik geç"""
+    s = requests.Session()
 
-        # İlk istek
-        r = session.get(URL, params={"id": file_id}, stream=True, timeout=120)
+    r = s.get(DRIVE_URL, params={"id": file_id}, stream=True, timeout=timeout)
+    ctype = (r.headers.get("Content-Type") or "").lower()
 
-        # Confirmation token bul (cookie veya HTML'den)
-        token = None
-
-        # 1. Cookie'den token ara
-        for k, v in r.cookies.items():
-            if k.startswith("download_warning"):
-                token = v
-                break
-
-        # 2. HTML döndüyse içinden token çıkar
+    # HTML geldiyse uyarı/confirm sayfasıdır: token'ı bul ve tekrar dene
+    if "text/html" in ctype:
+        html = r.text
+        if "too many users" in html.lower():
+            raise RuntimeError("Drive download quota dolu: Too many users.")
+        token = _get_confirm_token_from_html(html)
+        if not token:
+            raise RuntimeError("Drive HTML döndü ama confirm token bulunamadı.")
+        r = s.get(DRIVE_URL, params={"id": file_id, "confirm": token}, stream=True, timeout=timeout)
         ctype = (r.headers.get("Content-Type") or "").lower()
         if "text/html" in ctype:
-            html_content = r.content.decode('utf-8', errors='ignore')
+            raise RuntimeError("Confirm token denendi ama hala HTML dönüyor. İzin/limit problemi olabilir.")
 
-            # confirm token'ı HTML'den çıkar
-            # Pattern: confirm=XXXX veya &confirm=XXXX
-            match = re.search(r'confirm=([0-9A-Za-z_-]+)', html_content)
-            if match:
-                token = match.group(1)
+    # Chunk chunk diske yaz
+    with open(out_path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1MB
+            if chunk:
+                f.write(chunk)
 
-            # Alternatif: uuid pattern ara
-            if not token:
-                match = re.search(r'&uuid=([^&"\']+)', html_content)
-                if match:
-                    # uuid varsa direkt confirm=t kullan
-                    token = "t"
+    # Parquet signature kontrol (baş ve son PAR1)
+    with open(out_path, "rb") as f:
+        start = f.read(4)
+        f.seek(-4, os.SEEK_END)
+        end = f.read(4)
+    if start != b"PAR1" or end != b"PAR1":
+        raise RuntimeError(f"İndirilen dosya parquet değil / yarım indi. start={start!r}, end={end!r}")
 
-        # Token bulunduysa yeniden dene
-        if token:
-            r = session.get(URL, params={"id": file_id, "confirm": token}, stream=True, timeout=300)
-            ctype = (r.headers.get("Content-Type") or "").lower()
+@st.cache_data(ttl=3600)
+def load_performans_data():
+    """Performans verilerini yükle - Google Drive'dan yıllık veri"""
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".parquet")
+    tmp_path = tmp.name
+    tmp.close()
 
-        # Hala HTML ise son çare: confirm=t ile dene
-        if "text/html" in ctype:
-            r = session.get(URL, params={"id": file_id, "confirm": "t"}, stream=True, timeout=300)
-            ctype = (r.headers.get("Content-Type") or "").lower()
-
-        # Hala HTML dönüyorsa hata ver
-        if "text/html" in ctype:
-            st.warning("⚠️ Drive HTML döndürmeye devam ediyor. Dosya paylaşım izinlerini kontrol edin.")
-            return None
-
-        # Temp dosyaya chunk chunk indir
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".parquet") as tmp:
-            tmp_path = tmp.name
-            for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1MB chunks
-                if chunk:
-                    tmp.write(chunk)
-
-        # Parquet signature kontrol (PAR1)
-        with open(tmp_path, "rb") as f:
-            start = f.read(4)
-            f.seek(-4, os.SEEK_END)
-            end = f.read(4)
-
-        if start != b"PAR1" or end != b"PAR1":
-            os.remove(tmp_path)
-            st.warning(f"⚠️ İndirilen dosya parquet değil veya yarım indi. start={start!r}, end={end!r}")
-            return None
-
-        df = pd.read_parquet(tmp_path)
-        os.remove(tmp_path)
-        return df
-
+    try:
+        _download_drive_to_file(FILE_ID, tmp_path, timeout=600)
+        return pd.read_parquet(tmp_path)
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
         return None
+    finally:
+        try:
+            os.remove(tmp_path)
+        except Exception:
+            pass
 
 @st.cache_data(ttl=3600)
 def get_urun_mal_grubu_map(_df):
