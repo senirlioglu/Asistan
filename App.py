@@ -998,14 +998,37 @@ if mod_secim == "📨 Mesaj Oluşturucu":
 
         st.info(f"📱 WhatsApp liste adı: **{magaza_kodu}_MUSTERI**")
 
-        # Performans verisini yükle
-        with st.spinner("📊 Satış performansı yükleniyor..."):
-            performans_df = load_performans_data()
-            urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
-            nitelikler = get_nitelikler(performans_df)
+        # Session state için performans verisi
+        if "performans_df" not in st.session_state:
+            st.session_state["performans_df"] = None
+            st.session_state["urun_mal_grubu_map"] = {}
+            st.session_state["nitelikler"] = []
+
+        # Performans verisini butonla yükle
+        st.markdown("### 📊 Akıllı Puanlama")
+
+        col_load, col_status = st.columns([1, 2])
+        with col_load:
+            if st.button("📥 Performans Verisini Yükle", key="btn_load_perf", type="primary"):
+                with st.spinner("📊 Satış performansı yükleniyor (bu biraz sürebilir)..."):
+                    df = load_performans_data()
+                    st.session_state["performans_df"] = df
+                    st.session_state["urun_mal_grubu_map"] = get_urun_mal_grubu_map(df)
+                    st.session_state["nitelikler"] = get_nitelikler(df)
+                    if df is not None:
+                        st.rerun()
+
+        performans_df = st.session_state["performans_df"]
+        urun_mal_grubu_map = st.session_state["urun_mal_grubu_map"]
+        nitelikler = st.session_state["nitelikler"]
+
+        with col_status:
+            if performans_df is not None:
+                st.success("✅ Performans verisi yüklendi - Akıllı puanlama aktif!")
+            else:
+                st.warning("⚠️ Performans verisi yüklenmedi - Sadece indirim bazlı sıralama yapılacak")
 
         if performans_df is not None:
-            st.success("✅ Performans verisi yüklendi - Akıllı puanlama aktif!")
 
             # Nitelik seçimi
             st.markdown("### 📊 Kampanya Niteliği")
@@ -1040,7 +1063,6 @@ if mod_secim == "📨 Mesaj Oluşturucu":
                     weight_save = weight_save / total_weight
                 st.caption(f"Normalize: Uyum {weight_fit:.0%} | İndirim {weight_disc:.0%} | Tasarruf {weight_save:.0%}")
         else:
-            st.warning("⚠️ Performans verisi bulunamadı - Sadece indirim bazlı sıralama yapılacak")
             nitelik_secim = None
 
         st.markdown("---")
@@ -1661,12 +1683,15 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
 
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
-                            # Performans verisini yükle
-                            performans_df = load_performans_data()
-                            urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
+                            # Session state'den performans verisini al (yoksa yükle)
+                            performans_df = st.session_state.get("performans_df")
+                            if performans_df is None:
+                                performans_df = load_performans_data()
+                                st.session_state["performans_df"] = performans_df
+                            urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map") or get_urun_mal_grubu_map(performans_df)
 
                             if performans_df is None:
-                                st.error("❌ Performans verisi yüklenemedi!")
+                                st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
                                 # ÖNEMLİ: Aggregasyonları DÖNGÜ DIŞINDA bir kere hazırla
                                 agg = prepare_lift_aggregations(performans_df)
@@ -1981,11 +2006,15 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
 
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True, key="analiz_wp"):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
-                            performans_df = load_performans_data()
-                            urun_mal_grubu_map = get_urun_mal_grubu_map(performans_df)
+                            # Session state'den performans verisini al (yoksa yükle)
+                            performans_df = st.session_state.get("performans_df")
+                            if performans_df is None:
+                                performans_df = load_performans_data()
+                                st.session_state["performans_df"] = performans_df
+                            urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map") or get_urun_mal_grubu_map(performans_df)
 
                             if performans_df is None:
-                                st.error("❌ Performans verisi yüklenemedi!")
+                                st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
                                 agg = prepare_lift_aggregations(performans_df)
                                 bench_total = agg['bench_total']
