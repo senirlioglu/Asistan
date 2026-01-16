@@ -201,23 +201,16 @@ import os
 
 @st.cache_data(ttl=3600)  # 1 saat cache
 def load_performans_data():
-    """Performans verilerini yükle - önce yerel, sonra GitHub"""
+    """Performans verilerini yükle - Google Drive'dan yıllık veri"""
 
-    # Önce yerel dosyayı dene
-    local_path = os.path.join(os.path.dirname(__file__), 'veri_2025.parquet')
-    if os.path.exists(local_path):
-        try:
-            df = pd.read_parquet(local_path)
-            return df
-        except Exception as e:
-            st.warning(f"⚠️ Yerel dosya okunamadı: {str(e)}")
-
-    # Yerel yoksa GitHub'dan çek
+    # Google Drive'dan çek (yıllık veri)
     try:
-        response = requests.get(PERFORMANS_URL_2025, timeout=30)
+        response = requests.get(PERFORMANS_URL_2025, timeout=60)
         if response.status_code == 200:
             df = pd.read_parquet(io.BytesIO(response.content))
             return df
+        else:
+            st.warning(f"⚠️ Drive'dan indirilemedi: HTTP {response.status_code}")
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
     return None
