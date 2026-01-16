@@ -201,36 +201,57 @@ import os
 
 @st.cache_data(ttl=3600)  # 1 saat cache
 def load_performans_data():
-    """Performans verilerini yükle - Google Drive'dan yıllık veri"""
+    """Performans verilerini yükle - Google Drive'dan yıllık veri (chunk indirme)"""
+    import tempfile
 
-    def download_from_drive(file_id):
-        """Google Drive'dan büyük dosya indir (confirm token ile)"""
-        URL = "https://drive.google.com/uc?export=download"
-        session = requests.Session()
-
-        response = session.get(URL, params={'id': file_id}, stream=True, timeout=60)
-
-        # Büyük dosyalar için confirmation token gerekiyor
-        token = None
-        for key, value in response.cookies.items():
-            if key.startswith('download_warning'):
-                token = value
-                break
-
-        if token:
-            response = session.get(URL, params={'id': file_id, 'confirm': token}, stream=True, timeout=120)
-
-        return response.content
+    file_id = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
+    URL = "https://drive.google.com/uc?export=download"
 
     try:
-        # Google Drive File ID
-        file_id = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
-        content = download_from_drive(file_id)
-        df = pd.read_parquet(io.BytesIO(content))
+        session = requests.Session()
+        r = session.get(URL, params={"id": file_id}, stream=True, timeout=120)
+
+        # confirm token (büyük dosyalar için)
+        token = None
+        for k, v in r.cookies.items():
+            if k.startswith("download_warning"):
+                token = v
+                break
+        if token:
+            r = session.get(URL, params={"id": file_id, "confirm": token}, stream=True, timeout=300)
+
+        # HTML geldiyse parquet okumaya çalışma
+        ctype = (r.headers.get("Content-Type") or "").lower()
+        if "text/html" in ctype:
+            head = r.raw.read(300, decode_content=True)
+            st.warning(f"⚠️ Drive HTML döndü, parquet değil. Content-Type={ctype}")
+            return None
+
+        # Temp dosyaya chunk chunk indir
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".parquet") as tmp:
+            tmp_path = tmp.name
+            for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1MB chunks
+                if chunk:
+                    tmp.write(chunk)
+
+        # Parquet signature kontrol (PAR1)
+        with open(tmp_path, "rb") as f:
+            start = f.read(4)
+            f.seek(-4, os.SEEK_END)
+            end = f.read(4)
+
+        if start != b"PAR1" or end != b"PAR1":
+            os.remove(tmp_path)
+            st.warning(f"⚠️ İndirilen dosya parquet değil veya yarım indi. start={start!r}, end={end!r}")
+            return None
+
+        df = pd.read_parquet(tmp_path)
+        os.remove(tmp_path)
         return df
+
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
-    return None
+        return None
 
 @st.cache_data(ttl=3600)
 def get_urun_mal_grubu_map(_df):
