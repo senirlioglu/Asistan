@@ -199,8 +199,6 @@ def get_emoji(urun_adi):
 # =============================================================================
 import os
 import tempfile
-import pyarrow.parquet as pq
-import pyarrow.compute as pc
 
 PARQUET_URL = "https://tlcgcdiycgfxpxwzkwuf.supabase.co/storage/v1/object/public/Musteri/2025veri.parquet"
 
@@ -231,22 +229,19 @@ def get_perf_local_path() -> str:
 
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
-    """Sadece gerekli kolonları oku - RAM dostu (PyArrow)"""
+    """Sadece gerekli kolonları oku - RAM dostu"""
     try:
         path = get_perf_local_path()
 
-        # SADECE gerekli kolonlar
-        table = pq.read_table(path, columns=["Urun_Kod", "Mal_Grubu", "Nitelik"])
+        # SADECE gerekli kolonlar (PyArrow ile oku, pandas'a çevir)
+        df = pd.read_parquet(path, columns=["Urun_Kod", "Mal_Grubu", "Nitelik"])
 
         # Nitelikler (distinct)
-        nitelikler = pc.unique(table["Nitelik"]).to_pylist()
-        nitelikler = sorted([x for x in nitelikler if x is not None])
+        nitelikler = sorted(df["Nitelik"].dropna().unique().tolist())
 
-        # Urun -> Mal_Grubu (first) - pyarrow group_by ile
-        gb = table.group_by("Urun_Kod").aggregate([("Mal_Grubu", "first")])
-        urun = gb["Urun_Kod"].to_pylist()
-        mg = gb["Mal_Grubu_first"].to_pylist()
-        urun_mal_grubu_map = {str(k).strip(): v for k, v in zip(urun, mg) if k is not None}
+        # Urun -> Mal_Grubu (first)
+        urun_mal_grubu_map = df.groupby("Urun_Kod")["Mal_Grubu"].first().to_dict()
+        urun_mal_grubu_map = {str(k).strip(): v for k, v in urun_mal_grubu_map.items() if k is not None}
 
         return urun_mal_grubu_map, nitelikler
     except Exception as e:
