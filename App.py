@@ -199,44 +199,69 @@ def get_emoji(urun_adi):
 # =============================================================================
 import os
 import tempfile
+import pyarrow.parquet as pq
+import pyarrow.compute as pc
 
 PARQUET_URL = "https://tlcgcdiycgfxpxwzkwuf.supabase.co/storage/v1/object/public/Musteri/2025veri.parquet"
 
+@st.cache_resource
+def get_perf_local_path() -> str:
+    """Parquet'i diske indir (RAM'e değil) - session boyunca tek kez"""
+    r = requests.get(PARQUET_URL, stream=True, timeout=600, allow_redirects=True)
+    if r.status_code != 200:
+        raise RuntimeError(f"Perf download HTTP {r.status_code}: {r.text[:200]}")
+    ct = (r.headers.get("Content-Type") or "").lower()
+    if "text/html" in ct:
+        raise RuntimeError(f"Perf URL HTML döndürüyor. Content-Type={ct}")
+
+    fd, path = tempfile.mkstemp(suffix=".parquet")
+    os.close(fd)
+
+    with open(path, "wb") as f:
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
+            if chunk:
+                f.write(chunk)
+
+    # Parquet signature kontrol (baş PAR1)
+    with open(path, "rb") as f:
+        if f.read(4) != b"PAR1":
+            raise RuntimeError("İndirilen dosya parquet değil / bozuk indi (PAR1 yok).")
+
+    return path
+
+@st.cache_data(ttl=3600)
+def load_perf_lookups():
+    """Sadece gerekli kolonları oku - RAM dostu (PyArrow)"""
+    try:
+        path = get_perf_local_path()
+
+        # SADECE gerekli kolonlar
+        table = pq.read_table(path, columns=["Urun_Kod", "Mal_Grubu", "Nitelik"])
+
+        # Nitelikler (distinct)
+        nitelikler = pc.unique(table["Nitelik"]).to_pylist()
+        nitelikler = sorted([x for x in nitelikler if x is not None])
+
+        # Urun -> Mal_Grubu (first) - pyarrow group_by ile
+        gb = table.group_by("Urun_Kod").aggregate([("Mal_Grubu", "first")])
+        urun = gb["Urun_Kod"].to_pylist()
+        mg = gb["Mal_Grubu_first"].to_pylist()
+        urun_mal_grubu_map = {str(k).strip(): v for k, v in zip(urun, mg) if k is not None}
+
+        return urun_mal_grubu_map, nitelikler
+    except Exception as e:
+        st.warning(f"⚠️ Lookup verisi yüklenemedi: {str(e)}")
+        return {}, []
+
 @st.cache_data(ttl=3600)
 def load_performans_data():
-    """Performans verilerini yükle - Supabase Storage'dan yıllık veri"""
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".parquet")
-    tmp_path = tmp.name
-    tmp.close()
-
+    """Full performans DF - sadece Analiz Et ve Öner için"""
     try:
-        # Supabase'den direkt indir (redirect yok, temiz URL)
-        r = requests.get(PARQUET_URL, stream=True, timeout=600)
-        r.raise_for_status()
-
-        # Chunk chunk diske yaz
-        with open(tmp_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1MB
-                if chunk:
-                    f.write(chunk)
-
-        # Parquet signature kontrol (baş ve son PAR1)
-        with open(tmp_path, "rb") as f:
-            start = f.read(4)
-            f.seek(-4, os.SEEK_END)
-            end = f.read(4)
-        if start != b"PAR1" or end != b"PAR1":
-            raise RuntimeError(f"Dosya parquet değil / yarım indi. start={start!r}, end={end!r}")
-
-        return pd.read_parquet(tmp_path)
+        path = get_perf_local_path()
+        return pd.read_parquet(path)
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
         return None
-    finally:
-        try:
-            os.remove(tmp_path)
-        except Exception:
-            pass
 
 @st.cache_data(ttl=3600)
 def get_urun_mal_grubu_map(_df):
@@ -998,37 +1023,37 @@ if mod_secim == "📨 Mesaj Oluşturucu":
 
         st.info(f"📱 WhatsApp liste adı: **{magaza_kodu}_MUSTERI**")
 
-        # Session state için performans verisi
-        if "performans_df" not in st.session_state:
-            st.session_state["performans_df"] = None
+        # Session state için performans lookups
+        if "perf_lookups_loaded" not in st.session_state:
+            st.session_state["perf_lookups_loaded"] = False
             st.session_state["urun_mal_grubu_map"] = {}
             st.session_state["nitelikler"] = []
 
-        # Performans verisini butonla yükle
+        # Performans lookup'larını butonla yükle (hafif - sadece 3 kolon)
         st.markdown("### 📊 Akıllı Puanlama")
 
         col_load, col_status = st.columns([1, 2])
         with col_load:
             if st.button("📥 Performans Verisini Yükle", key="btn_load_perf", type="primary"):
-                with st.spinner("📊 Satış performansı yükleniyor (bu biraz sürebilir)..."):
-                    df = load_performans_data()
-                    st.session_state["performans_df"] = df
-                    st.session_state["urun_mal_grubu_map"] = get_urun_mal_grubu_map(df)
-                    st.session_state["nitelikler"] = get_nitelikler(df)
-                    if df is not None:
+                with st.spinner("📊 Performans lookupları hazırlanıyor..."):
+                    urun_mal_grubu_map, nitelikler = load_perf_lookups()
+                    st.session_state["urun_mal_grubu_map"] = urun_mal_grubu_map
+                    st.session_state["nitelikler"] = nitelikler
+                    st.session_state["perf_lookups_loaded"] = len(nitelikler) > 0
+                    if st.session_state["perf_lookups_loaded"]:
                         st.rerun()
 
-        performans_df = st.session_state["performans_df"]
+        perf_loaded = st.session_state["perf_lookups_loaded"]
         urun_mal_grubu_map = st.session_state["urun_mal_grubu_map"]
         nitelikler = st.session_state["nitelikler"]
 
         with col_status:
-            if performans_df is not None:
+            if perf_loaded:
                 st.success("✅ Performans verisi yüklendi - Akıllı puanlama aktif!")
             else:
                 st.warning("⚠️ Performans verisi yüklenmedi - Sadece indirim bazlı sıralama yapılacak")
 
-        if performans_df is not None:
+        if perf_loaded:
 
             # Nitelik seçimi
             st.markdown("### 📊 Kampanya Niteliği")
