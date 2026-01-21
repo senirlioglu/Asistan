@@ -112,30 +112,29 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
-# MAĞAZA LİSTESİ
+# MAĞAZA LİSTESİ (WhatsApp Kanalı Kampanya)
 # =============================================================================
 MAGAZALAR = {
-    "H283": "Fabrikalar Kepez",
-    "C820": "Kemerağzı Muratpaşa",
-    "J506": "Yahya Kemal Kepez",
-    "2454": "Bahçelievler Muratpaşa",
-    "B548": "Hamidiye Muratpaşa",
-    "0396": "Köroğlu Muratpaşa",
-    "F296": "Cahit Sıtkı Muratpaşa",
-    "I023": "Balbey Muratpaşa",
-    "E180": "Aydınlıkevler Muratpaşa",
-    "4282": "Kara Yusuf Kepez",
-    "I824": "Yalı Muratpaşa",
-    "H519": "Üçyol Kepez",
-    "D706": "Suphi Türel Kepez",
-    "D587": "Düden Park Muratpaşa",
-    "G874": "Mustafa Koç Camii Kepez",
-    "1715": "Çağlayan Muratpaşa",
-    "C007": "15 Temmuz Kepez",
-    "6667": "Hastane Cad Kepez",
-    "J218": "15 Katlılar Kepez",
-    "1125": "Portakalçiçeği Muratpaşa",
-    "C241": "Rasih Kaplan Cd Kepez",
+    "G874": "Mustafa Koç Camii | Kepez",
+    "F296": "Cahit Sıtkı | Muratpaşa",
+    "I023": "Balbey | Muratpaşa",
+    "I824": "Yalı | Muratpaşa",
+    "E180": "Aydınlıkevler | Muratpaşa",
+    "1715": "Çağlayan Mah | Muratpaşa",
+    "D587": "Düden Park | Muratpaşa",
+    "C820": "Kemerağzı | Muratpaşa",
+    "B548": "Hamidiye | Muratpaşa",
+    "J506": "Yahya Kemal | Kepez",
+    "H283": "Fabrikalar | Kepez",
+    "2454": "Bahçelievler | Muratpaşa",
+    "6667": "Hastane Cad | Kepez",
+    "396": "Köroğlu | Muratpaşa",
+    "J218": "15 Katlılar | Kepez",
+    "4282": "Kara Yusuf | Kepez",
+    "1125": "Portakalçiçeği | Muratpaşa",
+    "H519": "Üçyol | Kepez",
+    "C007": "15 Temmuz | Kepez",
+    "D706": "Suphi Türel | Kepez",
 }
 
 WHATSAPP_NUMBER = "905399311842"
