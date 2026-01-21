@@ -250,10 +250,15 @@ def load_perf_lookups():
 
 @st.cache_data(ttl=3600)
 def load_performans_data():
-    """Full performans DF - sadece Analiz Et ve Öner için"""
+    """Performans DF - sadece gerekli kolonlar (RAM dostu)"""
     try:
         path = get_perf_local_path()
-        return pd.read_parquet(path)
+        cols = ["Magaza_Kod", "Nitelik", "Urun_Kod", "Satis_Miktari", "Satis_Hasilati_VD", "Mal_Grubu", "Ust_Mal_Grubu"]
+        df = pd.read_parquet(path, columns=cols)
+        # Tip dönüşümlerini burada bir kere yap
+        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
+        df['Magaza_Kod'] = df['Magaza_Kod'].astype(str).str.strip()
+        return df
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
         return None
@@ -447,13 +452,11 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
     # Bugfix 3: Case-insensitive spot tespiti
     k = 200 if "spot" in str(nitelik).lower() else 500
 
-    # Bugfix 1: Urun_Kod'u string'e çevir (tip uyuşmazlığı önleme)
-    df = df.copy()
-    df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
+    # Tip dönüşümleri load_performans_data'da yapıldı - copy() YOK (RAM tasarrufu)
+    magaza_kodu_str = str(magaza_kodu).strip()
 
     # Mağaza ve Benchmark filtreleme (aynı nitelik)
-    store_df = df[(df['Magaza_Kod'].astype(str).str.strip() == str(magaza_kodu).strip()) &
-                  (df['Nitelik'] == nitelik)]
+    store_df = df[(df['Magaza_Kod'] == magaza_kodu_str) & (df['Nitelik'] == nitelik)]
     bench_df = df[df['Nitelik'] == nitelik]  # Tüm mağazalar = benchmark
 
     if store_df.empty:
