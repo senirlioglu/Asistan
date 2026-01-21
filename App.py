@@ -1118,26 +1118,37 @@ if mod_secim == "📨 Mesaj Oluşturucu":
                 st.stop()
 
             # Ürünleri puanla (Lift bazlı algoritma)
-            if nitelik_secim and performans_df is not None:
-                # Ağırlıkları session_state'den al
-                w_fit = st.session_state.get('w_fit', 65) / 100
-                w_disc = st.session_state.get('w_disc', 25) / 100
-                w_save = st.session_state.get('w_save', 10) / 100
-                # Normalize et
-                total_w = w_fit + w_disc + w_save
-                if total_w > 0:
-                    weights = (w_fit/total_w, w_disc/total_w, w_save/total_w)
-                else:
-                    weights = (0.65, 0.25, 0.10)
+            if nitelik_secim and perf_loaded:
+                # Full performans DF'yi yükle (lift hesabı için gerekli)
+                performans_df = load_performans_data()
 
-                kampanya['urunler'], eslesen_sku = calculate_lift_scores(
-                    kampanya['urunler'],
-                    magaza_kodu,
-                    nitelik_secim,
-                    performans_df,
-                    urun_mal_grubu_map,
-                    weights=weights
-                )
+                if performans_df is not None:
+                    # Ağırlıkları session_state'den al
+                    w_fit = st.session_state.get('w_fit', 65) / 100
+                    w_disc = st.session_state.get('w_disc', 25) / 100
+                    w_save = st.session_state.get('w_save', 10) / 100
+                    # Normalize et
+                    total_w = w_fit + w_disc + w_save
+                    if total_w > 0:
+                        weights = (w_fit/total_w, w_disc/total_w, w_save/total_w)
+                    else:
+                        weights = (0.65, 0.25, 0.10)
+
+                    kampanya['urunler'], eslesen_sku = calculate_lift_scores(
+                        kampanya['urunler'],
+                        magaza_kodu,
+                        nitelik_secim,
+                        performans_df,
+                        urun_mal_grubu_map,
+                        weights=weights
+                    )
+                else:
+                    eslesen_sku = 0
+                    for urun in kampanya['urunler']:
+                        disc = urun.get('indirim_num', 0) / 100
+                        urun['magaza_skor'] = round(min(disc / 0.35, 1) * 100, 1)
+                        urun['genel_skor'] = urun['magaza_skor']
+                        urun['puan_detay'] = {'mal_grubu_adi': urun_mal_grubu_map.get(urun.get('kod', ''), 'Yeni Ürün')}
             else:
                 eslesen_sku = 0
                 # Fallback: sadece indirim bazlı
