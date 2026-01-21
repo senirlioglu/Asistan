@@ -200,7 +200,7 @@ def get_emoji(urun_adi):
 import os
 import tempfile
 
-PARQUET_URL = "https://tlcgcdiycgfxpxwzkwuf.supabase.co/storage/v1/object/public/Musteri/2025veri.parquet"
+PARQUET_URL = "https://tlcgcdiycgfxpxwzkwuf.supabase.co/storage/v1/object/sign/parquet/4aylik.parquet?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lYzQ3MmQ0NC03MGQ5LTQ3NDMtOGMzNS0zN2VjM2M1ZGQ4YzYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJwYXJxdWV0LzRheWxpay5wYXJxdWV0IiwiaWF0IjoxNzY5MDAxMzQxLCJleHAiOjE4MDA1MzczNDF9.Z6AivVVX6Q60qkWbk1EzXI2wjnfccSnya0l_lE9wfZA"
 
 @st.cache_resource
 def get_perf_local_path() -> str:
