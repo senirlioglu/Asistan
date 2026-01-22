@@ -984,10 +984,10 @@ st.markdown('<p class="main-header">📢 A101 Kampanya Asistanı</p>', unsafe_al
 # =============================================================================
 mod_secim = st.radio(
     "Ne yapmak istiyorsunuz?",
-    options=["📨 Mesaj Oluşturucu", "📊 Kampanya Oluşturucu", "📱 WhatsApp Kanalı Kampanya"],
+    options=["📨 Mesaj Oluşturucu", "📊 Kampanya Oluşturucu", "📱 WhatsApp Kanalı Kampanya", "📤 Toplu Mesaj"],
     horizontal=True,
     key="mod_secim",
-    help="Mesaj Oluşturucu: Müşteri mesajı oluşturur. Kampanya Oluşturucu: SM/BS/Mağaza seçerek kampanya önerir. WhatsApp Kanalı: Tüm WhatsApp mağazaları için otomatik kampanya önerir."
+    help="Mesaj Oluşturucu: Müşteri mesajı oluşturur. Kampanya Oluşturucu: SM/BS/Mağaza seçerek kampanya önerir. WhatsApp Kanalı: Tüm WhatsApp mağazaları için otomatik kampanya önerir. Toplu Mesaj: Excel'den her mağaza için mesaj üretir."
 )
 
 st.markdown("---")
@@ -2279,11 +2279,137 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
     else:
         st.info("👆 Excel dosyası yükleyin.")
 
+# =============================================================================
+# TOPLU MESAJ MODU
+# =============================================================================
+elif mod_secim == "📤 Toplu Mesaj":
+    st.markdown("""
+    <div class="secim-rehberi">
+        <strong>📤 Toplu Mesaj Nasıl Çalışır?</strong><br>
+        1. İndirim yapılacak ürünlerin olduğu Excel'i yükleyin<br>
+        2. Kampanya bitiş tarihini seçin<br>
+        3. Her mağaza için otomatik mesaj oluşturulur
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("### 1️⃣ Excel Yükle")
+    uploaded_toplu = st.file_uploader(
+        "İndirimli ürün listesini yükleyin",
+        type=['xlsx', 'xls'],
+        key="toplu_excel"
+    )
+
+    st.markdown("### 2️⃣ Kampanya Bitiş Tarihi")
+    from datetime import date, timedelta
+    bitis_tarihi = st.date_input(
+        "Kampanya son günü:",
+        value=date.today() + timedelta(days=1),
+        key="toplu_bitis"
+    )
+
+    if uploaded_toplu:
+        try:
+            df_toplu = pd.read_excel(uploaded_toplu)
+
+            # Gerekli kolonları kontrol et
+            required_cols = ['Kod', 'Mağaza Adı', 'Ürün Tanımı', 'Satış Fiyatı', 'yeni fiyat']
+            missing_cols = [c for c in required_cols if c not in df_toplu.columns]
+
+            if missing_cols:
+                st.error(f"❌ Eksik kolonlar: {', '.join(missing_cols)}")
+                st.info("Beklenen kolonlar: " + ", ".join(required_cols))
+            else:
+                # Mağazalara göre grupla
+                df_toplu['Kod'] = df_toplu['Kod'].astype(str).str.strip()
+                magazalar_grouped = df_toplu.groupby('Kod')
+
+                st.success(f"✅ {len(df_toplu)} ürün, {len(magazalar_grouped)} mağaza bulundu")
+
+                st.markdown("---")
+                st.markdown("### 3️⃣ Mesajları Oluştur")
+
+                if st.button("🚀 Tüm Mesajları Oluştur", type="primary", use_container_width=True):
+                    bitis_str = bitis_tarihi.strftime("%d.%m.%Y")
+
+                    # Her mağaza için mesaj oluştur
+                    all_messages = {}
+
+                    for magaza_kodu, group in magazalar_grouped:
+                        magaza_adi = group['Mağaza Adı'].iloc[0]
+                        urunler = []
+
+                        for _, row in group.iterrows():
+                            urun_adi = str(row['Ürün Tanımı']).strip()
+                            eski_fiyat = float(row['Satış Fiyatı']) if pd.notna(row['Satış Fiyatı']) else 0
+                            yeni_fiyat = float(row['yeni fiyat']) if pd.notna(row['yeni fiyat']) else 0
+
+                            if eski_fiyat > 0 and yeni_fiyat > 0:
+                                indirim = round((eski_fiyat - yeni_fiyat) / eski_fiyat * 100)
+                                emoji = get_emoji(urun_adi)
+                                urunler.append({
+                                    'ad': urun_adi,
+                                    'eski': eski_fiyat,
+                                    'yeni': yeni_fiyat,
+                                    'indirim': indirim,
+                                    'emoji': emoji
+                                })
+
+                        if urunler:
+                            # Mesaj oluştur
+                            mesaj_lines = [
+                                f"🛒 A101 {magaza_adi}",
+                                f"🔥 YARINA ÖZEL – {len(urunler)} üründe indirim var!",
+                                f"⭐ Aşağıdakiler öne çıkan {len(urunler)} fırsat:",
+                                ""
+                            ]
+
+                            for u in urunler:
+                                mesaj_lines.append(f"{u['emoji']} {u['ad'].upper()}")
+                                mesaj_lines.append(f"✅ {u['yeni']:,.2f}₺ | Eski: {u['eski']:,.2f}₺ (%{u['indirim']} İNDİRİM)")
+                                mesaj_lines.append("")
+
+                            mesaj_lines.append(f"📅 Son gün: {bitis_str} | 📍 Stoklarla sınırlıdır.")
+
+                            all_messages[magaza_kodu] = {
+                                'ad': magaza_adi,
+                                'mesaj': "\n".join(mesaj_lines),
+                                'urun_sayisi': len(urunler)
+                            }
+
+                    # Session state'e kaydet
+                    st.session_state['toplu_mesajlar'] = all_messages
+                    st.rerun()
+
+                # Mesajları göster
+                if 'toplu_mesajlar' in st.session_state and st.session_state['toplu_mesajlar']:
+                    mesajlar = st.session_state['toplu_mesajlar']
+
+                    st.markdown("---")
+                    st.markdown(f"### 📬 {len(mesajlar)} Mağaza İçin Mesajlar")
+
+                    for magaza_kodu, data in mesajlar.items():
+                        with st.expander(f"🏪 {magaza_kodu} - {data['ad']} ({data['urun_sayisi']} ürün)", expanded=False):
+                            st.markdown(f"""
+                            <div class="mesaj-onizleme">
+{data['mesaj']}
+                            </div>
+                            """, unsafe_allow_html=True)
+
+                            # Kopyala butonu
+                            if st.button(f"📋 Kopyala", key=f"copy_{magaza_kodu}"):
+                                st.code(data['mesaj'], language=None)
+                                st.success("👆 Yukarıdaki metni seçip kopyalayın")
+
+        except Exception as e:
+            st.error(f"❌ Excel okuma hatası: {str(e)}")
+    else:
+        st.info("👆 Excel dosyası yükleyin.")
+
 # Footer
 st.markdown("---")
 st.markdown("""
 <p style="text-align:center; color:#888; font-size:12px;">
-    A101 Kampanya Asistanı v4.0 - Mesaj Oluşturucu + Kampanya Oluşturucu<br>
+    A101 Kampanya Asistanı v4.0 - Mesaj Oluşturucu + Kampanya Oluşturucu + Toplu Mesaj<br>
     Yeni Mağazacılık A.Ş. © 2025
 </p>
 """, unsafe_allow_html=True)
