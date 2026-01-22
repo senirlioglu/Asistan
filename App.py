@@ -147,7 +147,7 @@ PERFORMANS_URL_2025 = "https://drive.google.com/uc?id=12T3XrtExkNjAh41H2Rv6GYw-c
 # =============================================================================
 URUN_EMOJILERI = {
     # Spesifik olanlar önce (uzun kelimeler) - "ET" içeren kelimeler önce!
-    "SET": "📦", "SEPET": "🧺", "SEPETİ": "🧺", "KESET": "🧹",
+    "MASAJ": "💆", "SET": "📦", "SEPET": "🧺", "SEPETİ": "🧺", "KESET": "🧹",
     "KAHVALTILIK": "🥣", "BESLENME KUTUSU": "🍱", "KASE": "🥣",
     "EL ARABASI": "🛒", "BUDAMA": "✂️", "AIRFRYER": "🍟", "POWERBANK": "🔋",
     "SWEATSHIRT": "🧥", "NEVRESİM": "🛏️", "BATTANİYE": "🛏️", "ESPRESSO": "☕",
@@ -2358,7 +2358,7 @@ elif mod_secim == "📤 Toplu Mesaj":
                             # Mesaj oluştur
                             mesaj_lines = [
                                 f"🛒 A101 {magaza_adi}",
-                                f"🔥 YARINA ÖZEL – {len(urunler)} üründe indirim var!",
+                                f"🔥 YARINA ÖZEL ({len(urunler)}) Üründe %50 İNDİRİM var!",
                                 f"⭐ Aşağıdakiler öne çıkan {len(urunler)} fırsat:",
                                 ""
                             ]
@@ -2395,10 +2395,28 @@ elif mod_secim == "📤 Toplu Mesaj":
                             </div>
                             """, unsafe_allow_html=True)
 
-                            # Kopyala butonu
-                            if st.button(f"📋 Kopyala", key=f"copy_{magaza_kodu}"):
-                                st.code(data['mesaj'], language=None)
-                                st.success("👆 Yukarıdaki metni seçip kopyalayın")
+                            # Kopyala ve Düzenle butonları
+                            col_copy, col_edit = st.columns(2)
+                            with col_copy:
+                                if st.button(f"📋 Kopyala", key=f"copy_{magaza_kodu}", use_container_width=True):
+                                    st.code(data['mesaj'], language=None)
+                                    st.success("👆 Yukarıdaki metni seçip kopyalayın")
+                            with col_edit:
+                                if st.button(f"✏️ Düzenle", key=f"edit_{magaza_kodu}", use_container_width=True):
+                                    st.session_state[f'editing_{magaza_kodu}'] = True
+
+                            # Düzenleme modu
+                            if st.session_state.get(f'editing_{magaza_kodu}', False):
+                                edited_mesaj = st.text_area(
+                                    "Mesajı düzenleyin:",
+                                    value=data['mesaj'],
+                                    height=300,
+                                    key=f"textarea_{magaza_kodu}"
+                                )
+                                if st.button("💾 Kaydet", key=f"save_{magaza_kodu}"):
+                                    st.session_state['toplu_mesajlar'][magaza_kodu]['mesaj'] = edited_mesaj
+                                    st.session_state[f'editing_{magaza_kodu}'] = False
+                                    st.rerun()
 
         except Exception as e:
             st.error(f"❌ Excel okuma hatası: {str(e)}")
