@@ -2362,9 +2362,12 @@ elif mod_secim == "📤 Toplu Mesaj":
                         if urunler:
                             # Mesaj oluştur
                             mesaj_lines = [
+                                "WHATSAPP TAKİPÇİLERİNE ÖZEL",
                                 f"🛒 A101 {magaza_adi}",
-                                f"🔥 YARINA ÖZEL {len(urunler)} Üründe %50 İNDİRİM var!",
-                                f"⭐ Aşağıdakiler öne çıkan {len(urunler)} fırsat:",
+                                "",
+                                f"🔥 YARIN {len(urunler)} Üründe %50 İNDİRİM var!",
+                                "",
+                                "İNDİRİM KODUNUZ: ANTALYA101 (KODU KASİYERE SÖYLEMENİZ YETERLİ)",
                                 ""
                             ]
 
