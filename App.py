@@ -187,9 +187,14 @@ URUN_EMOJILERI = {
 
 def get_emoji(urun_adi):
     """Ürün adına göre emoji döndür"""
+    import re
     urun_upper = str(urun_adi).upper()
     for keyword, emoji in URUN_EMOJILERI.items():
-        if keyword in urun_upper:
+        # "ET" için kelime sınırı kontrolü (METAL, KÜVET, NEHİR içinde eşleşmesin)
+        if keyword == "ET":
+            if re.search(r'\bET\b', urun_upper):
+                return emoji
+        elif keyword in urun_upper:
             return emoji
     return "🏷️"
 
@@ -2358,7 +2363,7 @@ elif mod_secim == "📤 Toplu Mesaj":
                             # Mesaj oluştur
                             mesaj_lines = [
                                 f"🛒 A101 {magaza_adi}",
-                                f"🔥 YARINA ÖZEL ({len(urunler)}) Üründe %50 İNDİRİM var!",
+                                f"🔥 YARINA ÖZEL {len(urunler)} Üründe %50 İNDİRİM var!",
                                 f"⭐ Aşağıdakiler öne çıkan {len(urunler)} fırsat:",
                                 ""
                             ]
