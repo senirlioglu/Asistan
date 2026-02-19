@@ -3,6 +3,7 @@ import re
 import urllib.parse
 import pandas as pd
 import io
+import os
 import requests
 from datetime import datetime
 
@@ -140,7 +141,7 @@ MAGAZALAR = {
 WHATSAPP_NUMBER = "905399311842"
 
 # Performans verisi URL'leri (Google Drive - Yıllık veri)
-PERFORMANS_URL_2025 = "https://drive.google.com/uc?id=12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6&export=download"
+PERFORMANS_URL_2025 = os.environ.get("PERFORMANS_URL_2025", "")
 
 # =============================================================================
 # ÜRÜN EMOJİLERİ
@@ -204,7 +205,7 @@ def get_emoji(urun_adi):
 import os
 import tempfile
 
-PARQUET_URL = "https://tlcgcdiycgfxpxwzkwuf.supabase.co/storage/v1/object/sign/parquet/4aylik.parquet?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lYzQ3MmQ0NC03MGQ5LTQ3NDMtOGMzNS0zN2VjM2M1ZGQ4YzYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJwYXJxdWV0LzRheWxpay5wYXJxdWV0IiwiaWF0IjoxNzY5MDAxMzQxLCJleHAiOjE4MDA1MzczNDF9.Z6AivVVX6Q60qkWbk1EzXI2wjnfccSnya0l_lE9wfZA"
+PARQUET_URL = os.environ.get("PARQUET_URL", "")
 
 @st.cache_resource
 def get_perf_local_path() -> str:
