@@ -116,26 +116,54 @@ st.markdown("""
 # MAĞAZA LİSTESİ (WhatsApp Kanalı Kampanya)
 # =============================================================================
 MAGAZALAR = {
-    "G874": "Mustafa Koç Camii | Kepez",
-    "F296": "Cahit Sıtkı | Muratpaşa",
-    "I023": "Balbey | Muratpaşa",
-    "I824": "Yalı | Muratpaşa",
-    "E180": "Aydınlıkevler | Muratpaşa",
-    "1715": "Çağlayan Mah | Muratpaşa",
-    "D587": "Düden Park | Muratpaşa",
-    "C820": "Kemerağzı | Muratpaşa",
-    "B548": "Hamidiye | Muratpaşa",
-    "J506": "Yahya Kemal | Kepez",
-    "H283": "Fabrikalar | Kepez",
-    "2454": "Bahçelievler | Muratpaşa",
-    "6667": "Hastane Cad | Kepez",
-    "396": "Köroğlu | Muratpaşa",
-    "J218": "15 Katlılar | Kepez",
-    "4282": "Kara Yusuf | Kepez",
-    "1125": "Portakalçiçeği | Muratpaşa",
-    "H519": "Üçyol | Kepez",
-    "C007": "15 Temmuz | Kepez",
-    "D706": "Suphi Türel | Kepez",
+    "0396": "Köroğlu Muratpaşa",
+    "1125": "Portakalçiçeği Muratpaşa",
+    "1441": "Tonguç",
+    "1715": "Çağlayan Muratpaşa",
+    "2454": "Bahçelievler Muratpaşa",
+    "3812": "Gazi Bulvarı",
+    "4282": "Kara Yusuf Kepez",
+    "4667": "Orduevi",
+    "5490": "Gençlik",
+    "6667": "Hastane Cad Kepez",
+    "8243": "Güvenlik",
+    "8574": "Düden Şelalesi",
+    "8878": "Vali Recep Yazıcıoğlu Kepez",
+    "8971": "Kayıkent",
+    "9395": "Ömer Buyrukçu Cd",
+    "B130": "Kamile Çömlekçi",
+    "B548": "Hamidiye Muratpaşa",
+    "C007": "15 Temmuz Kepez",
+    "C241": "Rasih Kaplan Cd Kepez",
+    "C346": "Haseki Kepez",
+    "C760": "Ermenek",
+    "C820": "Kemerağzı Muratpaşa",
+    "D483": "Güzeloluk",
+    "D587": "Düden Park Muratpaşa",
+    "D705": "Molla Gürani",
+    "D706": "Suphi Türel Kepez",
+    "E046": "Sosyal Güvenlik",
+    "E180": "Aydınlıkevler Muratpaşa",
+    "E351": "İsmet Gökşen",
+    "F296": "Cahit Sıtkı Muratpaşa",
+    "F488": "Aşıkveysel",
+    "G874": "Mustafa Koç Camii Kepez",
+    "H283": "Fabrikalar Kepez",
+    "H519": "Üçyol Kepez",
+    "H950": "Turgay Koca",
+    "I023": "Balbey Muratpaşa",
+    "I566": "Nirvana",
+    "I693": "Farabi",
+    "I824": "Yalı Muratpaşa",
+    "J218": "15 Katlılar Kepez",
+    "J365": "Kapalı Yol",
+    "J433": "IşıkCaddesi",
+    "J506": "Yahya Kemal Kepez",
+    "J751": "Yeni Niğdeli Parkı",
+    "K446": "Paşa Caddesi",
+    "K484": "Aydın Kanza",
+    "K486": "Müsellim Muratpaşa",
+    "K508": "Varlık Muratpaşa",
 }
 
 WHATSAPP_NUMBER = "905399311842"
@@ -205,32 +233,35 @@ def get_emoji(urun_adi):
 import os
 import tempfile
 
-PARQUET_URL = os.environ.get("PARQUET_URL", "")
+# Google Drive File ID - Streamlit secrets veya environment variable'dan al
+def _get_gdrive_file_id():
+    # Önce Streamlit secrets dene
+    try:
+        return st.secrets["GDRIVE_FILE_ID"]
+    except:
+        pass
+    # Sonra environment variable
+    return os.environ.get("GDRIVE_FILE_ID", "")
 
 @st.cache_resource
 def get_perf_local_path() -> str:
-    """Parquet'i diske indir (RAM'e değil) - session boyunca tek kez"""
-    r = requests.get(PARQUET_URL, stream=True, timeout=600, allow_redirects=True)
-    if r.status_code != 200:
-        raise RuntimeError(f"Perf download HTTP {r.status_code}: {r.text[:200]}")
-    ct = (r.headers.get("Content-Type") or "").lower()
-    if "text/html" in ct:
-        raise RuntimeError(f"Perf URL HTML döndürüyor. Content-Type={ct}")
+    """Parquet'i Google Drive'dan indir - gdown ile otomatik virus scan bypass"""
+    import gdown
 
-    fd, path = tempfile.mkstemp(suffix=".parquet")
-    os.close(fd)
+    file_id = _get_gdrive_file_id()
+    if not file_id:
+        raise RuntimeError("GDRIVE_FILE_ID secret veya environment variable tanımlı değil!")
 
-    with open(path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                f.write(chunk)
+    output_path = os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
+    url = f"https://drive.google.com/uc?id={file_id}"
+    gdown.download(url, output_path, quiet=False)
 
     # Parquet signature kontrol (baş PAR1)
-    with open(path, "rb") as f:
+    with open(output_path, "rb") as f:
         if f.read(4) != b"PAR1":
             raise RuntimeError("İndirilen dosya parquet değil / bozuk indi (PAR1 yok).")
 
-    return path
+    return output_path
 
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
@@ -239,7 +270,7 @@ def load_perf_lookups():
         path = get_perf_local_path()
 
         # SADECE gerekli kolonlar (PyArrow ile oku, pandas'a çevir)
-        df = pd.read_parquet(path, columns=["Urun_Kod", "Mal_Grubu", "Nitelik"])
+        df = pd.read_parquet(path, columns=["Urun_Kod", "Mal_Grubu", "Ust_Mal_Grubu", "Nitelik"])
 
         # Nitelikler (distinct)
         nitelikler = sorted(df["Nitelik"].dropna().unique().tolist())
@@ -248,10 +279,14 @@ def load_perf_lookups():
         urun_mal_grubu_map = df.groupby("Urun_Kod")["Mal_Grubu"].first().to_dict()
         urun_mal_grubu_map = {str(k).strip(): v for k, v in urun_mal_grubu_map.items() if k is not None}
 
-        return urun_mal_grubu_map, nitelikler
+        # Urun -> Ust_Mal_Grubu (first)
+        urun_ust_mal_grubu_map = df.groupby("Urun_Kod")["Ust_Mal_Grubu"].first().to_dict()
+        urun_ust_mal_grubu_map = {str(k).strip(): v for k, v in urun_ust_mal_grubu_map.items() if k is not None and v is not None}
+
+        return urun_mal_grubu_map, urun_ust_mal_grubu_map, nitelikler
     except Exception as e:
         st.warning(f"⚠️ Lookup verisi yüklenemedi: {str(e)}")
-        return {}, []
+        return {}, {}, []
 
 @st.cache_data(ttl=3600)
 def load_performans_data():
@@ -439,14 +474,17 @@ def write_excel_with_formulas(df, sheet_name='Kampanya Önerisi'):
 
 import math
 
-def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_grubu_map, weights=None):
+def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_grubu_map, urun_ust_mal_grubu_map=None, weights=None):
     """
     Lift bazlı puanlama algoritması
     - Benchmark: Tüm mağazalar (aynı nitelik)
     - Mağaza payı / Benchmark payı = Lift
     - Shrinkage ile düzeltme
+    - Hiyerarşi: Üst Mal Grubu → Mal Grubu → SKU (sadece satışı varsa)
     - weights: (fit, disc, save) ağırlıkları - varsayılan (0.65, 0.25, 0.10)
     """
+    if urun_ust_mal_grubu_map is None:
+        urun_ust_mal_grubu_map = {}
     if df is None or df.empty:
         return kampanya_urunleri, 0
 
@@ -501,6 +539,26 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
 
         mal_grubu_lifts[g] = {'lift_qty': lift_qty_shr, 'lift_ciro': lift_ciro_shr}
 
+    # === ÜST MAL GRUBU LIFT TABLOSU ===
+    ust_mal_grubu_lifts = {}
+    if 'Ust_Mal_Grubu' in df.columns:
+        for g in df['Ust_Mal_Grubu'].dropna().unique():
+            store_g = store_df[store_df['Ust_Mal_Grubu'] == g]
+            bench_g = bench_df[bench_df['Ust_Mal_Grubu'] == g]
+
+            share_qty_store = (store_g['Satis_Miktari'].sum() / TOTAL_ADET_store) if TOTAL_ADET_store > 0 else 0
+            share_qty_bench = (bench_g['Satis_Miktari'].sum() / TOTAL_ADET_bench) if TOTAL_ADET_bench > 0 else 0
+            share_ciro_store = (store_g['Satis_Hasilati_VD'].sum() / TOTAL_CIRO_store) if TOTAL_CIRO_store > 0 else 0
+            share_ciro_bench = (bench_g['Satis_Hasilati_VD'].sum() / TOTAL_CIRO_bench) if TOTAL_CIRO_bench > 0 else 0
+
+            lift_qty = (share_qty_store + eps) / (share_qty_bench + eps)
+            lift_ciro = (share_ciro_store + eps) / (share_ciro_bench + eps)
+
+            lift_qty_shr = 1 + w * (lift_qty - 1)
+            lift_ciro_shr = 1 + w * (lift_ciro - 1)
+
+            ust_mal_grubu_lifts[g] = {'lift_qty': lift_qty_shr, 'lift_ciro': lift_ciro_shr}
+
     # === SKU LIFT TABLOSU ===
     sku_lifts = {}
     # Key'leri string yap (kampanya ürün kodları string)
@@ -535,6 +593,7 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
     for urun in kampanya_urunleri:
         urun_kodu = urun.get('kod', '')
         mal_grubu = urun_mal_grubu_map.get(urun_kodu)
+        ust_mal_grubu = urun_ust_mal_grubu_map.get(urun_kodu)
 
         # İndirim skorları
         try:
@@ -568,7 +627,21 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
         group_warning = None
         score_penalty = 0
 
-        # === MAL GRUBU DEĞERLERİ (her zaman hesapla) ===
+        # === ÜST MAL GRUBU DEĞERLERİ ===
+        fit_ust_group = 0
+        lift_qty_ust_group = 1
+        lift_ciro_ust_group = 1
+        store_ust_group_qty = 0
+
+        if ust_mal_grubu and ust_mal_grubu in ust_mal_grubu_lifts:
+            store_ust_g = store_df[store_df['Ust_Mal_Grubu'] == ust_mal_grubu]
+            store_ust_group_qty = store_ust_g['Satis_Miktari'].sum()
+
+            lift_qty_ust_group = ust_mal_grubu_lifts[ust_mal_grubu]['lift_qty']
+            lift_ciro_ust_group = ust_mal_grubu_lifts[ust_mal_grubu]['lift_ciro']
+            fit_ust_group = 0.7 * math.log(max(lift_qty_ust_group, 0.01)) + 0.3 * math.log(max(lift_ciro_ust_group, 0.01))
+
+        # === MAL GRUBU DEĞERLERİ ===
         store_group_qty = 0
         store_group_ciro = 0
         store_group_share = 0
@@ -588,28 +661,34 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
             fit_group = 0.7 * math.log(max(lift_qty_group, 0.01)) + 0.3 * math.log(max(lift_ciro_group, 0.01))
 
         # === MAL GRUBU VARLIK KAPISI ===
-        # Mağaza bu mal grubunu neredeyse hiç satmıyorsa → ceza veya öneri dışı
         if store_group_qty == 0:
             group_warning = "⛔ Mal grubu hiç satılmamış"
-            score_penalty = 50  # Ağır ceza
+            score_penalty = 50
         elif store_group_share < GROUP_MIN_SHARE:
             group_warning = f"⚠️ Mal grubu zayıf (%{store_group_share*100:.2f})"
-            score_penalty = 25  # Orta ceza
+            score_penalty = 25
 
-        # === SKU KONTROLÜ ===
+        # === HİYERARŞİK PUANLAMA ===
+        # Öncelik: 1) SKU (sadece satışı varsa) 2) Mal Grubu 3) Üst Mal Grubu
+
         sku_qty_raw = 0
         bench_qty_raw = 0
 
+        # SKU lift SADECE mağazada satış varsa uygulanır (yeni ürünler hariç)
         if urun_kodu in sku_lifts:
             sku_qty_raw = store_sku.get(urun_kodu, {}).get('Satis_Miktari', 0)
             bench_vals = bench_sku.get(urun_kodu, {'Satis_Miktari': 0, 'Satis_Hasilati_VD': 0})
             bench_qty_raw = bench_vals['Satis_Miktari']
 
-            # SKU güven kontrolü
+        # SKU boost SADECE mağazada satış geçmişi varsa
+        has_store_sales = sku_qty_raw > 0
+
+        if has_store_sales and urun_kodu in sku_lifts:
+            # Mağazada satış var → SKU lift uygula
             sku_trusted = (sku_qty_raw >= SKU_MIN_STORE) and (bench_qty_raw >= SKU_MIN_BENCH)
 
             if sku_trusted:
-                # SKU verisi güvenilir → doğrudan kullan
+                # SKU verisi güvenilir
                 lift_qty = sku_lifts[urun_kodu]['lift_qty']
                 lift_ciro = sku_lifts[urun_kodu]['lift_ciro']
                 fit_sku = 0.7 * math.log(max(lift_qty, 0.01)) + 0.3 * math.log(max(lift_ciro, 0.01))
@@ -622,38 +701,53 @@ def calculate_lift_scores(kampanya_urunleri, magaza_kodu, nitelik, df, urun_mal_
                 bench_qty = bench_qty_raw
                 bench_ciro = bench_vals['Satis_Hasilati_VD']
             else:
-                # SKU verisi yetersiz → Hiyerarşik birleştirme
-                alpha = sku_qty_raw / (sku_qty_raw + ALPHA_K)
+                # SKU verisi yetersiz → Hiyerarşik blend (SKU + Mal Grubu + Üst Mal Grubu)
+                alpha_sku = sku_qty_raw / (sku_qty_raw + ALPHA_K)
 
                 lift_qty_sku = sku_lifts[urun_kodu]['lift_qty']
                 lift_ciro_sku = sku_lifts[urun_kodu]['lift_ciro']
                 fit_sku = 0.7 * math.log(max(lift_qty_sku, 0.01)) + 0.3 * math.log(max(lift_ciro_sku, 0.01))
 
-                # Blend: alpha * SKU + (1-alpha) * Group
-                fit = alpha * fit_sku + (1 - alpha) * fit_group
-                lift_qty = alpha * lift_qty_sku + (1 - alpha) * lift_qty_group
-                lift_ciro = alpha * lift_ciro_sku + (1 - alpha) * lift_ciro_group
+                # Blend: Mal Grubu ve Üst Mal Grubu ortalaması → SKU ile blend
+                fit_category = 0.7 * fit_group + 0.3 * fit_ust_group if fit_group > 0 else fit_ust_group
+                lift_qty_category = 0.7 * lift_qty_group + 0.3 * lift_qty_ust_group if fit_group > 0 else lift_qty_ust_group
+                lift_ciro_category = 0.7 * lift_ciro_group + 0.3 * lift_ciro_ust_group if fit_group > 0 else lift_ciro_ust_group
 
-                sku_match = True  # SKU var ama düşük güvenle
+                fit = alpha_sku * fit_sku + (1 - alpha_sku) * fit_category
+                lift_qty = alpha_sku * lift_qty_sku + (1 - alpha_sku) * lift_qty_category
+                lift_ciro = alpha_sku * lift_ciro_sku + (1 - alpha_sku) * lift_ciro_category
+
+                sku_match = True
                 eslesen_sku += 1
-                data_warning = f"⚠️ Düşük veri ({sku_qty_raw} adet), grup profili ağırlıklı"
+                data_warning = f"⚠️ Düşük veri ({sku_qty_raw} adet), kategori profili ağırlıklı"
 
-                # Gösterim için mal grubu değerlerini kullan
                 store_qty = store_group_qty
                 store_ciro = store_group_ciro
                 bench_qty = bench_g['Satis_Miktari'].sum() if mal_grubu else 0
                 bench_ciro = bench_g['Satis_Hasilati_VD'].sum() if mal_grubu else 0
 
         elif mal_grubu and mal_grubu in mal_grubu_lifts:
-            # SKU yok → Mal grubu kullan
-            lift_qty = lift_qty_group
-            lift_ciro = lift_ciro_group
-            fit = fit_group
+            # Yeni ürün veya SKU satışı yok → Mal Grubu + Üst Mal Grubu kullan
+            # Ağırlık: %70 Mal Grubu, %30 Üst Mal Grubu
+            fit = 0.7 * fit_group + 0.3 * fit_ust_group if fit_ust_group > 0 else fit_group
+            lift_qty = 0.7 * lift_qty_group + 0.3 * lift_qty_ust_group if fit_ust_group > 0 else lift_qty_group
+            lift_ciro = 0.7 * lift_ciro_group + 0.3 * lift_ciro_ust_group if fit_ust_group > 0 else lift_ciro_group
 
             store_qty = store_group_qty
             store_ciro = store_group_ciro
             bench_qty = bench_g['Satis_Miktari'].sum()
             bench_ciro = bench_g['Satis_Hasilati_VD'].sum()
+
+        elif ust_mal_grubu and ust_mal_grubu in ust_mal_grubu_lifts:
+            # Mal grubu yok ama Üst Mal Grubu var
+            fit = fit_ust_group
+            lift_qty = lift_qty_ust_group
+            lift_ciro = lift_ciro_ust_group
+
+            store_qty = store_ust_group_qty
+            store_ciro = 0
+            bench_qty = 0
+            bench_ciro = 0
 
         # Pay yüzdeleri
         store_share_qty = (store_qty / TOTAL_ADET_store * 100) if TOTAL_ADET_store > 0 else 0
@@ -1030,6 +1124,7 @@ if mod_secim == "📨 Mesaj Oluşturucu":
         if "perf_lookups_loaded" not in st.session_state:
             st.session_state["perf_lookups_loaded"] = False
             st.session_state["urun_mal_grubu_map"] = {}
+            st.session_state["urun_ust_mal_grubu_map"] = {}
             st.session_state["nitelikler"] = []
 
         # Performans lookup'larını butonla yükle (hafif - sadece 3 kolon)
@@ -1039,8 +1134,9 @@ if mod_secim == "📨 Mesaj Oluşturucu":
         with col_load:
             if st.button("📥 Performans Verisini Yükle", key="btn_load_perf", type="primary"):
                 with st.spinner("📊 Performans lookupları hazırlanıyor..."):
-                    urun_mal_grubu_map, nitelikler = load_perf_lookups()
+                    urun_mal_grubu_map, urun_ust_mal_grubu_map, nitelikler = load_perf_lookups()
                     st.session_state["urun_mal_grubu_map"] = urun_mal_grubu_map
+                    st.session_state["urun_ust_mal_grubu_map"] = urun_ust_mal_grubu_map
                     st.session_state["nitelikler"] = nitelikler
                     st.session_state["perf_lookups_loaded"] = len(nitelikler) > 0
                     if st.session_state["perf_lookups_loaded"]:
@@ -1048,6 +1144,7 @@ if mod_secim == "📨 Mesaj Oluşturucu":
 
         perf_loaded = st.session_state["perf_lookups_loaded"]
         urun_mal_grubu_map = st.session_state["urun_mal_grubu_map"]
+        urun_ust_mal_grubu_map = st.session_state.get("urun_ust_mal_grubu_map", {})
         nitelikler = st.session_state["nitelikler"]
 
         with col_status:
@@ -1148,6 +1245,7 @@ if mod_secim == "📨 Mesaj Oluşturucu":
                         nitelik_secim,
                         performans_df,
                         urun_mal_grubu_map,
+                        urun_ust_mal_grubu_map=urun_ust_mal_grubu_map,
                         weights=weights
                     )
                 else:
@@ -1548,12 +1646,12 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
             stok_df.columns = stok_df.columns.str.strip()
 
             # Gerekli kolonları kontrol et
-            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı']
+            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
 
             if eksik_kolonlar:
                 st.error(f"❌ Eksik kolonlar: {', '.join(eksik_kolonlar)}")
-                st.info("Beklenen kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı, Marj, KDV...")
+                st.info("Beklenen kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı, Marj, KDV, **Üst Mal Grubu**, **Mal Grubu**...")
             else:
                 st.success(f"✅ {len(stok_df):,} satır yüklendi")
 
@@ -1720,6 +1818,16 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                     # =============================================================================
                     st.markdown("### 3️⃣ Kampanya Önerisi")
 
+                    # Minimum fiyat filtresi
+                    min_fiyat = st.number_input(
+                        "💰 Minimum Ürün Fiyatı (₺)",
+                        min_value=0.0,
+                        max_value=100000.0,
+                        value=0.0,
+                        step=10.0,
+                        help="Sadece bu fiyatın üzerindeki ürünler analize dahil edilir"
+                    )
+
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
                             # Session state'den performans verisini al (yoksa yükle)
@@ -1767,9 +1875,13 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                         except:
                                             satis_fiyati = 0
 
-                                    # Mal grubunu ve üst mal grubunu bul
-                                    mal_grubu = urun_mal_grubu_agg.get(urun_kodu) or row.get('mal grubu', '')
-                                    ust_mal_grubu = urun_ust_mal_grubu_agg.get(urun_kodu) or row.get('üst mal grubu', '')
+                                    # Minimum fiyat filtresi - altındakileri atla
+                                    if min_fiyat > 0 and satis_fiyati < min_fiyat:
+                                        continue
+
+                                    # Mal grubunu ve üst mal grubunu Excel'den al (zorunlu kolonlar)
+                                    mal_grubu = str(row.get('Mal Grubu', '')).strip()
+                                    ust_mal_grubu = str(row.get('Üst Mal Grubu', '')).strip()
 
                                     # Dict lookup ile hızlı lift hesaplama
                                     store_total = store_totals.get(magaza_kodu, 0)
@@ -2020,7 +2132,7 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
             stok_df = pd.read_excel(uploaded_file_wp)
             stok_df.columns = stok_df.columns.str.strip()
 
-            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı']
+            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
 
             if eksik_kolonlar:
@@ -2087,9 +2199,9 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         except:
                                             satis_fiyati = 0
 
-                                    # Mal grubunu ve üst mal grubunu bul
-                                    mal_grubu = urun_mal_grubu_agg.get(urun_kodu) or row.get('mal grubu', '')
-                                    ust_mal_grubu = urun_ust_mal_grubu_agg.get(urun_kodu) or row.get('üst mal grubu', '')
+                                    # Mal grubunu ve üst mal grubunu Excel'den al (zorunlu kolonlar)
+                                    mal_grubu = str(row.get('Mal Grubu', '')).strip()
+                                    ust_mal_grubu = str(row.get('Üst Mal Grubu', '')).strip()
 
                                     store_total = store_totals.get(magaza_kodu, 0)
 
