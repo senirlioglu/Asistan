@@ -233,55 +233,23 @@ import os
 import tempfile
 
 # Google Drive - Tüm aylar verisi
-PARQUET_URL = "https://drive.google.com/uc?id=12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6&export=download"
+GDRIVE_FILE_ID = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
 
 @st.cache_resource
 def get_perf_local_path() -> str:
-    """Parquet'i diske indir (RAM'e değil) - session boyunca tek kez"""
-    import re
+    """Parquet'i Google Drive'dan indir - gdown ile otomatik virus scan bypass"""
+    import gdown
 
-    session = requests.Session()
-
-    # İlk istek
-    r = session.get(PARQUET_URL, stream=True, timeout=600)
-    if r.status_code != 200:
-        raise RuntimeError(f"Perf download HTTP {r.status_code}: {r.text[:200]}")
-
-    # Google Drive büyük dosya uyarısı kontrolü
-    ct = (r.headers.get("Content-Type") or "").lower()
-    if "text/html" in ct:
-        # Confirm token'ı HTML'den çıkar
-        html = r.text
-        # uuid parametresini bul
-        match = re.search(r'confirm=([^&"]+)', html)
-        if match:
-            confirm_token = match.group(1)
-            # Confirm URL ile tekrar dene
-            confirm_url = f"{PARQUET_URL}&confirm={confirm_token}"
-            r = session.get(confirm_url, stream=True, timeout=600)
-            if r.status_code != 200:
-                raise RuntimeError(f"Perf confirm download HTTP {r.status_code}")
-        else:
-            # Alternatif: doğrudan confirm=t ile dene
-            confirm_url = f"{PARQUET_URL}&confirm=t"
-            r = session.get(confirm_url, stream=True, timeout=600)
-            if r.status_code != 200:
-                raise RuntimeError(f"Perf URL HTML döndürüyor ve confirm bulunamadı")
-
-    fd, path = tempfile.mkstemp(suffix=".parquet")
-    os.close(fd)
-
-    with open(path, "wb") as f:
-        for chunk in r.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                f.write(chunk)
+    output_path = os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
+    url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
+    gdown.download(url, output_path, quiet=False)
 
     # Parquet signature kontrol (baş PAR1)
-    with open(path, "rb") as f:
+    with open(output_path, "rb") as f:
         if f.read(4) != b"PAR1":
             raise RuntimeError("İndirilen dosya parquet değil / bozuk indi (PAR1 yok).")
 
-    return path
+    return output_path
 
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
