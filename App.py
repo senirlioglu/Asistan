@@ -1547,12 +1547,12 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
             stok_df.columns = stok_df.columns.str.strip()
 
             # Gerekli kolonları kontrol et
-            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı']
+            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
 
             if eksik_kolonlar:
                 st.error(f"❌ Eksik kolonlar: {', '.join(eksik_kolonlar)}")
-                st.info("Beklenen kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı, Marj, KDV...")
+                st.info("Beklenen kolonlar: SM, BS, Kod, Mağaza Adı, Ürün Kodu, Ürün Tanımı, Stok, Alış, Satış Fiyatı, Marj, KDV, **Üst Mal Grubu**, **Mal Grubu**...")
             else:
                 st.success(f"✅ {len(stok_df):,} satır yüklendi")
 
@@ -1780,9 +1780,9 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                     if min_fiyat > 0 and satis_fiyati < min_fiyat:
                                         continue
 
-                                    # Mal grubunu ve üst mal grubunu bul
-                                    mal_grubu = urun_mal_grubu_agg.get(urun_kodu) or row.get('mal grubu', '')
-                                    ust_mal_grubu = urun_ust_mal_grubu_agg.get(urun_kodu) or row.get('üst mal grubu', '')
+                                    # Mal grubunu ve üst mal grubunu Excel'den al (zorunlu kolonlar)
+                                    mal_grubu = str(row.get('Mal Grubu', '')).strip()
+                                    ust_mal_grubu = str(row.get('Üst Mal Grubu', '')).strip()
 
                                     # Dict lookup ile hızlı lift hesaplama
                                     store_total = store_totals.get(magaza_kodu, 0)
@@ -2033,7 +2033,7 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
             stok_df = pd.read_excel(uploaded_file_wp)
             stok_df.columns = stok_df.columns.str.strip()
 
-            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı']
+            gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
 
             if eksik_kolonlar:
@@ -2100,9 +2100,9 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         except:
                                             satis_fiyati = 0
 
-                                    # Mal grubunu ve üst mal grubunu bul
-                                    mal_grubu = urun_mal_grubu_agg.get(urun_kodu) or row.get('mal grubu', '')
-                                    ust_mal_grubu = urun_ust_mal_grubu_agg.get(urun_kodu) or row.get('üst mal grubu', '')
+                                    # Mal grubunu ve üst mal grubunu Excel'den al (zorunlu kolonlar)
+                                    mal_grubu = str(row.get('Mal Grubu', '')).strip()
+                                    ust_mal_grubu = str(row.get('Üst Mal Grubu', '')).strip()
 
                                     store_total = store_totals.get(magaza_kodu, 0)
 
