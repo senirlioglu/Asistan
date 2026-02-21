@@ -233,16 +233,27 @@ def get_emoji(urun_adi):
 import os
 import tempfile
 
-# Google Drive - Tüm aylar verisi (environment variable ile override edilebilir)
-GDRIVE_FILE_ID = os.environ.get("GDRIVE_FILE_ID", "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6")
+# Google Drive File ID - Streamlit secrets veya environment variable'dan al
+def _get_gdrive_file_id():
+    # Önce Streamlit secrets dene
+    try:
+        return st.secrets["GDRIVE_FILE_ID"]
+    except:
+        pass
+    # Sonra environment variable
+    return os.environ.get("GDRIVE_FILE_ID", "")
 
 @st.cache_resource
 def get_perf_local_path() -> str:
     """Parquet'i Google Drive'dan indir - gdown ile otomatik virus scan bypass"""
     import gdown
 
+    file_id = _get_gdrive_file_id()
+    if not file_id:
+        raise RuntimeError("GDRIVE_FILE_ID secret veya environment variable tanımlı değil!")
+
     output_path = os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
-    url = f"https://drive.google.com/uc?id={GDRIVE_FILE_ID}"
+    url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, output_path, quiet=False)
 
     # Parquet signature kontrol (baş PAR1)
