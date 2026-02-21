@@ -1719,6 +1719,16 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                     # =============================================================================
                     st.markdown("### 3️⃣ Kampanya Önerisi")
 
+                    # Minimum fiyat filtresi
+                    min_fiyat = st.number_input(
+                        "💰 Minimum Ürün Fiyatı (₺)",
+                        min_value=0.0,
+                        max_value=100000.0,
+                        value=0.0,
+                        step=10.0,
+                        help="Sadece bu fiyatın üzerindeki ürünler analize dahil edilir"
+                    )
+
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
                             # Session state'den performans verisini al (yoksa yükle)
@@ -1765,6 +1775,10 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                             satis_fiyati = float(satis_fiyati.replace('₺', '').replace('.', '').replace(',', '.').strip())
                                         except:
                                             satis_fiyati = 0
+
+                                    # Minimum fiyat filtresi - altındakileri atla
+                                    if min_fiyat > 0 and satis_fiyati < min_fiyat:
+                                        continue
 
                                     # Mal grubunu ve üst mal grubunu bul
                                     mal_grubu = urun_mal_grubu_agg.get(urun_kodu) or row.get('mal grubu', '')
