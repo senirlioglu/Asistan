@@ -232,17 +232,41 @@ def get_emoji(urun_adi):
 import os
 import tempfile
 
-PARQUET_URL = "https://tlcgcdiycgfxpxwzkwuf.supabase.co/storage/v1/object/sign/parquet/4aylik.parquet?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV9lYzQ3MmQ0NC03MGQ5LTQ3NDMtOGMzNS0zN2VjM2M1ZGQ4YzYiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJwYXJxdWV0LzRheWxpay5wYXJxdWV0IiwiaWF0IjoxNzY5MDAxMzQxLCJleHAiOjE4MDA1MzczNDF9.Z6AivVVX6Q60qkWbk1EzXI2wjnfccSnya0l_lE9wfZA"
+# Google Drive - Tüm aylar verisi
+PARQUET_URL = "https://drive.google.com/uc?id=12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6&export=download"
 
 @st.cache_resource
 def get_perf_local_path() -> str:
     """Parquet'i diske indir (RAM'e değil) - session boyunca tek kez"""
-    r = requests.get(PARQUET_URL, stream=True, timeout=600, allow_redirects=True)
+    import re
+
+    session = requests.Session()
+
+    # İlk istek
+    r = session.get(PARQUET_URL, stream=True, timeout=600)
     if r.status_code != 200:
         raise RuntimeError(f"Perf download HTTP {r.status_code}: {r.text[:200]}")
+
+    # Google Drive büyük dosya uyarısı kontrolü
     ct = (r.headers.get("Content-Type") or "").lower()
     if "text/html" in ct:
-        raise RuntimeError(f"Perf URL HTML döndürüyor. Content-Type={ct}")
+        # Confirm token'ı HTML'den çıkar
+        html = r.text
+        # uuid parametresini bul
+        match = re.search(r'confirm=([^&"]+)', html)
+        if match:
+            confirm_token = match.group(1)
+            # Confirm URL ile tekrar dene
+            confirm_url = f"{PARQUET_URL}&confirm={confirm_token}"
+            r = session.get(confirm_url, stream=True, timeout=600)
+            if r.status_code != 200:
+                raise RuntimeError(f"Perf confirm download HTTP {r.status_code}")
+        else:
+            # Alternatif: doğrudan confirm=t ile dene
+            confirm_url = f"{PARQUET_URL}&confirm=t"
+            r = session.get(confirm_url, stream=True, timeout=600)
+            if r.status_code != 200:
+                raise RuntimeError(f"Perf URL HTML döndürüyor ve confirm bulunamadı")
 
     fd, path = tempfile.mkstemp(suffix=".parquet")
     os.close(fd)
