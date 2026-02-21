@@ -3,6 +3,7 @@ import re
 import urllib.parse
 import pandas as pd
 import io
+import os
 import requests
 from datetime import datetime
 
@@ -168,7 +169,7 @@ MAGAZALAR = {
 WHATSAPP_NUMBER = "905399311842"
 
 # Performans verisi URL'leri (Google Drive - Yıllık veri)
-PERFORMANS_URL_2025 = "https://drive.google.com/uc?id=12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6&export=download"
+PERFORMANS_URL_2025 = os.environ.get("PERFORMANS_URL_2025", "")
 
 # =============================================================================
 # ÜRÜN EMOJİLERİ
@@ -232,8 +233,8 @@ def get_emoji(urun_adi):
 import os
 import tempfile
 
-# Google Drive - Tüm aylar verisi
-GDRIVE_FILE_ID = "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6"
+# Google Drive - Tüm aylar verisi (environment variable ile override edilebilir)
+GDRIVE_FILE_ID = os.environ.get("GDRIVE_FILE_ID", "12T3XrtExkNjAh41H2Rv6GYw-cUx4s7L6")
 
 @st.cache_resource
 def get_perf_local_path() -> str:
