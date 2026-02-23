@@ -2047,6 +2047,9 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
 
                                 # DataFrame oluştur ve sırala
                                 sonuc_df = pd.DataFrame(sonuclar)
+                                # Kod kolonunu string'e çevir (pyarrow mixed type hatası için)
+                                if 'Kod' in sonuc_df.columns:
+                                    sonuc_df['Kod'] = sonuc_df['Kod'].astype(str).str.strip()
 
                                 # Mağaza bazında grupla ve her mağaza için en iyi ürünleri seç
                                 sonuc_df = sonuc_df.sort_values(
@@ -2377,6 +2380,9 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                     })
 
                                 sonuc_df = pd.DataFrame(sonuclar)
+                                # Kod kolonunu string'e çevir (pyarrow mixed type hatası için)
+                                if 'Kod' in sonuc_df.columns:
+                                    sonuc_df['Kod'] = sonuc_df['Kod'].astype(str).str.strip()
                                 sonuc_df = sonuc_df.sort_values(['Kod', 'Lift Skoru', 'Stok TL'], ascending=[True, False, False])
                                 st.session_state['wp_kampanya_sonuc'] = sonuc_df
                                 st.success(f"✅ Analiz tamamlandı! {len(sonuc_df)} ürün-mağaza kombinasyonu")
