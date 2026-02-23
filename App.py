@@ -228,11 +228,12 @@ def get_emoji(urun_adi):
     return "🏷️"
 
 # =============================================================================
-# PERFORMANS VERİSİ
+# PERFORMANS VERİSİ - DUCKDB İLE RAM DOSTU OKUMA
 # =============================================================================
 import os
 import tempfile
 import gc
+import duckdb
 
 # Google Drive File ID - Streamlit secrets veya environment variable'dan al
 def _get_gdrive_file_id():
@@ -254,6 +255,11 @@ def get_perf_local_path() -> str:
         raise RuntimeError("GDRIVE_FILE_ID secret veya environment variable tanımlı değil!")
 
     output_path = os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
+
+    # Eski dosyayı sil - her zaman taze indir
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, output_path, quiet=False)
 
@@ -265,59 +271,71 @@ def get_perf_local_path() -> str:
     return output_path
 
 @st.cache_resource
-def _load_parquet_once():
+def _get_duckdb_connection():
     """
-    Parquet dosyasını BİR KERE yükle ve cache'le.
-    Tüm fonksiyonlar bu tek kaynaktan okur - RAM tasarrufu!
-
-    RAM Optimizasyonları:
-    - Category dtype kullanımı (~%70 RAM tasarrufu)
-    - String kolonları category'ye çevir
-    - Float32 kullanımı (float64 yerine)
+    DuckDB bağlantısı oluştur ve parquet VIEW'ı hazırla.
+    PURE DUCKDB - RAM'e DataFrame yüklemez, disk'ten direkt okur!
     """
     try:
         path = get_perf_local_path()
-        cols = ["Magaza_Kod", "Nitelik", "Urun_Kod", "Satis_Miktari", "Satis_Hasilati_VD", "Mal_Grubu", "Ust_Mal_Grubu"]
+        con = duckdb.connect(database=":memory:")
 
-        # PyArrow ile oku - daha hafif
-        df = pd.read_parquet(path, columns=cols, engine='pyarrow')
+        # Parquet'i VIEW olarak tanımla (RAM'e yüklemez!)
+        con.execute(f"""
+            CREATE VIEW performans AS
+            SELECT
+                CAST(Magaza_Kod AS VARCHAR) AS Magaza_Kod,
+                CAST(Nitelik AS VARCHAR) AS Nitelik,
+                CAST(Urun_Kod AS VARCHAR) AS Urun_Kod,
+                CAST(Satis_Miktari AS DOUBLE) AS Satis_Miktari,
+                CAST(Satis_Hasilati_VD AS DOUBLE) AS Satis_Hasilati_VD,
+                CAST(Mal_Grubu AS VARCHAR) AS Mal_Grubu,
+                CAST(Ust_Mal_Grubu AS VARCHAR) AS Ust_Mal_Grubu
+            FROM read_parquet('{path}')
+        """)
 
-        # String kolonları strip'le ve category'ye çevir (RAM tasarrufu!)
-        for col in ['Urun_Kod', 'Magaza_Kod', 'Nitelik', 'Mal_Grubu', 'Ust_Mal_Grubu']:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.strip().astype('category')
-
-        # Float64'ü float32'ye düşür (RAM tasarrufu)
-        for col in ['Satis_Miktari', 'Satis_Hasilati_VD']:
-            if col in df.columns:
-                df[col] = df[col].astype('float32')
-
-        # Garbage collection
-        gc.collect()
-
-        return df
+        return con
     except Exception as e:
-        st.warning(f"⚠️ Parquet yüklenemedi: {str(e)}")
+        st.warning(f"⚠️ DuckDB bağlantısı kurulamadı: {str(e)}")
         return None
 
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
-    """Lookup map'lerini oluştur - ana DF'den türetir (RAM dostu)"""
+    """
+    Lookup map'lerini DuckDB ile oluştur - SADECE DISTINCT değerler RAM'e gelir!
+    Tüm dosyayı yüklemez, SQL sorgular.
+    """
     try:
-        df = _load_parquet_once()
-        if df is None:
+        con = _get_duckdb_connection()
+        if con is None:
             return {}, {}, []
 
-        # Nitelikler (distinct)
-        nitelikler = sorted(df["Nitelik"].dropna().unique().tolist())
+        # Nitelikler (distinct) - sadece unique değerler
+        nitelikler = con.execute("""
+            SELECT DISTINCT TRIM(Nitelik) AS Nitelik
+            FROM performans
+            WHERE Nitelik IS NOT NULL AND Nitelik <> ''
+            ORDER BY Nitelik
+        """).fetchall()
+        nitelikler = [x[0] for x in nitelikler]
 
-        # Urun -> Mal_Grubu (first) - sadece gerekli kolonlarla groupby
-        urun_mal_grubu_map = df.groupby("Urun_Kod")["Mal_Grubu"].first().to_dict()
-        urun_mal_grubu_map = {str(k).strip(): v for k, v in urun_mal_grubu_map.items() if k is not None}
+        # Urun -> Mal_Grubu mapping (first)
+        urun_mal_rows = con.execute("""
+            SELECT TRIM(Urun_Kod) AS Urun_Kod, FIRST(Mal_Grubu) AS Mal_Grubu
+            FROM performans
+            WHERE Urun_Kod IS NOT NULL
+            GROUP BY TRIM(Urun_Kod)
+        """).fetchall()
+        urun_mal_grubu_map = {row[0]: row[1] for row in urun_mal_rows if row[0] and row[1]}
 
-        # Urun -> Ust_Mal_Grubu (first)
-        urun_ust_mal_grubu_map = df.groupby("Urun_Kod")["Ust_Mal_Grubu"].first().to_dict()
-        urun_ust_mal_grubu_map = {str(k).strip(): v for k, v in urun_ust_mal_grubu_map.items() if k is not None and v is not None}
+        # Urun -> Ust_Mal_Grubu mapping (first)
+        urun_ust_rows = con.execute("""
+            SELECT TRIM(Urun_Kod) AS Urun_Kod, FIRST(Ust_Mal_Grubu) AS Ust_Mal_Grubu
+            FROM performans
+            WHERE Urun_Kod IS NOT NULL AND Ust_Mal_Grubu IS NOT NULL
+            GROUP BY TRIM(Urun_Kod)
+        """).fetchall()
+        urun_ust_mal_grubu_map = {row[0]: row[1] for row in urun_ust_rows if row[0] and row[1]}
 
         return urun_mal_grubu_map, urun_ust_mal_grubu_map, nitelikler
     except Exception as e:
@@ -326,8 +344,34 @@ def load_perf_lookups():
 
 @st.cache_data(ttl=3600)
 def load_performans_data():
-    """Performans DF - ana cache'den döndürür (RAM dostu)"""
-    return _load_parquet_once()
+    """
+    Performans DF - DuckDB'den sadece SPOT verilerini çek (filtrelenmiş, hafif).
+    Tüm veriyi değil, sadece Spot Nitelik olanları çeker!
+    """
+    try:
+        con = _get_duckdb_connection()
+        if con is None:
+            return None
+
+        # SADECE SPOT verilerini çek - tüm veriyi değil!
+        df = con.execute("""
+            SELECT
+                TRIM(Magaza_Kod) AS Magaza_Kod,
+                TRIM(Nitelik) AS Nitelik,
+                TRIM(Urun_Kod) AS Urun_Kod,
+                Satis_Miktari,
+                Satis_Hasilati_VD,
+                Mal_Grubu,
+                Ust_Mal_Grubu
+            FROM performans
+            WHERE LOWER(Nitelik) LIKE '%spot%'
+        """).df()
+
+        gc.collect()
+        return df
+    except Exception as e:
+        st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
+        return None
 
 @st.cache_data(ttl=3600)
 def get_urun_mal_grubu_map(_df):
@@ -389,19 +433,17 @@ def prepare_magaza_hierarchy(stok_df):
     return base, sm_list, bs_all, sm_to_bs
 
 @st.cache_data(ttl=3600)
-def prepare_lift_aggregations(_performans_df_hash):
+def prepare_lift_aggregations(_cache_key):
     """
     Lift hesaplaması için aggregasyonları önceden hazırla (döngü dışında)
     3 Seviyeli Hiyerarşi: SKU → Mal Grubu → Üst Mal Grubu
     CACHED: Aynı veri için tekrar hesaplamaz - RAM ve CPU tasarrufu!
-    """
-    performans_df = _load_parquet_once()
-    if performans_df is None:
-        return None
 
-    # Spot verilerini filtrele - .copy() KULLANMIYORUZ, view ile çalışıyoruz
-    spot_mask = performans_df['Nitelik'].str.lower().str.contains('spot', na=False)
-    spot_df = performans_df.loc[spot_mask]  # view, copy değil
+    NOT: load_performans_data() zaten SPOT filtrelenmiş veri döndürüyor!
+    """
+    spot_df = load_performans_data()
+    if spot_df is None:
+        return None
 
     # Benchmark toplam
     bench_total = spot_df['Satis_Miktari'].sum()
