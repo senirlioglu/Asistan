@@ -297,12 +297,12 @@ def get_perf_local_path() -> str:
 # =============================================================================
 # EXCEL HELPER (Performans için cache)
 # =============================================================================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, max_entries=3)
 def load_excel_raw(uploaded_file):
     """Excel dosyasını ham olarak oku"""
     return pd.read_excel(uploaded_file)
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, max_entries=3)
 def load_stok_excel(uploaded_file):
     """Stok Excel dosyasını oku ve kolonları standartlaştır"""
     try:
