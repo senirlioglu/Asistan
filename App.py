@@ -1805,11 +1805,20 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                     eslesenler.append(opt)
 
                             if eslesenler:
+                                # Hem multiselect key'ini hem de onay state'ini güncelle
+                                st.session_state['kamp_magaza_select'] = eslesenler
                                 st.session_state['kamp_secili_magazalar'] = eslesenler
-                                st.success(f"✅ {len(eslesenler)}/{len(kodlar)} mağaza bulundu ve seçildi!")
+                                st.session_state['kampanya_secili_magazalar'] = eslesenler  # Direkt onayla
+                                # Cache temizle
+                                if 'kamp_excel_bytes' in st.session_state:
+                                    del st.session_state['kamp_excel_bytes']
+                                if 'kampanya_sonuc' in st.session_state:
+                                    del st.session_state['kampanya_sonuc']
+                                st.success(f"✅ {len(eslesenler)}/{len(kodlar)} mağaza bulundu ve onaylandı!")
                                 st.rerun()
                             else:
-                                st.warning("⚠️ Girilen kodlardan hiçbiri mevcut mağazalarla eşleşmedi")
+                                st.warning(f"⚠️ Girilen {len(kodlar)} koddan hiçbiri mevcut mağazalarla eşleşmedi")
+                                st.info(f"Mevcut mağaza kodları: {', '.join([o.split(' - ')[0] for o in magaza_options[:5]])}...")
 
                 secili_magazalar = st.multiselect(
                     "Mağaza Seçin (zorunlu):",
