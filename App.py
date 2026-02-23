@@ -232,6 +232,28 @@ def get_emoji(urun_adi):
 # =============================================================================
 import os
 import tempfile
+import gc
+
+def cleanup_session_memory():
+    """
+    Session state'deki gereksiz büyük objeleri temizle - RAM tasarrufu.
+    Her sayfa yüklemesinde çağrılır.
+    """
+    # Büyük DF'leri session state'de TUTMA - cache'den al
+    keys_to_remove = []
+    for key in st.session_state:
+        # Büyük DataFrame'leri session state'den sil (cache'de zaten var)
+        if key == "performans_df":
+            keys_to_remove.append(key)
+
+    for key in keys_to_remove:
+        del st.session_state[key]
+
+    # Garbage collection tetikle
+    gc.collect()
+
+# Sayfa yüklendiğinde otomatik temizlik
+cleanup_session_memory()
 
 # Google Drive File ID - Streamlit secrets veya environment variable'dan al
 def _get_gdrive_file_id():
@@ -263,19 +285,36 @@ def get_perf_local_path() -> str:
 
     return output_path
 
-@st.cache_data(ttl=3600)
-def load_perf_lookups():
-    """Sadece gerekli kolonları oku - RAM dostu"""
+@st.cache_resource
+def _load_parquet_once():
+    """
+    Parquet dosyasını BİR KERE yükle ve cache'le.
+    Tüm fonksiyonlar bu tek kaynaktan okur - RAM tasarrufu!
+    """
     try:
         path = get_perf_local_path()
+        cols = ["Magaza_Kod", "Nitelik", "Urun_Kod", "Satis_Miktari", "Satis_Hasilati_VD", "Mal_Grubu", "Ust_Mal_Grubu"]
+        df = pd.read_parquet(path, columns=cols)
+        # Tip dönüşümlerini burada bir kere yap
+        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
+        df['Magaza_Kod'] = df['Magaza_Kod'].astype(str).str.strip()
+        return df
+    except Exception as e:
+        st.warning(f"⚠️ Parquet yüklenemedi: {str(e)}")
+        return None
 
-        # SADECE gerekli kolonlar (PyArrow ile oku, pandas'a çevir)
-        df = pd.read_parquet(path, columns=["Urun_Kod", "Mal_Grubu", "Ust_Mal_Grubu", "Nitelik"])
+@st.cache_data(ttl=3600)
+def load_perf_lookups():
+    """Lookup map'lerini oluştur - ana DF'den türetir (RAM dostu)"""
+    try:
+        df = _load_parquet_once()
+        if df is None:
+            return {}, {}, []
 
         # Nitelikler (distinct)
         nitelikler = sorted(df["Nitelik"].dropna().unique().tolist())
 
-        # Urun -> Mal_Grubu (first)
+        # Urun -> Mal_Grubu (first) - sadece gerekli kolonlarla groupby
         urun_mal_grubu_map = df.groupby("Urun_Kod")["Mal_Grubu"].first().to_dict()
         urun_mal_grubu_map = {str(k).strip(): v for k, v in urun_mal_grubu_map.items() if k is not None}
 
@@ -290,18 +329,8 @@ def load_perf_lookups():
 
 @st.cache_data(ttl=3600)
 def load_performans_data():
-    """Performans DF - sadece gerekli kolonlar (RAM dostu)"""
-    try:
-        path = get_perf_local_path()
-        cols = ["Magaza_Kod", "Nitelik", "Urun_Kod", "Satis_Miktari", "Satis_Hasilati_VD", "Mal_Grubu", "Ust_Mal_Grubu"]
-        df = pd.read_parquet(path, columns=cols)
-        # Tip dönüşümlerini burada bir kere yap
-        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
-        df['Magaza_Kod'] = df['Magaza_Kod'].astype(str).str.strip()
-        return df
-    except Exception as e:
-        st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
-        return None
+    """Performans DF - ana cache'den döndürür (RAM dostu)"""
+    return _load_parquet_once()
 
 @st.cache_data(ttl=3600)
 def get_urun_mal_grubu_map(_df):
@@ -362,18 +391,20 @@ def prepare_magaza_hierarchy(stok_df):
 
     return base, sm_list, bs_all, sm_to_bs
 
-def prepare_lift_aggregations(performans_df):
+@st.cache_data(ttl=3600)
+def prepare_lift_aggregations(_performans_df_hash):
     """
     Lift hesaplaması için aggregasyonları önceden hazırla (döngü dışında)
     3 Seviyeli Hiyerarşi: SKU → Mal Grubu → Üst Mal Grubu
+    CACHED: Aynı veri için tekrar hesaplamaz - RAM ve CPU tasarrufu!
     """
-    # Spot verilerini filtrele (bir kere)
-    spot_mask = performans_df['Nitelik'].str.lower().str.contains('spot', na=False)
-    spot_df = performans_df[spot_mask].copy()
+    performans_df = _load_parquet_once()
+    if performans_df is None:
+        return None
 
-    # String temizliği
-    spot_df['Magaza_Kod'] = spot_df['Magaza_Kod'].astype(str).str.strip()
-    spot_df['Urun_Kod'] = spot_df['Urun_Kod'].astype(str).str.strip()
+    # Spot verilerini filtrele - .copy() KULLANMIYORUZ, view ile çalışıyoruz
+    spot_mask = performans_df['Nitelik'].str.lower().str.contains('spot', na=False)
+    spot_df = performans_df.loc[spot_mask]  # view, copy değil
 
     # Benchmark toplam
     bench_total = spot_df['Satis_Miktari'].sum()
@@ -1885,18 +1916,15 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
 
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
-                            # Session state'den performans verisini al (yoksa yükle)
-                            performans_df = st.session_state.get("performans_df")
-                            if performans_df is None:
-                                performans_df = load_performans_data()
-                                st.session_state["performans_df"] = performans_df
+                            # Cached parquet'ten veri al (RAM dostu)
+                            performans_df = load_performans_data()
                             urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map") or get_urun_mal_grubu_map(performans_df)
 
                             if performans_df is None:
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
-                                # ÖNEMLİ: Aggregasyonları DÖNGÜ DIŞINDA bir kere hazırla
-                                agg = prepare_lift_aggregations(performans_df)
+                                # ÖNEMLİ: Aggregasyonları DÖNGÜ DIŞINDA bir kere hazırla (CACHED!)
+                                agg = prepare_lift_aggregations("cached")
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']
@@ -2228,17 +2256,15 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
 
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True, key="analiz_wp"):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
-                            # Session state'den performans verisini al (yoksa yükle)
-                            performans_df = st.session_state.get("performans_df")
-                            if performans_df is None:
-                                performans_df = load_performans_data()
-                                st.session_state["performans_df"] = performans_df
+                            # Cached parquet'ten veri al (RAM dostu)
+                            performans_df = load_performans_data()
                             urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map") or get_urun_mal_grubu_map(performans_df)
 
                             if performans_df is None:
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
-                                agg = prepare_lift_aggregations(performans_df)
+                                # CACHED aggregasyonlar - RAM dostu
+                                agg = prepare_lift_aggregations("cached")
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']
