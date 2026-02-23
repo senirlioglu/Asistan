@@ -1645,6 +1645,19 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
             # Kolon isimlerini normalize et (boşlukları temizle)
             stok_df.columns = stok_df.columns.str.strip()
 
+            # Kolon isimlerini standartlaştır (case-insensitive)
+            kolon_mapping = {
+                'üst mal grubu': 'Üst Mal Grubu',
+                'mal grubu': 'Mal Grubu',
+                'ürün kodu': 'Ürün Kodu',
+                'ürün tanımı': 'Ürün Tanımı',
+                'mağaza adı': 'Mağaza Adı',
+                'satış fiyatı': 'Satış Fiyatı',
+                'kod': 'Kod',
+                'stok': 'Stok'
+            }
+            stok_df.columns = [kolon_mapping.get(col.lower(), col) for col in stok_df.columns]
+
             # Gerekli kolonları kontrol et
             gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
@@ -2131,6 +2144,19 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
         try:
             stok_df = pd.read_excel(uploaded_file_wp)
             stok_df.columns = stok_df.columns.str.strip()
+
+            # Kolon isimlerini standartlaştır (case-insensitive)
+            kolon_mapping = {
+                'üst mal grubu': 'Üst Mal Grubu',
+                'mal grubu': 'Mal Grubu',
+                'ürün kodu': 'Ürün Kodu',
+                'ürün tanımı': 'Ürün Tanımı',
+                'mağaza adı': 'Mağaza Adı',
+                'satış fiyatı': 'Satış Fiyatı',
+                'kod': 'Kod',
+                'stok': 'Stok'
+            }
+            stok_df.columns = [kolon_mapping.get(col.lower(), col) for col in stok_df.columns]
 
             gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
