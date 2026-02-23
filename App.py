@@ -234,27 +234,6 @@ import os
 import tempfile
 import gc
 
-def cleanup_session_memory():
-    """
-    Session state'deki gereksiz büyük objeleri temizle - RAM tasarrufu.
-    Her sayfa yüklemesinde çağrılır.
-    """
-    # Büyük DF'leri session state'de TUTMA - cache'den al
-    keys_to_remove = []
-    for key in st.session_state:
-        # Büyük DataFrame'leri session state'den sil (cache'de zaten var)
-        if key == "performans_df":
-            keys_to_remove.append(key)
-
-    for key in keys_to_remove:
-        del st.session_state[key]
-
-    # Garbage collection tetikle
-    gc.collect()
-
-# Sayfa yüklendiğinde otomatik temizlik
-cleanup_session_memory()
-
 # Google Drive File ID - Streamlit secrets veya environment variable'dan al
 def _get_gdrive_file_id():
     # Önce Streamlit secrets dene
@@ -290,14 +269,32 @@ def _load_parquet_once():
     """
     Parquet dosyasını BİR KERE yükle ve cache'le.
     Tüm fonksiyonlar bu tek kaynaktan okur - RAM tasarrufu!
+
+    RAM Optimizasyonları:
+    - Category dtype kullanımı (~%70 RAM tasarrufu)
+    - String kolonları category'ye çevir
+    - Float32 kullanımı (float64 yerine)
     """
     try:
         path = get_perf_local_path()
         cols = ["Magaza_Kod", "Nitelik", "Urun_Kod", "Satis_Miktari", "Satis_Hasilati_VD", "Mal_Grubu", "Ust_Mal_Grubu"]
-        df = pd.read_parquet(path, columns=cols)
-        # Tip dönüşümlerini burada bir kere yap
-        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
-        df['Magaza_Kod'] = df['Magaza_Kod'].astype(str).str.strip()
+
+        # PyArrow ile oku - daha hafif
+        df = pd.read_parquet(path, columns=cols, engine='pyarrow')
+
+        # String kolonları strip'le ve category'ye çevir (RAM tasarrufu!)
+        for col in ['Urun_Kod', 'Magaza_Kod', 'Nitelik', 'Mal_Grubu', 'Ust_Mal_Grubu']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip().astype('category')
+
+        # Float64'ü float32'ye düşür (RAM tasarrufu)
+        for col in ['Satis_Miktari', 'Satis_Hasilati_VD']:
+            if col in df.columns:
+                df[col] = df[col].astype('float32')
+
+        # Garbage collection
+        gc.collect()
+
         return df
     except Exception as e:
         st.warning(f"⚠️ Parquet yüklenemedi: {str(e)}")
