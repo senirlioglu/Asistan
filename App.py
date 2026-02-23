@@ -234,6 +234,7 @@ import os
 import tempfile
 import gc
 import pyarrow.parquet as pq
+from collections import defaultdict
 
 # Google Drive File ID - Streamlit secrets veya environment variable'dan al
 def _get_gdrive_file_id():
@@ -296,74 +297,83 @@ def get_perf_local_path() -> str:
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
     """
-    Lookup map'lerini PyArrow ile oluştur - MEMORY_MAP + sadece gerekli kolonlar!
-    Spot repo pattern: OS-level memory mapping, RAM'e yüklemez.
+    Lookup map'lerini PyArrow iter_batches ile oluştur - chunk chunk okur.
+    Asla tüm parquet'i RAM'e almaz.
     """
     try:
         path = get_perf_local_path()
-
-        # PyArrow memory_map ile aç (RAM'e yüklemez, OS cache kullanır)
         pf = pq.ParquetFile(path, memory_map=True)
+        cols = ["Urun_Kod", "Mal_Grubu", "Ust_Mal_Grubu", "Nitelik"]
 
-        # Sadece lookup için gereken kolonları oku
-        table = pf.read(columns=["Urun_Kod", "Mal_Grubu", "Ust_Mal_Grubu", "Nitelik"], use_pandas_metadata=False)
-        df = table.to_pandas()
+        urun_mal_grubu_map = {}
+        urun_ust_mal_grubu_map = {}
+        nitelikler_set = set()
 
-        # Temizlik
-        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
+        for batch in pf.iter_batches(batch_size=200_000, columns=cols):
+            chunk_df = batch.to_pandas()
+            chunk_df['Urun_Kod'] = chunk_df['Urun_Kod'].astype(str).str.strip()
 
-        # Nitelikler (distinct)
-        nitelikler = sorted(df["Nitelik"].dropna().unique().tolist())
+            # Nitelikler
+            nitelikler_set.update(chunk_df['Nitelik'].dropna().unique().tolist())
 
-        # Urun -> Mal_Grubu (first)
-        urun_mal_grubu_map = df.groupby("Urun_Kod")["Mal_Grubu"].first().to_dict()
-        urun_mal_grubu_map = {k: v for k, v in urun_mal_grubu_map.items() if k and v}
+            # Urun -> Mal_Grubu (ilk görülen)
+            for uk, mg in chunk_df.groupby('Urun_Kod')['Mal_Grubu'].first().items():
+                if str(uk) not in urun_mal_grubu_map and uk and pd.notna(mg):
+                    urun_mal_grubu_map[str(uk)] = mg
 
-        # Urun -> Ust_Mal_Grubu (first)
-        urun_ust_mal_grubu_map = df.groupby("Urun_Kod")["Ust_Mal_Grubu"].first().to_dict()
-        urun_ust_mal_grubu_map = {k: v for k, v in urun_ust_mal_grubu_map.items() if k and v}
+            # Urun -> Ust_Mal_Grubu (ilk görülen)
+            for uk, umg in chunk_df.groupby('Urun_Kod')['Ust_Mal_Grubu'].first().items():
+                if str(uk) not in urun_ust_mal_grubu_map and uk and pd.notna(umg):
+                    urun_ust_mal_grubu_map[str(uk)] = umg
 
-        # DataFrame'i sil, RAM'i boşalt
-        del df, table
+            del chunk_df
+
         gc.collect()
-
-        return urun_mal_grubu_map, urun_ust_mal_grubu_map, nitelikler
+        return urun_mal_grubu_map, urun_ust_mal_grubu_map, sorted(list(nitelikler_set))
     except Exception as e:
         st.warning(f"⚠️ Lookup verisi yüklenemedi: {str(e)}")
         return {}, {}, []
 
-@st.cache_data(ttl=3600)
 def load_performans_data():
     """
-    Performans DF - PyArrow ile SADECE SPOT verilerini yükle.
-    Row group filtering ile sadece SPOT içeren satırları okur.
+    Performans DF - PyArrow iter_batches ile SADECE SPOT verilerini yükle.
+    Asla tüm parquet'i pandas'a tek seferde almaz. Chunk chunk okuyup filtreler.
+    NOT: @st.cache_data kaldırıldı - büyük DF'yi cache'lemek RAM'i ikiye katlar.
     """
     try:
         path = get_perf_local_path()
-
-        # PyArrow memory_map ile aç
         pf = pq.ParquetFile(path, memory_map=True)
 
-        # Tüm kolonları oku ama sadece gerekli olanları
         cols = ["Magaza_Kod", "Nitelik", "Urun_Kod", "Satis_Miktari", "Satis_Hasilati_VD", "Mal_Grubu", "Ust_Mal_Grubu"]
-        table = pf.read(columns=cols, use_pandas_metadata=False)
-        df = table.to_pandas()
+        spot_chunks = []
 
-        # SPOT filtresi - pandas'ta yap (PyArrow'da string filter zor)
-        spot_mask = df['Nitelik'].astype(str).str.lower().str.contains('spot', na=False)
-        df = df[spot_mask].copy()
+        for batch in pf.iter_batches(batch_size=200_000, columns=cols):
+            chunk_df = batch.to_pandas()
 
-        # String temizliği
-        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
-        df['Magaza_Kod'] = df['Magaza_Kod'].astype(str).str.strip()
+            # SPOT filtresi - her chunk'ta uygula
+            mask = chunk_df['Nitelik'].astype(str).str.lower().str.contains('spot', na=False)
+            filtered = chunk_df.loc[mask]
+
+            if len(filtered) > 0:
+                filtered = filtered.copy()
+                filtered['Urun_Kod'] = filtered['Urun_Kod'].astype(str).str.strip()
+                filtered['Magaza_Kod'] = filtered['Magaza_Kod'].astype(str).str.strip()
+                spot_chunks.append(filtered)
+
+            del chunk_df, mask
+            gc.collect()
+
+        if not spot_chunks:
+            return pd.DataFrame(columns=cols)
+
+        df = pd.concat(spot_chunks, ignore_index=True)
+        del spot_chunks
+        gc.collect()
 
         # Category dtype ile RAM tasarrufu
         for col in ['Nitelik', 'Mal_Grubu', 'Ust_Mal_Grubu']:
             if col in df.columns:
                 df[col] = df[col].astype('category')
-
-        del table
-        gc.collect()
 
         return df
     except Exception as e:
@@ -431,62 +441,105 @@ def prepare_magaza_hierarchy(stok_df):
 
 def get_lift_aggregations():
     """
-    Lift hesaplaması için aggregasyonları al.
+    Lift hesaplaması için aggregasyonları chunk chunk hesapla.
+    Asla tüm SPOT DF'yi RAM'de tutmaz - her chunk'ta aggrege et ve birleştir.
     SESSION STATE'DE CACHE'LER - tekrar hesaplamaz!
     """
     # Session state'de varsa direkt döndür (HIZLI!)
     if "lift_agg" in st.session_state and st.session_state["lift_agg"] is not None:
         return st.session_state["lift_agg"]
 
-    # Yoksa hesapla ve session_state'e kaydet
-    spot_df = load_performans_data()
-    if spot_df is None:
+    try:
+        path = get_perf_local_path()
+        pf = pq.ParquetFile(path, memory_map=True)
+        cols = ["Magaza_Kod", "Urun_Kod", "Nitelik", "Satis_Miktari", "Mal_Grubu", "Ust_Mal_Grubu"]
+
+        bench_total = 0.0
+        store_totals = defaultdict(float)
+        store_sku_qty = defaultdict(float)
+        bench_sku_qty = defaultdict(float)
+        store_grp_qty = defaultdict(float)
+        bench_grp_qty = defaultdict(float)
+        store_ust_grp_qty = defaultdict(float)
+        bench_ust_grp_qty = defaultdict(float)
+        urun_mal_grubu = {}
+        urun_ust_mal_grubu = {}
+
+        for batch in pf.iter_batches(batch_size=200_000, columns=cols):
+            chunk_df = batch.to_pandas()
+            mask = chunk_df['Nitelik'].astype(str).str.lower().str.contains('spot', na=False)
+            spot = chunk_df.loc[mask]
+
+            if spot.empty:
+                del chunk_df, mask
+                continue
+
+            spot = spot.copy()
+            spot['Magaza_Kod'] = spot['Magaza_Kod'].astype(str).str.strip()
+            spot['Urun_Kod'] = spot['Urun_Kod'].astype(str).str.strip()
+
+            # Benchmark toplam
+            bench_total += spot['Satis_Miktari'].sum()
+
+            # Mağaza bazlı toplamlar
+            for mk, qty in spot.groupby('Magaza_Kod')['Satis_Miktari'].sum().items():
+                store_totals[mk] += qty
+
+            # SKU bazlı - mağaza
+            for (mk, uk), qty in spot.groupby(['Magaza_Kod', 'Urun_Kod'])['Satis_Miktari'].sum().items():
+                store_sku_qty[(mk, uk)] += qty
+
+            # SKU bazlı - benchmark
+            for uk, qty in spot.groupby('Urun_Kod')['Satis_Miktari'].sum().items():
+                bench_sku_qty[uk] += qty
+
+            # Mal grubu bazlı
+            spot_mg = spot.dropna(subset=['Mal_Grubu'])
+            if not spot_mg.empty:
+                for (mk, mg), qty in spot_mg.groupby(['Magaza_Kod', 'Mal_Grubu'])['Satis_Miktari'].sum().items():
+                    store_grp_qty[(mk, mg)] += qty
+                for mg, qty in spot_mg.groupby('Mal_Grubu')['Satis_Miktari'].sum().items():
+                    bench_grp_qty[mg] += qty
+
+            # Üst mal grubu bazlı
+            spot_umg = spot.dropna(subset=['Ust_Mal_Grubu'])
+            if not spot_umg.empty:
+                for (mk, umg), qty in spot_umg.groupby(['Magaza_Kod', 'Ust_Mal_Grubu'])['Satis_Miktari'].sum().items():
+                    store_ust_grp_qty[(mk, umg)] += qty
+                for umg, qty in spot_umg.groupby('Ust_Mal_Grubu')['Satis_Miktari'].sum().items():
+                    bench_ust_grp_qty[umg] += qty
+
+            # Lookup mapping (ilk görülen)
+            for uk, mg in spot.groupby('Urun_Kod')['Mal_Grubu'].first().items():
+                if uk not in urun_mal_grubu and pd.notna(mg):
+                    urun_mal_grubu[uk] = mg
+            for uk, umg in spot.groupby('Urun_Kod')['Ust_Mal_Grubu'].first().items():
+                if uk not in urun_ust_mal_grubu and pd.notna(umg):
+                    urun_ust_mal_grubu[uk] = umg
+
+            del chunk_df, mask, spot
+            gc.collect()
+
+        agg = {
+            'bench_total': bench_total,
+            'store_totals': dict(store_totals),
+            'store_sku_qty': dict(store_sku_qty),
+            'bench_sku_qty': dict(bench_sku_qty),
+            'store_grp_qty': dict(store_grp_qty),
+            'bench_grp_qty': dict(bench_grp_qty),
+            'store_ust_grp_qty': dict(store_ust_grp_qty),
+            'bench_ust_grp_qty': dict(bench_ust_grp_qty),
+            'urun_mal_grubu': urun_mal_grubu,
+            'urun_ust_mal_grubu': urun_ust_mal_grubu
+        }
+
+        # Session state'e kaydet
+        st.session_state["lift_agg"] = agg
+        return agg
+
+    except Exception as e:
+        st.warning(f"⚠️ Lift aggregasyonları hesaplanamadı: {str(e)}")
         return None
-
-    # Benchmark toplam
-    bench_total = spot_df['Satis_Miktari'].sum()
-
-    # Mağaza bazlı toplamlar
-    store_totals = spot_df.groupby('Magaza_Kod')['Satis_Miktari'].sum().to_dict()
-
-    # SKU bazlı - mağaza
-    store_sku_qty = spot_df.groupby(['Magaza_Kod', 'Urun_Kod'])['Satis_Miktari'].sum().to_dict()
-
-    # SKU bazlı - benchmark
-    bench_sku_qty = spot_df.groupby('Urun_Kod')['Satis_Miktari'].sum().to_dict()
-
-    # Mal grubu bazlı - mağaza
-    store_grp_qty = spot_df.groupby(['Magaza_Kod', 'Mal_Grubu'])['Satis_Miktari'].sum().to_dict()
-
-    # Mal grubu bazlı - benchmark
-    bench_grp_qty = spot_df.groupby('Mal_Grubu')['Satis_Miktari'].sum().to_dict()
-
-    # Üst mal grubu bazlı - mağaza
-    store_ust_grp_qty = spot_df.groupby(['Magaza_Kod', 'Ust_Mal_Grubu'])['Satis_Miktari'].sum().to_dict()
-
-    # Üst mal grubu bazlı - benchmark
-    bench_ust_grp_qty = spot_df.groupby('Ust_Mal_Grubu')['Satis_Miktari'].sum().to_dict()
-
-    # Ürün kodu -> Mal grubu ve Üst mal grubu mapping
-    urun_mal_grubu = spot_df.groupby('Urun_Kod')['Mal_Grubu'].first().to_dict()
-    urun_ust_mal_grubu = spot_df.groupby('Urun_Kod')['Ust_Mal_Grubu'].first().to_dict()
-
-    agg = {
-        'bench_total': bench_total,
-        'store_totals': store_totals,
-        'store_sku_qty': store_sku_qty,
-        'bench_sku_qty': bench_sku_qty,
-        'store_grp_qty': store_grp_qty,
-        'bench_grp_qty': bench_grp_qty,
-        'store_ust_grp_qty': store_ust_grp_qty,
-        'bench_ust_grp_qty': bench_ust_grp_qty,
-        'urun_mal_grubu': urun_mal_grubu,
-        'urun_ust_mal_grubu': urun_ust_mal_grubu
-    }
-
-    # Session state'e kaydet
-    st.session_state["lift_agg"] = agg
-    return agg
 
 # Legacy wrapper for compatibility
 @st.cache_data(ttl=3600)
@@ -1302,7 +1355,7 @@ if mod_secim == "📨 Mesaj Oluşturucu":
 
             # Ürünleri puanla (Lift bazlı algoritma)
             if nitelik_secim and perf_loaded:
-                # Full performans DF'yi yükle (lift hesabı için gerekli)
+                # Performans DF'yi chunk chunk yükle (sadece SPOT, RAM dostu)
                 performans_df = load_performans_data()
 
                 if performans_df is not None:
@@ -1963,15 +2016,16 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
 
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
-                            # Cached parquet'ten veri al (RAM dostu)
-                            performans_df = load_performans_data()
-                            urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map") or get_urun_mal_grubu_map(performans_df)
+                            # Aggregasyonları chunk chunk hesapla (RAM dostu - tüm DF'yi yüklemez)
+                            urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map", {})
+                            agg = get_lift_aggregations()
 
-                            if performans_df is None:
+                            if agg is None:
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
-                                # ÖNEMLİ: Aggregasyonları DÖNGÜ DIŞINDA bir kere hazırla (CACHED!)
-                                agg = get_lift_aggregations()
+                                # Aggregasyonlardan mal grubu map'i de al (fallback)
+                                if not urun_mal_grubu_map:
+                                    urun_mal_grubu_map = agg.get('urun_mal_grubu', {})
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']
@@ -2303,15 +2357,16 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
 
                     if st.button("🚀 Analiz Et ve Öner", type="primary", use_container_width=True, key="analiz_wp"):
                         with st.spinner("🔄 Lift algoritması çalışıyor..."):
-                            # Cached parquet'ten veri al (RAM dostu)
-                            performans_df = load_performans_data()
-                            urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map") or get_urun_mal_grubu_map(performans_df)
+                            # Aggregasyonları chunk chunk hesapla (RAM dostu - tüm DF'yi yüklemez)
+                            urun_mal_grubu_map = st.session_state.get("urun_mal_grubu_map", {})
+                            agg = get_lift_aggregations()
 
-                            if performans_df is None:
+                            if agg is None:
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
-                                # CACHED aggregasyonlar - RAM dostu
-                                agg = get_lift_aggregations()
+                                # Aggregasyonlardan mal grubu map'i de al (fallback)
+                                if not urun_mal_grubu_map:
+                                    urun_mal_grubu_map = agg.get('urun_mal_grubu', {})
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']

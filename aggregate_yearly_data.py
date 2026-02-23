@@ -20,8 +20,10 @@ from pathlib import Path
 # Excel dosyalarının bulunduğu klasör
 EXCEL_KLASORU = "./data/2025/"  # Değiştir
 
-# Çıktı dosyası
+# Çıktı dosyaları
 CIKTI_DOSYASI = "./veri_2025_yillik.parquet"
+CIKTI_SPOT = "./veri_2025_yillik_spot.parquet"        # Sadece SPOT satırları (küçük dosya)
+CIKTI_LOOKUPS = "./veri_2025_yillik_lookups.parquet"   # Ürün -> Mal grubu/Üst mal grubu lookup
 
 # Excel'deki kolon isimleri (senin dosyalarına göre ayarlandı)
 KOLON_ESLEME = {
@@ -138,18 +140,41 @@ def main():
     # Aggrege et
     agg_df = aggrege_et(combined_df)
 
-    # Parquet olarak kaydet
+    # Parquet olarak kaydet (tam veri)
     print(f"\n💾 Kaydediliyor: {CIKTI_DOSYASI}")
     agg_df.to_parquet(CIKTI_DOSYASI, index=False)
 
-    # Dosya boyutunu göster
     dosya_boyutu = os.path.getsize(CIKTI_DOSYASI) / (1024 * 1024)
     print(f"   Dosya boyutu: {dosya_boyutu:.1f} MB")
 
+    # === SPOT-ONLY PARQUET (App.py crash'ini önlemek için) ===
+    print(f"\n💾 SPOT-only parquet oluşturuluyor: {CIKTI_SPOT}")
+    spot_mask = agg_df['Nitelik'].astype(str).str.lower().str.contains('spot', na=False)
+    spot_df = agg_df[spot_mask].copy()
+    spot_df.to_parquet(CIKTI_SPOT, index=False)
+    spot_boyutu = os.path.getsize(CIKTI_SPOT) / (1024 * 1024)
+    print(f"   SPOT satır sayısı: {len(spot_df):,}")
+    print(f"   SPOT dosya boyutu: {spot_boyutu:.1f} MB")
+
+    # === LOOKUP PARQUET (ürün -> mal grubu/üst mal grubu) ===
+    print(f"\n💾 Lookup parquet oluşturuluyor: {CIKTI_LOOKUPS}")
+    lookup_cols = ['Urun_Kod', 'Mal_Grubu']
+    if 'Ust_Mal_Grubu' in agg_df.columns:
+        lookup_cols.append('Ust_Mal_Grubu')
+    lookup_df = agg_df[lookup_cols].drop_duplicates(subset=['Urun_Kod']).reset_index(drop=True)
+    lookup_df.to_parquet(CIKTI_LOOKUPS, index=False)
+    lookup_boyutu = os.path.getsize(CIKTI_LOOKUPS) / (1024 * 1024)
+    print(f"   Benzersiz ürün sayısı: {len(lookup_df):,}")
+    print(f"   Lookup dosya boyutu: {lookup_boyutu:.1f} MB")
+
     print("\n" + "=" * 60)
     print("✅ TAMAMLANDI!")
-    print(f"   Çıktı: {CIKTI_DOSYASI}")
-    print(f"   Bu dosyayı GitHub'a yükleyin ve App.py'deki URL'i güncelleyin.")
+    print(f"   Çıktılar:")
+    print(f"   - Tam veri: {CIKTI_DOSYASI} ({dosya_boyutu:.1f} MB)")
+    print(f"   - SPOT-only: {CIKTI_SPOT} ({spot_boyutu:.1f} MB)")
+    print(f"   - Lookups:   {CIKTI_LOOKUPS} ({lookup_boyutu:.1f} MB)")
+    print(f"   Bu dosyaları GitHub'a yükleyin ve App.py'deki URL'i güncelleyin.")
+    print(f"   SPOT-only dosyasını kullanırsanız App.py crash riski ortadan kalkar.")
     print("=" * 60)
 
 if __name__ == "__main__":
