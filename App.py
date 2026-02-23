@@ -1658,6 +1658,10 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
             }
             stok_df.columns = [kolon_mapping.get(col.lower(), col) for col in stok_df.columns]
 
+            # Kod kolonunu string'e çevir (pyarrow mixed type hatası için)
+            if 'Kod' in stok_df.columns:
+                stok_df['Kod'] = stok_df['Kod'].astype(str).str.strip()
+
             # Gerekli kolonları kontrol et
             gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
@@ -2034,8 +2038,8 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                         'yeni fiyat': '',  # Kullanıcı dolduracak
                                         'yeni marj': '',  # Formül ile hesaplanacak
                                         'Stok TL': stok_tl,
-                                        'üst mal grubu': row.get('üst mal grubu', ''),
-                                        'mal grubu': row.get('mal grubu', ''),
+                                        'üst mal grubu': row.get('Üst Mal Grubu', ''),
+                                        'mal grubu': row.get('Mal Grubu', ''),
                                         'Lift Skoru': round(fit_score, 1),
                                         'Lift': round(lift, 2),
                                         'Öneri Nedeni': neden
@@ -2365,8 +2369,8 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                         'yeni fiyat': '',
                                         'yeni marj': '',  # Formül ile hesaplanacak
                                         'Stok TL': stok_tl,
-                                        'üst mal grubu': row.get('üst mal grubu', ''),
-                                        'mal grubu': row.get('mal grubu', ''),
+                                        'üst mal grubu': row.get('Üst Mal Grubu', ''),
+                                        'mal grubu': row.get('Mal Grubu', ''),
                                         'Lift Skoru': round(fit_score, 1),
                                         'Lift': round(lift, 2),
                                         'Öneri Nedeni': neden
