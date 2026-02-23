@@ -228,12 +228,12 @@ def get_emoji(urun_adi):
     return "🏷️"
 
 # =============================================================================
-# PERFORMANS VERİSİ - DUCKDB İLE RAM DOSTU OKUMA
+# PERFORMANS VERİSİ - PYARROW MEMORY_MAP İLE RAM DOSTU OKUMA
 # =============================================================================
 import os
 import tempfile
 import gc
-import duckdb
+import pyarrow.parquet as pq
 
 # Google Drive File ID - Streamlit secrets veya environment variable'dan al
 def _get_gdrive_file_id():
@@ -245,20 +245,37 @@ def _get_gdrive_file_id():
     # Sonra environment variable
     return os.environ.get("GDRIVE_FILE_ID", "")
 
-@st.cache_resource
-def get_perf_local_path() -> str:
-    """Parquet'i Google Drive'dan indir - gdown ile otomatik virus scan bypass"""
+def _get_parquet_path() -> str:
+    """Parquet dosya yolunu döndür (indirmez!)"""
+    return os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
+
+def _is_parquet_ready() -> bool:
+    """Parquet dosyası indirilmiş ve geçerli mi?"""
+    path = _get_parquet_path()
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"PAR1"
+    except:
+        return False
+
+def download_parquet_if_needed() -> str:
+    """
+    Parquet'i Google Drive'dan indir - SADECE BUTONA BASILINCA ÇAĞRILIR!
+    Sayfa yüklenirken otomatik çağrılmaz.
+    """
     import gdown
 
     file_id = _get_gdrive_file_id()
     if not file_id:
         raise RuntimeError("GDRIVE_FILE_ID secret veya environment variable tanımlı değil!")
 
-    output_path = os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
+    output_path = _get_parquet_path()
 
-    # Eski dosyayı sil - her zaman taze indir
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    # Dosya zaten varsa ve geçerliyse tekrar indirme
+    if _is_parquet_ready():
+        return output_path
 
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, output_path, quiet=False)
@@ -270,72 +287,45 @@ def get_perf_local_path() -> str:
 
     return output_path
 
+# Legacy wrapper for compatibility
 @st.cache_resource
-def _get_duckdb_connection():
-    """
-    DuckDB bağlantısı oluştur ve parquet VIEW'ı hazırla.
-    PURE DUCKDB - RAM'e DataFrame yüklemez, disk'ten direkt okur!
-    """
-    try:
-        path = get_perf_local_path()
-        con = duckdb.connect(database=":memory:")
-
-        # Parquet'i VIEW olarak tanımla (RAM'e yüklemez!)
-        con.execute(f"""
-            CREATE VIEW performans AS
-            SELECT
-                CAST(Magaza_Kod AS VARCHAR) AS Magaza_Kod,
-                CAST(Nitelik AS VARCHAR) AS Nitelik,
-                CAST(Urun_Kod AS VARCHAR) AS Urun_Kod,
-                CAST(Satis_Miktari AS DOUBLE) AS Satis_Miktari,
-                CAST(Satis_Hasilati_VD AS DOUBLE) AS Satis_Hasilati_VD,
-                CAST(Mal_Grubu AS VARCHAR) AS Mal_Grubu,
-                CAST(Ust_Mal_Grubu AS VARCHAR) AS Ust_Mal_Grubu
-            FROM read_parquet('{path}')
-        """)
-
-        return con
-    except Exception as e:
-        st.warning(f"⚠️ DuckDB bağlantısı kurulamadı: {str(e)}")
-        return None
+def get_perf_local_path() -> str:
+    """Legacy wrapper - download_parquet_if_needed kullanın"""
+    return download_parquet_if_needed()
 
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
     """
-    Lookup map'lerini DuckDB ile oluştur - SADECE DISTINCT değerler RAM'e gelir!
-    Tüm dosyayı yüklemez, SQL sorgular.
+    Lookup map'lerini PyArrow ile oluştur - MEMORY_MAP + sadece gerekli kolonlar!
+    Spot repo pattern: OS-level memory mapping, RAM'e yüklemez.
     """
     try:
-        con = _get_duckdb_connection()
-        if con is None:
-            return {}, {}, []
+        path = get_perf_local_path()
 
-        # Nitelikler (distinct) - sadece unique değerler
-        nitelikler = con.execute("""
-            SELECT DISTINCT TRIM(Nitelik) AS Nitelik
-            FROM performans
-            WHERE Nitelik IS NOT NULL AND Nitelik <> ''
-            ORDER BY Nitelik
-        """).fetchall()
-        nitelikler = [x[0] for x in nitelikler]
+        # PyArrow memory_map ile aç (RAM'e yüklemez, OS cache kullanır)
+        pf = pq.ParquetFile(path, memory_map=True)
 
-        # Urun -> Mal_Grubu mapping (first)
-        urun_mal_rows = con.execute("""
-            SELECT TRIM(Urun_Kod) AS Urun_Kod, FIRST(Mal_Grubu) AS Mal_Grubu
-            FROM performans
-            WHERE Urun_Kod IS NOT NULL
-            GROUP BY TRIM(Urun_Kod)
-        """).fetchall()
-        urun_mal_grubu_map = {row[0]: row[1] for row in urun_mal_rows if row[0] and row[1]}
+        # Sadece lookup için gereken kolonları oku
+        table = pf.read(columns=["Urun_Kod", "Mal_Grubu", "Ust_Mal_Grubu", "Nitelik"], use_pandas_metadata=False)
+        df = table.to_pandas()
 
-        # Urun -> Ust_Mal_Grubu mapping (first)
-        urun_ust_rows = con.execute("""
-            SELECT TRIM(Urun_Kod) AS Urun_Kod, FIRST(Ust_Mal_Grubu) AS Ust_Mal_Grubu
-            FROM performans
-            WHERE Urun_Kod IS NOT NULL AND Ust_Mal_Grubu IS NOT NULL
-            GROUP BY TRIM(Urun_Kod)
-        """).fetchall()
-        urun_ust_mal_grubu_map = {row[0]: row[1] for row in urun_ust_rows if row[0] and row[1]}
+        # Temizlik
+        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
+
+        # Nitelikler (distinct)
+        nitelikler = sorted(df["Nitelik"].dropna().unique().tolist())
+
+        # Urun -> Mal_Grubu (first)
+        urun_mal_grubu_map = df.groupby("Urun_Kod")["Mal_Grubu"].first().to_dict()
+        urun_mal_grubu_map = {k: v for k, v in urun_mal_grubu_map.items() if k and v}
+
+        # Urun -> Ust_Mal_Grubu (first)
+        urun_ust_mal_grubu_map = df.groupby("Urun_Kod")["Ust_Mal_Grubu"].first().to_dict()
+        urun_ust_mal_grubu_map = {k: v for k, v in urun_ust_mal_grubu_map.items() if k and v}
+
+        # DataFrame'i sil, RAM'i boşalt
+        del df, table
+        gc.collect()
 
         return urun_mal_grubu_map, urun_ust_mal_grubu_map, nitelikler
     except Exception as e:
@@ -345,29 +335,36 @@ def load_perf_lookups():
 @st.cache_data(ttl=3600)
 def load_performans_data():
     """
-    Performans DF - DuckDB'den sadece SPOT verilerini çek (filtrelenmiş, hafif).
-    Tüm veriyi değil, sadece Spot Nitelik olanları çeker!
+    Performans DF - PyArrow ile SADECE SPOT verilerini yükle.
+    Row group filtering ile sadece SPOT içeren satırları okur.
     """
     try:
-        con = _get_duckdb_connection()
-        if con is None:
-            return None
+        path = get_perf_local_path()
 
-        # SADECE SPOT verilerini çek - tüm veriyi değil!
-        df = con.execute("""
-            SELECT
-                TRIM(Magaza_Kod) AS Magaza_Kod,
-                TRIM(Nitelik) AS Nitelik,
-                TRIM(Urun_Kod) AS Urun_Kod,
-                Satis_Miktari,
-                Satis_Hasilati_VD,
-                Mal_Grubu,
-                Ust_Mal_Grubu
-            FROM performans
-            WHERE LOWER(Nitelik) LIKE '%spot%'
-        """).df()
+        # PyArrow memory_map ile aç
+        pf = pq.ParquetFile(path, memory_map=True)
 
+        # Tüm kolonları oku ama sadece gerekli olanları
+        cols = ["Magaza_Kod", "Nitelik", "Urun_Kod", "Satis_Miktari", "Satis_Hasilati_VD", "Mal_Grubu", "Ust_Mal_Grubu"]
+        table = pf.read(columns=cols, use_pandas_metadata=False)
+        df = table.to_pandas()
+
+        # SPOT filtresi - pandas'ta yap (PyArrow'da string filter zor)
+        spot_mask = df['Nitelik'].astype(str).str.lower().str.contains('spot', na=False)
+        df = df[spot_mask].copy()
+
+        # String temizliği
+        df['Urun_Kod'] = df['Urun_Kod'].astype(str).str.strip()
+        df['Magaza_Kod'] = df['Magaza_Kod'].astype(str).str.strip()
+
+        # Category dtype ile RAM tasarrufu
+        for col in ['Nitelik', 'Mal_Grubu', 'Ust_Mal_Grubu']:
+            if col in df.columns:
+                df[col] = df[col].astype('category')
+
+        del table
         gc.collect()
+
         return df
     except Exception as e:
         st.warning(f"⚠️ Performans verisi yüklenemedi: {str(e)}")
@@ -432,15 +429,16 @@ def prepare_magaza_hierarchy(stok_df):
 
     return base, sm_list, bs_all, sm_to_bs
 
-@st.cache_data(ttl=3600)
-def prepare_lift_aggregations(_cache_key):
+def get_lift_aggregations():
     """
-    Lift hesaplaması için aggregasyonları önceden hazırla (döngü dışında)
-    3 Seviyeli Hiyerarşi: SKU → Mal Grubu → Üst Mal Grubu
-    CACHED: Aynı veri için tekrar hesaplamaz - RAM ve CPU tasarrufu!
+    Lift hesaplaması için aggregasyonları al.
+    SESSION STATE'DE CACHE'LER - tekrar hesaplamaz!
+    """
+    # Session state'de varsa direkt döndür (HIZLI!)
+    if "lift_agg" in st.session_state and st.session_state["lift_agg"] is not None:
+        return st.session_state["lift_agg"]
 
-    NOT: load_performans_data() zaten SPOT filtrelenmiş veri döndürüyor!
-    """
+    # Yoksa hesapla ve session_state'e kaydet
     spot_df = load_performans_data()
     if spot_df is None:
         return None
@@ -473,7 +471,7 @@ def prepare_lift_aggregations(_cache_key):
     urun_mal_grubu = spot_df.groupby('Urun_Kod')['Mal_Grubu'].first().to_dict()
     urun_ust_mal_grubu = spot_df.groupby('Urun_Kod')['Ust_Mal_Grubu'].first().to_dict()
 
-    return {
+    agg = {
         'bench_total': bench_total,
         'store_totals': store_totals,
         'store_sku_qty': store_sku_qty,
@@ -485,6 +483,16 @@ def prepare_lift_aggregations(_cache_key):
         'urun_mal_grubu': urun_mal_grubu,
         'urun_ust_mal_grubu': urun_ust_mal_grubu
     }
+
+    # Session state'e kaydet
+    st.session_state["lift_agg"] = agg
+    return agg
+
+# Legacy wrapper for compatibility
+@st.cache_data(ttl=3600)
+def prepare_lift_aggregations(_cache_key):
+    """Legacy wrapper - get_lift_aggregations kullanın"""
+    return get_lift_aggregations()
 
 
 def write_excel_with_formulas(df, sheet_name='Kampanya Önerisi'):
@@ -1963,7 +1971,7 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
                                 # ÖNEMLİ: Aggregasyonları DÖNGÜ DIŞINDA bir kere hazırla (CACHED!)
-                                agg = prepare_lift_aggregations("cached")
+                                agg = get_lift_aggregations()
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']
@@ -2303,7 +2311,7 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
                                 # CACHED aggregasyonlar - RAM dostu
-                                agg = prepare_lift_aggregations("cached")
+                                agg = get_lift_aggregations()
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']
