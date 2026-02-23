@@ -1782,12 +1782,41 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                 else:
                     magaza_options = all_opts
 
+                # Hızlı seçim: Mağaza kodlarını yapıştır
+                with st.expander("📋 Hızlı Seçim: Mağaza Kodlarını Yapıştır", expanded=False):
+                    yapistir_text = st.text_area(
+                        "Mağaza kodlarını yapıştırın (her satıra bir kod veya virgülle ayırın):",
+                        height=100,
+                        key="kamp_yapistir_kodlar",
+                        placeholder="Örnek:\n101\n102\n103\nveya: 101, 102, 103"
+                    )
+                    if st.button("🔍 Kodları Bul ve Seç", use_container_width=True):
+                        if yapistir_text.strip():
+                            # Kodları parse et (virgül, satır sonu, boşluk)
+                            import re
+                            kodlar = re.split(r'[,\n\s]+', yapistir_text.strip())
+                            kodlar = [k.strip() for k in kodlar if k.strip()]
+
+                            # Mağaza options'dan eşleşenleri bul
+                            eslesenler = []
+                            for opt in magaza_options:
+                                opt_kod = opt.split(" - ")[0].strip()
+                                if opt_kod in kodlar:
+                                    eslesenler.append(opt)
+
+                            if eslesenler:
+                                st.session_state['kamp_secili_magazalar'] = eslesenler
+                                st.success(f"✅ {len(eslesenler)}/{len(kodlar)} mağaza bulundu ve seçildi!")
+                                st.rerun()
+                            else:
+                                st.warning("⚠️ Girilen kodlardan hiçbiri mevcut mağazalarla eşleşmedi")
+
                 secili_magazalar = st.multiselect(
                     "Mağaza Seçin (zorunlu):",
                     options=magaza_options,
                     default=[m for m in st.session_state.get('kamp_secili_magazalar', []) if m in magaza_options],
                     key="kamp_magaza_select",
-                    help="Kampanya yapılacak mağazaları seçin"
+                    help="Kampanya yapılacak mağazaları seçin veya yukarıdan yapıştırın"
                 )
 
                 # Seçim onay butonu
