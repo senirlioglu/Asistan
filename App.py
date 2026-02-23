@@ -294,6 +294,45 @@ def get_perf_local_path() -> str:
     """Legacy wrapper - download_parquet_if_needed kullanın"""
     return download_parquet_if_needed()
 
+# =============================================================================
+# EXCEL HELPER (Performans için cache)
+# =============================================================================
+@st.cache_data(ttl=3600)
+def load_excel_raw(uploaded_file):
+    """Excel dosyasını ham olarak oku"""
+    return pd.read_excel(uploaded_file)
+
+@st.cache_data(ttl=3600)
+def load_stok_excel(uploaded_file):
+    """Stok Excel dosyasını oku ve kolonları standartlaştır"""
+    try:
+        df = pd.read_excel(uploaded_file)
+
+        # Kolon isimlerini normalize et (boşlukları temizle)
+        df.columns = df.columns.str.strip()
+
+        # Kolon isimlerini standartlaştır (case-insensitive)
+        kolon_mapping = {
+            'üst mal grubu': 'Üst Mal Grubu',
+            'mal grubu': 'Mal Grubu',
+            'ürün kodu': 'Ürün Kodu',
+            'ürün tanımı': 'Ürün Tanımı',
+            'mağaza adı': 'Mağaza Adı',
+            'satış fiyatı': 'Satış Fiyatı',
+            'kod': 'Kod',
+            'stok': 'Stok'
+        }
+        df.columns = [kolon_mapping.get(col.lower(), col) for col in df.columns]
+
+        # Kod kolonunu string'e çevir (pyarrow mixed type hatası için)
+        if 'Kod' in df.columns:
+            df['Kod'] = df['Kod'].astype(str).str.strip()
+
+        return df
+    except Exception as e:
+        # Cache'lenmiş hatayı yakala
+        raise e
+
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
     """
@@ -1770,28 +1809,8 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
 
     if uploaded_file is not None:
         try:
-            # Excel'i oku
-            stok_df = pd.read_excel(uploaded_file)
-
-            # Kolon isimlerini normalize et (boşlukları temizle)
-            stok_df.columns = stok_df.columns.str.strip()
-
-            # Kolon isimlerini standartlaştır (case-insensitive)
-            kolon_mapping = {
-                'üst mal grubu': 'Üst Mal Grubu',
-                'mal grubu': 'Mal Grubu',
-                'ürün kodu': 'Ürün Kodu',
-                'ürün tanımı': 'Ürün Tanımı',
-                'mağaza adı': 'Mağaza Adı',
-                'satış fiyatı': 'Satış Fiyatı',
-                'kod': 'Kod',
-                'stok': 'Stok'
-            }
-            stok_df.columns = [kolon_mapping.get(col.lower(), col) for col in stok_df.columns]
-
-            # Kod kolonunu string'e çevir (pyarrow mixed type hatası için)
-            if 'Kod' in stok_df.columns:
-                stok_df['Kod'] = stok_df['Kod'].astype(str).str.strip()
+            # Excel'i oku (Cache'li)
+            stok_df = load_stok_excel(uploaded_file)
 
             # Gerekli kolonları kontrol et
             gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
@@ -2316,21 +2335,8 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
 
     if uploaded_file_wp is not None:
         try:
-            stok_df = pd.read_excel(uploaded_file_wp)
-            stok_df.columns = stok_df.columns.str.strip()
-
-            # Kolon isimlerini standartlaştır (case-insensitive)
-            kolon_mapping = {
-                'üst mal grubu': 'Üst Mal Grubu',
-                'mal grubu': 'Mal Grubu',
-                'ürün kodu': 'Ürün Kodu',
-                'ürün tanımı': 'Ürün Tanımı',
-                'mağaza adı': 'Mağaza Adı',
-                'satış fiyatı': 'Satış Fiyatı',
-                'kod': 'Kod',
-                'stok': 'Stok'
-            }
-            stok_df.columns = [kolon_mapping.get(col.lower(), col) for col in stok_df.columns]
+            # Excel'i oku (Cache'li)
+            stok_df = load_stok_excel(uploaded_file_wp)
 
             gerekli_kolonlar = ['Kod', 'Mağaza Adı', 'Ürün Kodu', 'Ürün Tanımı', 'Stok', 'Satış Fiyatı', 'Üst Mal Grubu', 'Mal Grubu']
             eksik_kolonlar = [k for k in gerekli_kolonlar if k not in stok_df.columns]
@@ -2629,7 +2635,8 @@ elif mod_secim == "📤 Toplu Mesaj":
 
     if uploaded_toplu:
         try:
-            df_toplu = pd.read_excel(uploaded_toplu)
+            # Excel'i oku (Cache'li)
+            df_toplu = load_excel_raw(uploaded_toplu)
 
             # Gerekli kolonları kontrol et
             required_cols = ['Kod', 'Mağaza Adı', 'Ürün Tanımı', 'Satış Fiyatı', 'yeni fiyat']
