@@ -245,25 +245,37 @@ def _get_gdrive_file_id():
     # Sonra environment variable
     return os.environ.get("GDRIVE_FILE_ID", "")
 
-@st.cache_resource
-def get_perf_local_path() -> str:
-    """Parquet'i Google Drive'dan indir - gdown ile otomatik virus scan bypass"""
+def _get_parquet_path() -> str:
+    """Parquet dosya yolunu döndür (indirmez!)"""
+    return os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
+
+def _is_parquet_ready() -> bool:
+    """Parquet dosyası indirilmiş ve geçerli mi?"""
+    path = _get_parquet_path()
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) == b"PAR1"
+    except:
+        return False
+
+def download_parquet_if_needed() -> str:
+    """
+    Parquet'i Google Drive'dan indir - SADECE BUTONA BASILINCA ÇAĞRILIR!
+    Sayfa yüklenirken otomatik çağrılmaz.
+    """
     import gdown
 
     file_id = _get_gdrive_file_id()
     if not file_id:
         raise RuntimeError("GDRIVE_FILE_ID secret veya environment variable tanımlı değil!")
 
-    output_path = os.path.join(tempfile.gettempdir(), "veri_yillik.parquet")
+    output_path = _get_parquet_path()
 
     # Dosya zaten varsa ve geçerliyse tekrar indirme
-    if os.path.exists(output_path):
-        try:
-            with open(output_path, "rb") as f:
-                if f.read(4) == b"PAR1":
-                    return output_path
-        except:
-            pass
+    if _is_parquet_ready():
+        return output_path
 
     url = f"https://drive.google.com/uc?id={file_id}"
     gdown.download(url, output_path, quiet=False)
@@ -274,6 +286,12 @@ def get_perf_local_path() -> str:
             raise RuntimeError("İndirilen dosya parquet değil / bozuk indi (PAR1 yok).")
 
     return output_path
+
+# Legacy wrapper for compatibility
+@st.cache_resource
+def get_perf_local_path() -> str:
+    """Legacy wrapper - download_parquet_if_needed kullanın"""
+    return download_parquet_if_needed()
 
 @st.cache_data(ttl=3600)
 def load_perf_lookups():
@@ -411,15 +429,16 @@ def prepare_magaza_hierarchy(stok_df):
 
     return base, sm_list, bs_all, sm_to_bs
 
-@st.cache_data(ttl=3600)
-def prepare_lift_aggregations(_cache_key):
+def get_lift_aggregations():
     """
-    Lift hesaplaması için aggregasyonları önceden hazırla (döngü dışında)
-    3 Seviyeli Hiyerarşi: SKU → Mal Grubu → Üst Mal Grubu
-    CACHED: Aynı veri için tekrar hesaplamaz - RAM ve CPU tasarrufu!
+    Lift hesaplaması için aggregasyonları al.
+    SESSION STATE'DE CACHE'LER - tekrar hesaplamaz!
+    """
+    # Session state'de varsa direkt döndür (HIZLI!)
+    if "lift_agg" in st.session_state and st.session_state["lift_agg"] is not None:
+        return st.session_state["lift_agg"]
 
-    NOT: load_performans_data() zaten SPOT filtrelenmiş veri döndürüyor!
-    """
+    # Yoksa hesapla ve session_state'e kaydet
     spot_df = load_performans_data()
     if spot_df is None:
         return None
@@ -452,7 +471,7 @@ def prepare_lift_aggregations(_cache_key):
     urun_mal_grubu = spot_df.groupby('Urun_Kod')['Mal_Grubu'].first().to_dict()
     urun_ust_mal_grubu = spot_df.groupby('Urun_Kod')['Ust_Mal_Grubu'].first().to_dict()
 
-    return {
+    agg = {
         'bench_total': bench_total,
         'store_totals': store_totals,
         'store_sku_qty': store_sku_qty,
@@ -464,6 +483,16 @@ def prepare_lift_aggregations(_cache_key):
         'urun_mal_grubu': urun_mal_grubu,
         'urun_ust_mal_grubu': urun_ust_mal_grubu
     }
+
+    # Session state'e kaydet
+    st.session_state["lift_agg"] = agg
+    return agg
+
+# Legacy wrapper for compatibility
+@st.cache_data(ttl=3600)
+def prepare_lift_aggregations(_cache_key):
+    """Legacy wrapper - get_lift_aggregations kullanın"""
+    return get_lift_aggregations()
 
 
 def write_excel_with_formulas(df, sheet_name='Kampanya Önerisi'):
@@ -1942,7 +1971,7 @@ elif mod_secim == "📊 Kampanya Oluşturucu":
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
                                 # ÖNEMLİ: Aggregasyonları DÖNGÜ DIŞINDA bir kere hazırla (CACHED!)
-                                agg = prepare_lift_aggregations("cached")
+                                agg = get_lift_aggregations()
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']
@@ -2282,7 +2311,7 @@ elif mod_secim == "📱 WhatsApp Kanalı Kampanya":
                                 st.error("❌ Performans verisi yüklenemedi! Önce 'Performans Verisini Yükle' butonuna tıklayın.")
                             else:
                                 # CACHED aggregasyonlar - RAM dostu
-                                agg = prepare_lift_aggregations("cached")
+                                agg = get_lift_aggregations()
                                 bench_total = agg['bench_total']
                                 store_totals = agg['store_totals']
                                 store_sku_qty = agg['store_sku_qty']
