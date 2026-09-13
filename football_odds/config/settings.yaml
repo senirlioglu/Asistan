@@ -1,0 +1,111 @@
+# Football odds similarity system — central configuration.
+# Every path is relative to the project root (football_odds/).
+
+data:
+  base_url: "https://www.football-data.co.uk"
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  results_dir: "results"
+  # Re-download files of the current season when the cached copy is older than this.
+  refresh_hours: 12
+  http_timeout_s: 60
+  http_retries: 3
+
+  # Football-Data division codes. `core: true` leagues are the default pool;
+  # the others are downloaded and audited but only used when `include_extra_leagues` is true.
+  leagues:
+    E0:  {name: "Premier League",    country: "England",     tier: 1, core: true}
+    E1:  {name: "Championship",      country: "England",     tier: 2, core: true}
+    SP1: {name: "La Liga",           country: "Spain",       tier: 1, core: true}
+    I1:  {name: "Serie A",           country: "Italy",       tier: 1, core: true}
+    D1:  {name: "Bundesliga",        country: "Germany",     tier: 1, core: true}
+    F1:  {name: "Ligue 1",           country: "France",      tier: 1, core: true}
+    N1:  {name: "Eredivisie",        country: "Netherlands", tier: 1, core: true}
+    P1:  {name: "Primeira Liga",     country: "Portugal",    tier: 1, core: true}
+    B1:  {name: "Pro League",        country: "Belgium",     tier: 1, core: false}
+    T1:  {name: "Süper Lig",         country: "Turkey",      tier: 1, core: false}
+    G1:  {name: "Super League",      country: "Greece",      tier: 1, core: false}
+    SC0: {name: "Premiership",       country: "Scotland",    tier: 1, core: false}
+    SP2: {name: "Segunda División",  country: "Spain",       tier: 2, core: false}
+    I2:  {name: "Serie B",           country: "Italy",       tier: 2, core: false}
+    D2:  {name: "2. Bundesliga",     country: "Germany",     tier: 2, core: false}
+    F2:  {name: "Ligue 2",           country: "France",      tier: 2, core: false}
+  include_extra_leagues: true
+
+  # Season codes as used in Football-Data URLs (mmz4281/<season>/<div>.csv).
+  seasons:
+    - "1112"
+    - "1213"
+    - "1314"
+    - "1415"
+    - "1516"
+    - "1617"
+    - "1718"
+    - "1819"
+    - "1920"
+    - "2021"
+    - "2122"
+    - "2223"
+    - "2324"
+    - "2425"
+    - "2526"
+    - "2627"
+
+odds:
+  # proportional = divide each implied probability by the overround (the method in the spec).
+  # shin / power are available for research; proportional is the reference method.
+  normalization: "proportional"
+  min_valid_odds: 1.01     # odds <= 1.00 are invalid
+  max_valid_odds: 200.0
+  max_overround: 1.15      # a consensus 1X2 market with overround above this is treated as corrupt (typical avg 1.03-1.10)
+
+similarity:
+  # Default production parameters. `python -m src.cli backtest` writes the validated
+  # choice to results/backtest/selected_params.json and the today pipeline prefers that file.
+  feature_set: "1x2"       # 1x2 | 1x2_ou
+  metric: "manhattan"      # euclidean | manhattan | cosine | mahalanobis
+  k: 250
+  k_options: [25, 50, 100, 250, 500]
+  half_life_years: 5       # null => unweighted
+  half_life_options: [null, 3, 5, 7]
+  min_similarity: 0.0      # adaptive neighbourhood threshold (0 => pure top-K)
+  min_similarity_options: [98, 97, 95, 92]
+  tolerance_levels: [0.01, 0.02, 0.03, 0.05]
+  scopes: ["global", "same_league"]
+
+shrinkage:
+  # Empirical-Bayes pseudo-count pulling the historical rate toward the market probability.
+  prior_strength: 50
+  prior_strength_options: [0, 10, 25, 50, 100, 200]
+
+confidence:
+  very_low_below: 30
+  low_below: 100
+  medium_below: 250
+
+signal:
+  strong_edge_pp: 5.0
+  moderate_edge_pp: 3.0
+  min_avg_similarity_strong: 95.0
+  min_avg_similarity_moderate: 90.0
+
+backtest:
+  # Walk-forward: for a test season S the pool is every match played BEFORE the test match
+  # (earlier seasons + earlier matches of S). Parameters are chosen on validation seasons,
+  # final numbers are reported on the untouched test seasons.
+  validation_seasons: ["1718", "1819", "1920", "2021"]
+  test_seasons: ["2122", "2223", "2324", "2425", "2526"]
+  min_train_seasons: 4
+  roi_thresholds_pp: [2, 3, 5, 7.5, 10]
+  calibration_bins: 10
+  time_stability_periods:
+    "2012-2015": ["1112", "1213", "1314", "1415", "1516"]
+    "2016-2019": ["1617", "1718", "1819", "1920"]
+    "2020-2022": ["2021", "2122", "2223"]
+    "2023-present": ["2324", "2425", "2526", "2627"]
+  probability_buckets: [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 1.01]
+
+current:
+  provider: "football_data_fixtures"   # football_data_fixtures | the_odds_api
+  fixtures_url: "https://www.football-data.co.uk/fixtures.csv"
+  the_odds_api_key_env: "THE_ODDS_API_KEY"
