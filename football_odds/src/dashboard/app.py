@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,10 +24,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.config import load_settings  # noqa: E402
+from src.pipeline.jobs import is_running, read_status, start_background  # noqa: E402
 
 st.set_page_config(page_title="Football odds — historical analogues", layout="wide")
 settings = load_settings()
 RESULTS = settings.results_dir
+ADMIN_KEY = os.environ.get("FO_ADMIN_KEY", "")
+DAYS_AHEAD = int(os.environ.get("FO_DAYS_AHEAD", "2"))
 
 TABLE_COLS = ["date", "time", "league", "home", "away", "odds_h", "odds_d", "odds_a", "market_h", "market_d", "market_a",
               "n", "hist_h", "hist_d", "hist_a", "adj_h", "adj_d", "adj_a", "edge_h", "edge_d", "edge_a",
@@ -39,12 +43,12 @@ HEADERS = {"date": "DATE", "time": "TIME", "league": "LEAGUE", "home": "HOME", "
            "confidence": "CONFIDENCE", "signal": "MODEL SIGNAL"}
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=120)
 def list_prediction_dates() -> list[str]:
     return sorted({p.name[:10] for p in RESULTS.glob("*_predictions.csv")}, reverse=True)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_day(stamp: str):
     table = pd.read_csv(RESULTS / f"{stamp}_predictions.csv")
     details_path = RESULTS / f"{stamp}_details.json"
@@ -54,7 +58,7 @@ def load_day(stamp: str):
     return table, details, analogues
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_backtest():
     p = RESULTS / "backtest" / "selected_params.json"
     return json.loads(p.read_text()) if p.exists() else {}
@@ -67,11 +71,41 @@ def to_excel(df: pd.DataFrame) -> bytes:
     return buf.getvalue()
 
 
-# ----------------------------------------------------------------------------- sidebar
+# ----------------------------------------------------------------------------- sidebar: data status
+def render_status_panel() -> None:
+    status = read_status(settings)
+    running = is_running(settings) or status.get("state") == "running"
+    icon = {"ok": "🟢", "error": "🔴", "running": "🟡"}.get(status.get("state"), "⚪")
+    with st.sidebar.expander(f"{icon} Data status", expanded=running or status.get("state") != "ok"):
+        st.write(f"**{status.get('state', 'never')}** — {status.get('message', '')}")
+        if status.get("finished_at"):
+            st.caption(f"last run finished {status['finished_at'][:16].replace('T', ' ')} UTC · {status.get('duration_s', '?')} s")
+        elif status.get("updated_at"):
+            st.caption(f"updated {status['updated_at'][:16].replace('T', ' ')} UTC")
+        if running:
+            st.info("A refresh is running (download → build → today, ~3-5 min). Reload the page in a while.")
+        else:
+            key_ok = True
+            if ADMIN_KEY:
+                key_ok = st.text_input("Admin key", type="password", key="admin_key") == ADMIN_KEY
+            if st.button("Refresh now", disabled=not key_ok, help="Download the current season, rebuild and re-analyse fixtures"):
+                if start_background(settings, days=DAYS_AHEAD, full_download=not (settings.processed_dir / "matches.parquet").exists()):
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.warning("A run is already in progress.")
+
+
 st.sidebar.title("Filters")
+render_status_panel()
 dates = list_prediction_dates()
 if not dates:
-    st.warning("No prediction files yet. Run `python -m src.cli today` first.")
+    st.title("Today's matches — market vs historical analogues")
+    if is_running(settings) or read_status(settings).get("state") == "running":
+        st.info("First data load is running (Football-Data download → database build → fixture analysis). "
+                "This takes a few minutes; reload the page shortly.")
+    else:
+        st.warning("No prediction files yet. Use **Refresh now** in the sidebar or run `python -m src.cli today`.")
     st.stop()
 stamp = st.sidebar.selectbox("Prediction date", dates)
 table, details, analogues = load_day(stamp)

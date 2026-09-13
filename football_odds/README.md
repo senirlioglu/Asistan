@@ -261,6 +261,27 @@ Follow-up (`python -m src.cli backtest-calibration`): a walk-forward isotonic re
 does beat the average market on Brier (−0.00047, p=0.017, 4/5 seasons) — but the gain is ~0.5 pp against a ~6.5 % margin,
 so flat-stake ROI stays negative at every threshold. Better estimate, no betting edge. Details in `docs/PHASE_REPORT.md`.
 
+## Hosted deployment (Railway / any container host)
+
+`serve.py` is a single-process entry point: it binds the Streamlit dashboard to `$PORT`, bootstraps the data when the
+container is empty (download → build → today, in a background thread), and re-runs that job every day at `FO_DAILY_UTC`.
+The dashboard has a **Data status** panel with a *Refresh now* button (protected by `FO_ADMIN_KEY` when set).
+
+Railway, second service from the same repository:
+
+1. New service → GitHub repo `senirlioglu/Asistan`, branch of your choice.
+2. Settings → **Root Directory** = `football_odds` (so `Procfile` / `railway.json` / `requirements.txt` here are used).
+3. Variables (all optional): `FO_DAILY_UTC=06:30`, `FO_DAYS_AHEAD=2`, `FO_ADMIN_KEY=<secret>`, `LOG_LEVEL=INFO`.
+4. Generate a domain. First boot downloads 256 Football-Data files and builds the database (3–5 min); the page shows the
+   progress in the status panel until the first prediction file exists.
+
+The filesystem is ephemeral: every redeploy re-downloads the data (cached copies are not kept). Mount a volume at
+`/app/football_odds/data` to keep them. The backtest results in `results/backtest/` ship with the repository, so the
+30-minute backtest never runs on the server.
+
+Streamlit Cloud works too (main file `football_odds/src/dashboard/app.py`), but it has no scheduler and sleeps when idle:
+use the *Refresh now* button, or trigger the GitHub Actions workflow and read its artifacts.
+
 ## Daily automation
 
 `.github/workflows/football-odds-daily.yml` runs `download → build → today --days 2` every morning (06:30 UTC) or on demand
