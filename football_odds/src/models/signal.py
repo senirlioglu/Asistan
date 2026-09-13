@@ -8,8 +8,9 @@ Inputs per match:
     n_eff         : effective sample size of the analogue set
     outside_ci    : is the market probability outside the 95 % Wilson interval of the raw rate?
     avg_similarity: mean Similarity % of the analogue set
-    backtest_ok   : did the walk-forward backtest show the adjusted model at least matching the
-                    market baseline out-of-sample? (results/backtest/selected_params.json)
+    backtest_ok   : did the walk-forward backtest show the adjusted model beating the market
+                    baseline out-of-sample at p < 0.05? (results/backtest/selected_params.json;
+                    "not worse but indistinguishable" counts as False)
 
 Rules (evaluated in order):
     LOW SAMPLE                    n_eff < low_below (default 100)
@@ -66,7 +67,8 @@ def classify_signal(edges_pp: dict[str, float], n_eff: float, outside_ci: dict[s
     ci_flag = bool(outside_ci.get(outcome, False))
     reasons.append("market outside 95% CI" if ci_flag else "market inside 95% CI")
     reasons.append(f"avg similarity {avg_similarity:.1f}%")
-    reasons.append("backtest: adjusted model >= market" if backtest_ok else "backtest: no improvement over market")
+    reasons.append("backtest: adjusted model beat market (p<0.05)" if backtest_ok
+                   else "backtest: no significant improvement over market")
 
     strong_candidate = abs(edge) >= strong_edge and ci_flag and avg_similarity >= sim_moderate
     if strong_candidate and avg_similarity >= sim_strong and backtest_ok:

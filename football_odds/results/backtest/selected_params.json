@@ -1,12 +1,15 @@
 {
   "feature_set": "1x2",
-  "metric": "euclidean",
+  "metric": "cosine",
   "scope": "global",
   "k": 500,
   "half_life_years": null,
-  "prior_strength": 50.0,
+  "prior_strength": 200.0,
   "min_similarity": 97.0,
+  "val_logloss": 0.9927521242321108,
+  "val_logloss_market": 0.9928379584408142,
   "backtest_ok": false,
+  "adjusted_not_worse_than_market": true,
   "significant_improvement": false,
   "test_seasons": [
     "2122",
@@ -23,19 +26,34 @@
   ],
   "n_test_matches": 27812,
   "brier_market": 0.5898813524889709,
-  "brier_hist": 0.5902469901872323,
-  "brier_adj": 0.5900418070805465,
+  "brier_hist": 0.5902454706844839,
+  "brier_adj": 0.5897430346186034,
   "logloss_market": 0.9886269230805039,
-  "logloss_hist": 0.9891537473175693,
-  "logloss_adj": 0.9888042958872356,
-  "brier_adj_p_value": 0.5349177842767578,
+  "logloss_hist": 0.9891066524021981,
+  "logloss_adj": 0.9882764035364017,
+  "brier_adj_p_value": 0.49514967863097814,
   "ece": {
     "market": 0.013152136621538673,
-    "hist": 0.006447357439095491,
-    "adj": 0.006321147626715979
+    "hist": 0.006750994297157784,
+    "adj": 0.007069038970578433
   },
-  "generated_at": "2026-09-13T18:50:53.851192+00:00",
-  "quick": true,
+  "generated_at": "2026-09-13T20:15:00.496831+00:00",
+  "selection": {
+    "best": {
+      "feature_set": "1x2_ou",
+      "metric": "mahalanobis",
+      "scope": "global",
+      "k": 50,
+      "half_life_years": 3.0,
+      "prior_strength": 200.0,
+      "min_similarity": 0.0,
+      "val_logloss": 0.9926056218260552,
+      "val_logloss_market": 0.9926604483167648
+    },
+    "one_se": 0.0002553501344491,
+    "n_candidates": 48
+  },
+  "quick": false,
   "leagues": [
     "B1",
     "D1",

@@ -44,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("backtest", help="walk-forward backtest + model comparison")
     p.add_argument("--quick", action="store_true", help="smaller parameter grid (development)")
     p.add_argument("--leagues", help="restrict to these leagues (default: config)")
+    p.add_argument("--reuse-validation", action="store_true", help="reuse results/backtest/validation_grid.csv instead of recomputing stage 1")
 
     p = sub.add_parser("today", help="analyse upcoming fixtures")
     p.add_argument("--date", help="YYYY-MM-DD (default: today)")
@@ -79,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "backtest":
         from .backtest.run import run_full_backtest
-        run_full_backtest(settings, quick=args.quick, leagues=_parse_list(args.leagues))
+        run_full_backtest(settings, quick=args.quick, leagues=_parse_list(args.leagues), reuse_validation=args.reuse_validation)
         return 0
 
     if args.command == "today":

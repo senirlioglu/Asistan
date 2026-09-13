@@ -121,6 +121,7 @@ def evaluate_grid(nm: NeighbourMatrix, market: np.ndarray, result_code: np.ndarr
             b = brier_per_match(probs, result_code)
             ll = logloss_per_match(probs, result_code)
             pb = paired_difference(b, base_b)
+            pl = paired_difference(ll, base_l)
             rows.append({
                 "feature_set": nm.feature_set, "metric": nm.metric, "scope": nm.scope, "k": k,
                 "half_life": hl if hl is not None else 0, "prior_strength": m if name == "adj" else np.nan,
@@ -128,6 +129,7 @@ def evaluate_grid(nm: NeighbourMatrix, market: np.ndarray, result_code: np.ndarr
                 "brier": float(b.mean()), "logloss": float(ll.mean()),
                 "brier_market": float(base_b.mean()), "logloss_market": float(base_l.mean()),
                 "brier_diff": pb["mean_diff"], "brier_p_value": pb["p_value"],
+                "logloss_diff": pl["mean_diff"], "logloss_diff_se": pl["se"], "logloss_p_value": pl["p_value"],
                 "n_eff_median": float(np.median(n_eff)), "n_eff_p10": float(np.percentile(n_eff, 10)),
                 "share_low_sample": float(np.mean(n_eff < 100)),
             })

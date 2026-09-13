@@ -239,6 +239,24 @@ The headline verdict is written to `results/backtest/summary.md` and to
 `selected_params.json → backtest_ok`. When `backtest_ok` is false the dashboard shows
 "historical similarity did not improve on the market" and no STRONG signal can be produced.
 
+## Results so far (full backtest, 2026-09-13)
+
+Details in `docs/PHASE_REPORT.md` and `results/backtest/summary.md`.
+
+| model (test seasons 2021/22–2025/26, n=27 812) | Brier | vs market | p |
+|---|---|---|---|
+| market (consensus average) | 0.58988 | — | — |
+| raw analogue rate (K=500) | 0.59025 | +0.00036 | 0.20 |
+| adjusted (shrinkage, prior 200) | 0.58974 | −0.00014 | 0.50 |
+| Pinnacle (subset) | 0.58876 | −0.00044 | <1e-8 |
+
+**Historical similarity did not improve predictive performance over the market.** The adjusted model is statistically
+indistinguishable from the consensus, the raw analogue rate is slightly worse, and the ROI simulation at average prices is
+negative at every threshold. The dashboard therefore reports deviations as descriptive statistics with intervals and never
+emits a STRONG signal (`backtest_ok = false`). The one real, repeatable pattern is a favourite-longshot bias in the average
+market (home favourites ≥ 65 % win 3–5 pp more often than priced) — small, documented in `favourite_buckets.csv`, and not
+enough to beat the market once uncertainty is accounted for.
+
 ## Output files
 
 ```

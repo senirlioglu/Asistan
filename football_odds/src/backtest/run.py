@@ -59,7 +59,42 @@ def _grid(settings: Settings, quick: bool) -> dict:
     return grid
 
 
-def run_full_backtest(settings: Settings, quick: bool = False, leagues: list[str] | None = None) -> dict:
+def select_configuration(val_table: pd.DataFrame) -> tuple[dict, dict]:
+    """Pick the production configuration from the validation grid with a one-standard-error rule.
+
+    1. Best = lowest adjusted log loss.
+    2. Candidates = configurations whose log loss is within one standard error of the best
+       (SE of the paired per-match log-loss difference against the market, which is the
+       resolution at which two near-market configurations can be told apart).
+    3. Among candidates prefer: larger K (more analogues, stabler statistics), then no time
+       weighting, then the stronger prior (closer to the market), then the simpler feature set.
+
+    This stops the choice from riding a 0.0001 log-loss difference that is pure noise.
+    Returns (selected, {"best": ..., "n_candidates": ...}).
+    """
+    adj = val_table[val_table["model"] == "adj"].copy()
+    adj = adj.sort_values(["logloss", "brier"]).reset_index(drop=True)
+    best = adj.iloc[0]
+    se = float(best.get("logloss_diff_se", np.nan))
+    if not np.isfinite(se) or se <= 0:
+        se = 0.0
+    cands = adj[adj["logloss"] <= best["logloss"] + se].copy()
+    cands["_hl"] = cands["half_life"].fillna(0).astype(float)
+    cands["_fs"] = (cands["feature_set"] != "1x2").astype(int)
+    cands = cands.sort_values(["k", "_hl", "prior_strength", "_fs", "logloss"], ascending=[False, True, False, True, True])
+    pick = cands.iloc[0]
+
+    def _as_dict(r) -> dict:
+        return {"feature_set": r["feature_set"], "metric": r["metric"], "scope": r["scope"], "k": int(r["k"]),
+                "half_life_years": _hl(r["half_life"]), "prior_strength": float(r["prior_strength"]),
+                "min_similarity": float(r["min_similarity"]), "val_logloss": float(r["logloss"]),
+                "val_logloss_market": float(r["logloss_market"])}
+
+    return _as_dict(pick), {"best": _as_dict(best), "one_se": se, "n_candidates": int(len(cands))}
+
+
+def run_full_backtest(settings: Settings, quick: bool = False, leagues: list[str] | None = None,
+                      reuse_validation: bool = False) -> dict:
     t0 = time.time()
     out = settings.results_dir / "backtest"
     out.mkdir(parents=True, exist_ok=True)
@@ -74,32 +109,31 @@ def run_full_backtest(settings: Settings, quick: bool = False, leagues: list[str
     log.info("backtest on %d matches, %d leagues; validation %s; test %s", len(df), df["league"].nunique(), val_seasons, test_seasons)
 
     # ------------------------------------------------------------------ Stage 1: validation grid
-    tables = []
-    indexes: dict[str, SimilarityIndex] = {}
-    for fs in grid["feature_sets"]:
-        indexes[fs] = SimilarityIndex(df, fs)
-        val_df = season_test_frame(df, val_seasons, fs)
-        market = val_df[MARKET_COLS].to_numpy(dtype=float)
-        res = val_df["result_code"].to_numpy(dtype=int)
-        for metric in grid["metrics"]:
-            for scope in grid["scopes"]:
-                t1 = time.time()
-                nm = compute_neighbours(indexes[fs], val_df, k_max, metric, scope)
-                tab = evaluate_grid(nm, market, res, grid["ks"], grid["half_lives"], grid["priors"], grid["min_sims"])
-                tab["stage"] = "validation"
-                tables.append(tab)
-                log.info("validation %s/%s/%s: %d matches, %.1fs", fs, metric, scope, len(val_df), time.time() - t1)
-    val_table = pd.concat(tables, ignore_index=True)
-    val_table.to_csv(out / "validation_grid.csv", index=False)
+    indexes: dict[str, SimilarityIndex] = {fs: SimilarityIndex(df, fs) for fs in grid["feature_sets"]}
+    grid_path = out / "validation_grid.csv"
+    if reuse_validation and grid_path.exists():
+        val_table = pd.read_csv(grid_path)
+        log.info("reusing validation grid %s (%d rows)", grid_path, len(val_table))
+    else:
+        tables = []
+        for fs in grid["feature_sets"]:
+            val_df = season_test_frame(df, val_seasons, fs)
+            market = val_df[MARKET_COLS].to_numpy(dtype=float)
+            res = val_df["result_code"].to_numpy(dtype=int)
+            for metric in grid["metrics"]:
+                for scope in grid["scopes"]:
+                    t1 = time.time()
+                    nm = compute_neighbours(indexes[fs], val_df, k_max, metric, scope)
+                    tab = evaluate_grid(nm, market, res, grid["ks"], grid["half_lives"], grid["priors"], grid["min_sims"])
+                    tab["stage"] = "validation"
+                    tables.append(tab)
+                    log.info("validation %s/%s/%s: %d matches, %.1fs", fs, metric, scope, len(val_df), time.time() - t1)
+        val_table = pd.concat(tables, ignore_index=True)
+        val_table.to_csv(grid_path, index=False)
 
-    adj_rows = val_table[val_table["model"] == "adj"].sort_values(["logloss", "brier"])
-    best = adj_rows.iloc[0]
-    selected = {
-        "feature_set": best["feature_set"], "metric": best["metric"], "scope": best["scope"], "k": int(best["k"]),
-        "half_life_years": _hl(best["half_life"]), "prior_strength": float(best["prior_strength"]),
-        "min_similarity": float(best["min_similarity"]),
-    }
-    log.info("selected on validation: %s (logloss %.5f vs market %.5f)", selected, best["logloss"], best["logloss_market"])
+    selected, selection_info = select_configuration(val_table)
+    log.info("selected on validation (1-SE rule, %d candidates, SE=%.5f): %s | best raw: %s", selection_info["n_candidates"],
+             selection_info["one_se"], selected, selection_info["best"])
 
     # ------------------------------------------------------------------ Stage 2: test seasons
     fs = selected["feature_set"]
@@ -206,14 +240,18 @@ def run_full_backtest(settings: Settings, quick: bool = False, leagues: list[str
     s_market = scores[scores["model"] == "market"].iloc[0]
     s_hist = scores[scores["model"] == "hist"].iloc[0]
     s_adj = scores[scores["model"] == "adj"].iloc[0]
-    backtest_ok = bool(s_adj["brier"] <= s_market["brier"])
-    significant = bool(s_adj["brier_p_value"] < 0.05) and backtest_ok
+    not_worse = bool(s_adj["brier"] <= s_market["brier"])
+    significant = bool(s_adj["brier_p_value"] < 0.05) and not_worse
+    # The STRONG signal gate: only when the adjusted model beat the market out-of-sample at p < 0.05.
+    # "Not worse but indistinguishable" is not evidence that the analogues carry information.
+    backtest_ok = significant
     selected.update({
-        "backtest_ok": backtest_ok, "significant_improvement": significant,
+        "backtest_ok": backtest_ok, "adjusted_not_worse_than_market": not_worse, "significant_improvement": significant,
         "test_seasons": test_seasons, "validation_seasons": val_seasons, "n_test_matches": int(len(test_df)),
         "brier_market": float(s_market["brier"]), "brier_hist": float(s_hist["brier"]), "brier_adj": float(s_adj["brier"]),
         "logloss_market": float(s_market["logloss"]), "logloss_hist": float(s_hist["logloss"]), "logloss_adj": float(s_adj["logloss"]),
         "brier_adj_p_value": float(s_adj["brier_p_value"]), "ece": ece, "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "selection": selection_info,
         "quick": quick, "leagues": leagues or sorted(df["league"].unique().tolist()),
     })
     (out / "selected_params.json").write_text(json.dumps(selected, indent=2, default=str))
@@ -224,10 +262,11 @@ def run_full_backtest(settings: Settings, quick: bool = False, leagues: list[str
 
 def _write_summary(out: Path, sel: dict, scores: pd.DataFrame, val: pd.DataFrame, roi: pd.DataFrame, stab: pd.DataFrame,
                    groups: dict, mv: dict, ece: dict) -> None:
-    verdict = ("Historical similarity **improved** out-of-sample calibration versus the market baseline"
-               if sel["backtest_ok"] and sel["significant_improvement"] else
-               "Historical similarity matched the market baseline but the difference is **not statistically significant**"
-               if sel["backtest_ok"] else
+    verdict = ("Historical similarity **improved** out-of-sample calibration versus the market baseline (p < 0.05)"
+               if sel["significant_improvement"] else
+               "Historical similarity matched the market baseline but the difference is **not statistically significant** — "
+               "historical similarity did not improve predictive performance"
+               if sel.get("adjusted_not_worse_than_market") else
                "**Historical similarity did not improve predictive performance** over the market baseline")
     lines = [
         "# Walk-forward backtest summary", "", f"Generated: {sel['generated_at']}", "",
@@ -240,6 +279,13 @@ def _write_summary(out: Path, sel: dict, scores: pd.DataFrame, val: pd.DataFrame
     ]
     for k in ("feature_set", "metric", "scope", "k", "half_life_years", "prior_strength", "min_similarity"):
         lines.append(f"| {k} | {sel[k]} |")
+    info = sel.get("selection", {})
+    if info:
+        b = info.get("best", {})
+        lines += ["", f"One-standard-error rule: {info.get('n_candidates')} configurations lie within SE={info.get('one_se', 0):.5f} "
+                  f"of the best validation log loss ({b.get('val_logloss', float('nan')):.5f} vs market {b.get('val_logloss_market', float('nan')):.5f}); "
+                  f"the largest-K / simplest one was chosen. Raw best: {b.get('feature_set')} / {b.get('metric')} / {b.get('scope')} / "
+                  f"K={b.get('k')} / half-life={b.get('half_life_years')} / prior={b.get('prior_strength')} / min sim={b.get('min_similarity')}."]
     lines += ["", "## Out-of-sample scores (test seasons)", "",
               "| model | Brier | log loss | Brier vs market | p-value | ECE |", "|---|---|---|---|---|---|"]
     for _, r in scores.iterrows():

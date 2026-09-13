@@ -25,7 +25,7 @@ def test_moderate_and_neutral():
 def test_reasons_are_transparent():
     s = _sig(6.0, ok=False)
     text = s.as_text()
-    assert "HOME +6.0 pp" in text and "backtest: no improvement" in text and "downgraded" in text
+    assert "HOME +6.0 pp" in text and "no significant improvement" in text and "downgraded" in text
 
 
 def test_no_analogues():
