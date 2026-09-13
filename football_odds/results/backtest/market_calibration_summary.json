@@ -1,0 +1,18 @@
+{
+  "n_test_matches": 27812,
+  "test_seasons": [
+    "2122",
+    "2223",
+    "2324",
+    "2425",
+    "2526"
+  ],
+  "best_model": "isotonic",
+  "brier_market": 0.5898813524889709,
+  "brier_best": 0.5894134822598879,
+  "brier_diff": -0.0004678702290829731,
+  "p_value": 0.016861988474596856,
+  "significant": true,
+  "seasons_better": 4,
+  "seasons_total": 5
+}

@@ -155,6 +155,14 @@ def run_full_backtest(settings: Settings, quick: bool = False, leagues: list[str
         pin = test_df.loc[pin_mask, ["pin_p_home", "pin_p_draw", "pin_p_away"]].to_numpy(dtype=float)
         sub = {"market": market[pin_mask], "pinnacle": pin, "hist": hist[pin_mask], "adj": adj[pin_mask]}
         score_table(sub, res[pin_mask]).to_csv(out / "test_scores_pinnacle_subset.csv", index=False)
+    # closing-line benchmarks: the sharpest information available before kick-off (2019/20+ only)
+    close_mask = test_df[["pc_home", "pc_draw", "pc_away", "pinc_p_home", "pinc_p_draw", "pinc_p_away"]].notna().all(axis=1).to_numpy()
+    if close_mask.sum() > 100:
+        sub = {"market": market[close_mask],
+               "closing_avg": test_df.loc[close_mask, ["pc_home", "pc_draw", "pc_away"]].to_numpy(dtype=float),
+               "pinnacle_closing": test_df.loc[close_mask, ["pinc_p_home", "pinc_p_draw", "pinc_p_away"]].to_numpy(dtype=float),
+               "hist": hist[close_mask], "adj": adj[close_mask]}
+        score_table(sub, res[close_mask]).to_csv(out / "test_scores_closing_subset.csv", index=False)
 
     # calibration
     cal = pd.concat([calibration_table(p, res, int(bt.get("calibration_bins", 10))).assign(model=name)

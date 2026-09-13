@@ -46,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--leagues", help="restrict to these leagues (default: config)")
     p.add_argument("--reuse-validation", action="store_true", help="reuse results/backtest/validation_grid.csv instead of recomputing stage 1")
 
+    sub.add_parser("backtest-calibration", help="walk-forward backtest of the market re-calibration models (fast)")
+
     p = sub.add_parser("today", help="analyse upcoming fixtures")
     p.add_argument("--date", help="YYYY-MM-DD (default: today)")
     p.add_argument("--days", type=int, default=1, help="how many days ahead to include (default 1 = the given day only)")
@@ -81,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "backtest":
         from .backtest.run import run_full_backtest
         run_full_backtest(settings, quick=args.quick, leagues=_parse_list(args.leagues), reuse_validation=args.reuse_validation)
+        return 0
+
+    if args.command == "backtest-calibration":
+        from .backtest.calibration_model import run_calibration_backtest
+        run_calibration_backtest(settings)
         return 0
 
     if args.command == "today":

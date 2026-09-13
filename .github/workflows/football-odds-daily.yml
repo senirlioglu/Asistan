@@ -1,0 +1,55 @@
+name: football-odds daily analysis
+
+# Runs the today pipeline every morning (UTC), refreshing the current season first, and stores
+# the prediction files as a workflow artifact. Nothing is committed back to the repository.
+# Trigger it by hand from the Actions tab with `workflow_dispatch`.
+
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days ahead to analyse"
+        default: "2"
+        required: false
+
+jobs:
+  today:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: football_odds
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: football_odds/requirements.txt
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Restore Football-Data cache
+        uses: actions/cache@v4
+        with:
+          path: football_odds/data/raw
+          key: football-data-raw-${{ hashFiles('football_odds/config/settings.yaml') }}-${{ github.run_number }}
+          restore-keys: football-data-raw-
+      - name: Download / refresh and build
+        run: |
+          python -m src.cli download
+          python -m src.cli build
+      - name: Analyse upcoming fixtures
+        run: python -m src.cli today --days ${{ github.event.inputs.days || 2 }} --refresh
+      - name: Tests
+        run: python -m pytest -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: predictions-${{ github.run_id }}
+          path: |
+            football_odds/results/*_predictions.csv
+            football_odds/results/*_predictions.xlsx
+            football_odds/results/*_details.json
+            football_odds/results/analogues/*.parquet
+            football_odds/results/data_quality_report.md
+          retention-days: 30

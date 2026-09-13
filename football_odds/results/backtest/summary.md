@@ -1,6 +1,6 @@
 # Walk-forward backtest summary
 
-Generated: 2026-09-13T20:15:00.496831+00:00
+Generated: 2026-09-13T20:30:58.999440+00:00
 
 Validation seasons: 2017/18, 2018/19, 2019/20, 2020/21  
 Test seasons: 2021/22, 2022/23, 2023/24, 2024/25, 2025/26  

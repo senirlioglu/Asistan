@@ -48,6 +48,7 @@ All commands run from the `football_odds/` directory.
 | data audit | `python -m src.cli audit` | PHASE 1: which markets exist in which season → `results/audit/` |
 | historical build | `python -m src.cli build` | canonical column mapping → consensus odds → margin-free probabilities → `data/processed/matches.parquet` + `results/data_quality_report.md` |
 | backtest | `python -m src.cli backtest [--quick]` | walk-forward validation grid → parameter choice → unseen test seasons → calibration, ROI, buckets, league groups, odds movement → `results/backtest/` |
+| calibration backtest | `python -m src.cli backtest-calibration` | fast (seconds) walk-forward test of the market re-calibration models (isotonic / bucket) → `results/backtest/market_calibration_*` |
 | today analysis | `python -m src.cli today [--date YYYY-MM-DD] [--days N] [--update] [--refresh]` | fixtures with odds → analysis → `results/YYYY-MM-DD_predictions.csv/.xlsx`, `_details.json`, `analogues/…parquet` |
 | dashboard | `python -m src.cli dashboard` | Streamlit UI over the prediction files |
 | tests | `python -m pytest` | unit tests for every module (odds, mapping, similarity, statistics, metrics, signal, walk-forward look-ahead) |
@@ -254,8 +255,21 @@ Details in `docs/PHASE_REPORT.md` and `results/backtest/summary.md`.
 indistinguishable from the consensus, the raw analogue rate is slightly worse, and the ROI simulation at average prices is
 negative at every threshold. The dashboard therefore reports deviations as descriptive statistics with intervals and never
 emits a STRONG signal (`backtest_ok = false`). The one real, repeatable pattern is a favourite-longshot bias in the average
-market (home favourites ≥ 65 % win 3–5 pp more often than priced) — small, documented in `favourite_buckets.csv`, and not
-enough to beat the market once uncertainty is accounted for.
+market (home favourites ≥ 65 % win 3–5 pp more often than priced), documented in `favourite_buckets.csv`.
+
+Follow-up (`python -m src.cli backtest-calibration`): a walk-forward isotonic re-calibration of the market probability
+does beat the average market on Brier (−0.00047, p=0.017, 4/5 seasons) — but the gain is ~0.5 pp against a ~6.5 % margin,
+so flat-stake ROI stays negative at every threshold. Better estimate, no betting edge. Details in `docs/PHASE_REPORT.md`.
+
+## Daily automation
+
+`.github/workflows/football-odds-daily.yml` runs `download → build → today --days 2` every morning (06:30 UTC) or on demand
+(`workflow_dispatch`), caches the raw Football-Data files between runs and uploads the prediction files as a workflow
+artifact (30 days). Locally the equivalent is a cron line:
+
+```
+30 6 * * *  cd /path/to/football_odds && python -m src.cli today --update --days 2 >> results/daily.log 2>&1
+```
 
 ## Output files
 

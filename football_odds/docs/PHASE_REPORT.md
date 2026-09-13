@@ -82,6 +82,11 @@ a textbook validation overfit that the rule avoided.
 | adjusted (shrunk) | 0.58974 | 0.98828 | −0.00014 | 0.50 | 0.0071 |
 | Pinnacle (subset n=24 608) | 0.58876 | — | −0.00044 | <1e-8 | — |
 
+Closing-line benchmarks on the 24 637 test matches with closing odds (`test_scores_closing_subset.csv`): closing average
+−0.00223 and Pinnacle closing −0.00271 Brier vs the pre-closing average (both p≈0), while the adjusted analogue model
+sits at −0.00019 (p=0.37). The information hierarchy is therefore: Pinnacle closing > closing average > pre-closing
+average ≈ analogue model > raw analogue rate.
+
 **Verdict: historical similarity did not improve predictive performance.** The adjusted model is indistinguishable from the
 market (p=0.50); the raw analogue rate is slightly worse; Pinnacle alone beats the average market significantly, i.e. the
 bar that matters is even higher than the one used here. `backtest_ok` is therefore **false** and the live system can never
@@ -120,6 +125,24 @@ applied. `league_calibration.csv` and `time_stability.csv` split the same table 
 **Odds movement (39 300 matches with closing odds)**: closing probabilities are better than the Friday/Tuesday snapshot
 (Brier −0.0024, p≈0), confirming the collection timing. Steam vs drift within the same closing bucket: 0 of 14 buckets
 differ at p<0.05 — once the closing price is known, the direction of the move carries no extra information in this data.
+
+### Follow-up: is the favourite-longshot bias exploitable? (`python -m src.cli backtest-calibration`)
+
+Two transparent re-calibration models see only the margin-free market probability, are fitted on seasons strictly
+before each test season, and are scored on the same 27 812 test matches (`market_calibration_*.csv/.md`):
+
+| model | Brier | vs market | p | seasons better |
+|---|---|---|---|---|
+| market | 0.58988 | — | — | — |
+| isotonic (per outcome) | 0.58941 | −0.00047 | 0.017 | 4/5 |
+| 5 pp bucket table | 0.58960 | −0.00028 | 0.174 | 3/5 |
+
+The bias is real and *statistically* exploitable in the scoring sense: isotonic re-calibration beats the average market
+significantly, in 4 of 5 seasons (only 2023/24 is significant on its own). It is **not economically** exploitable at the
+average price: flat-stake ROI is negative at every threshold (−0.6 % to −2.0 %), because a ~0.5 pp calibration gain is far
+below the ~6.5 % margin. It is also smaller than the Pinnacle-vs-average gap, i.e. a sharp bookmaker already prices it in.
+Conclusion: the recalibrated probability is a better *estimate* than the average market, the similarity analogues are not,
+and neither is a betting edge.
 
 ## PHASE 8 — Current matches pipeline
 
