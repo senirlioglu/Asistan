@@ -370,6 +370,28 @@ def live_debug(date: str) -> dict:
     return {"date": date, "leagues": debug_day(fixtures)}
 
 
+@app.get("/api/espn-raw")
+def espn_raw(path: str = Query(..., description="path under site.api.espn.com/apis/site/v2/sports/soccer/ or, with host=core, sports.core.api.espn.com/v2/sports/soccer/"),
+             host: str = "site", dates: str | None = None, limit: int | None = None) -> dict:
+    """Read-only pass-through to ESPN's public JSON (diagnostics: which league slugs exist, what a scoreboard returns)."""
+    import requests as _rq
+    from .live import USER_AGENTS
+
+    base = "https://sports.core.api.espn.com/v2/sports/soccer/" if host == "core" else "https://site.api.espn.com/apis/site/v2/sports/soccer/"
+    params = {k: v for k, v in (("dates", dates), ("limit", limit)) if v is not None}
+    last = None
+    for ua in USER_AGENTS:
+        try:
+            r = _rq.get(base + path.lstrip("/"), params=params, timeout=15, headers={"User-Agent": ua})
+            if r.status_code == 403:
+                last = "403"
+                continue
+            return {"status": r.status_code, "url": r.url, "json": r.json() if r.ok else r.text[:500]}
+        except Exception as exc:  # noqa: BLE001
+            last = str(exc)
+    raise HTTPException(502, f"espn: {last}")
+
+
 @app.post("/api/refresh")
 def refresh(x_admin_key: str | None = Header(default=None)) -> dict:
     required = os.environ.get("FO_ADMIN_KEY", "")
