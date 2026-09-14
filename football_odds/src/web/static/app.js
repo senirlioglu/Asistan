@@ -129,7 +129,41 @@
       state.day = { date: stamp, matches: [] };
     }
     if (state.leagues.size === 0) state.day.matches.forEach((m) => state.leagues.add(m.league));
+    state.live = {};
     renderSummary(); renderFlagged(); renderLeagueChips(); renderCards();
+    loadLive();
+  }
+
+  // ------------------------------------------------------------------ live scores
+  async function loadLive() {
+    if (!state.day || !state.day.matches.length) return;
+    const date = state.date;
+    try {
+      const d = await api(`/api/live/${date}`);
+      if (state.date !== date) return;
+      state.live = d.live || {};
+      applyLive();
+      clearTimeout(state.liveTimer);
+      if (d.any_live) state.liveTimer = setTimeout(loadLive, 60000);
+    } catch (_) { /* live is best effort */ }
+  }
+
+  function liveBadge(info) {
+    if (!info) return "";
+    const score = `${info.home_score}-${info.away_score}`;
+    const ht = info.ht_home != null ? ` <small>(İY ${info.ht_home}-${info.ht_away})</small>` : "";
+    if (info.state === "in") return `<span class="live in"><i></i>${esc(info.label || "canlı")} · ${score}${ht}</span>`;
+    if (info.state === "post") return `<span class="live post">MS ${score}${ht}</span>`;
+    return "";
+  }
+
+  function applyLive() {
+    document.querySelectorAll(".card[data-id]").forEach((c) => {
+      const slot = c.querySelector(".live-slot");
+      if (slot) slot.innerHTML = liveBadge(state.live[c.dataset.id]);
+    });
+    const open = $("#sheet-live");
+    if (open && open.dataset.id) open.innerHTML = liveBadge(state.live[open.dataset.id]);
   }
 
   function renderFlagged() {
@@ -209,7 +243,7 @@
     const [sigLabel, sigCls] = SIGNAL[m.signal] || [m.signal, ""];
     const scale = Math.max(...["h", "d", "a"].flatMap((k) => [m.market[k] ?? 0, m.adj[k] ?? 0])) * 1.08;
     return `
-      <div class="card-top"><span>${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}</span><span class="num">Benzerlik ${pct(m.avg_sim, 1)}</span></div>
+      <div class="card-top"><span>${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} <span class="live-slot">${liveBadge(state.live?.[m.id])}</span></span><span class="num">Benzerlik ${pct(m.avg_sim, 1)}</span></div>
       <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
       <div class="odds">${["h", "d", "a"].map((k) => `<div class="odd"><span class="label">${OUT[k]}</span><div class="v num">${num(m.odds[k])}</div><div class="p num">piyasa ${pct(m.market[k])}</div></div>`).join("")}</div>
       <div class="legend"><span><i></i>Piyasanın beklentisi</span><span><i class="hist"></i>Benzer maçlarda gerçekleşen</span></div>
@@ -237,7 +271,7 @@
     }
     if (!ms.length) { wrap.appendChild(el("p", "count", "Filtrelere uyan maç yok.")); return; }
     ms.forEach((m) => {
-      const c = el("button", "card", cardHTML(m)); c.type = "button"; c.setAttribute("aria-label", `${m.home} – ${m.away} ayrıntıları`);
+      const c = el("button", "card", cardHTML(m)); c.type = "button"; c.dataset.id = m.id; c.setAttribute("aria-label", `${m.home} – ${m.away} ayrıntıları`);
       c.onclick = () => openSheet(m);
       wrap.appendChild(c);
     });
@@ -278,7 +312,7 @@
   }
 
   async function openSheet(m) {
-    $("#sheet-sub").textContent = `${m.league_name}${m.time ? " · " + m.time : ""} · ${fmtDate(m.date)}`;
+    $("#sheet-sub").innerHTML = `${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)} <span id="sheet-live" data-id="${esc(m.id)}">${liveBadge(state.live?.[m.id])}</span>`;
     $("#sheet-title").textContent = `${m.home} – ${m.away}`;
     const body = $("#sheet-body");
     const rows = ["home", "draw", "away"].map((oc) => {
