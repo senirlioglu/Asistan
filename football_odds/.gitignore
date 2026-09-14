@@ -1,0 +1,11 @@
+# raw and processed data are rebuilt from Football-Data; keep the directories, not the files
+data/raw/**
+!data/raw/.gitkeep
+data/processed/**
+!data/processed/.gitkeep
+results/**/*.parquet
+results/analogues/
+notebooks/.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.pytest_cache/

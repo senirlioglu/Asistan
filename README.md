@@ -2,6 +2,9 @@
 
 Bu proje A101 kampanya asistanı uygulamasıdır. Streamlit kullanılarak geliştirilmiştir.
 
+> Ayrı bir alt proje: [`football_odds/`](football_odds/README.md) — futbol bahis oranlarını 15 sezonluk
+> Football-Data havuzuyla karşılaştıran, walk-forward backtest'li tarihsel benzerlik analiz sistemi.
+
 ## Kurulum ve Çalıştırma
 
 ### Gereksinimler

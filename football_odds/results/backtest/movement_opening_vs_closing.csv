@@ -1,0 +1,3 @@
+probabilities,n,brier,logloss,brier_diff_vs_opening,p_value
+pre-closing (Fri/Tue collection),39300,0.5926328298045095,0.992774337172471,,
+closing,39300,0.5902419006924768,0.9892456269412643,-0.002390929112032726,0.0

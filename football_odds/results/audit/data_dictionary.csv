@@ -1,0 +1,117 @@
+column,description
+match_id,Stable hash of league|date|home|away
+league,"Football-Data division code (E0, SP1, ...)"
+season,Season code (1112 = 2011/12)
+date,Kick-off date
+time,Kick-off time (2019/20+ only)
+home_team,Home team
+away_team,Away team
+fthg,Full-time home goals (TARGET)
+ftag,Full-time away goals (TARGET)
+ftr,Full-time result H/D/A (TARGET)
+hthg,Half-time home goals (post-match)
+htag,Half-time away goals (post-match)
+htr,Half-time result (post-match)
+cons_h,"Consensus home odds (AvgH/BbAvH, else mean of listed bookmakers)"
+cons_d,Consensus draw odds
+cons_a,Consensus away odds
+consensus_source,avg | books_mean | none
+overround_1x2,Sum of raw implied probabilities of the consensus 1X2 market
+p_home,Margin-free market probability of a home win
+p_draw,Margin-free market probability of a draw
+p_away,Margin-free market probability of an away win
+raw_p_home,Raw implied probability 1/odds (with margin)
+cons_o25,Consensus over 2.5 odds
+cons_u25,Consensus under 2.5 odds
+overround_ou,Overround of the O/U 2.5 market
+p_over25,Margin-free market probability of over 2.5 goals
+p_under25,Margin-free market probability of under 2.5 goals
+has_ou,True when the O/U market is available
+pc_home,"Closing margin-free home probability (AvgC, 2019/20+)"
+pc_draw,Closing draw probability
+pc_away,Closing away probability
+delta_p_home,"pc_home - p_home (odds movement, 2019/20+)"
+delta_p_draw,pc_draw - p_draw
+delta_p_away,pc_away - p_away
+has_closing,True when closing 1X2 odds are available
+ah_line,Asian handicap line for the home team (market/Betbrain)
+p_ah_home,Margin-free AH home probability
+has_ah,AH market available
+total_goals,fthg + ftag (TARGET)
+btts,Both teams scored (TARGET)
+over25,total_goals > 2.5 (TARGET)
+result_code,"0=H, 1=D, 2=A (TARGET)"
+years_old,Filled at query time: age of the match relative to the analysed match
+div,Football-Data: Div
+b365_h,Football-Data: B365H
+b365_d,Football-Data: B365D
+b365_a,Football-Data: B365A
+ps_h,Football-Data: PSH | PH
+ps_d,Football-Data: PSD | PD
+ps_a,Football-Data: PSA | PA
+bw_h,Football-Data: BWH
+bw_d,Football-Data: BWD
+bw_a,Football-Data: BWA
+wh_h,Football-Data: WHH
+wh_d,Football-Data: WHD
+wh_a,Football-Data: WHA
+iw_h,Football-Data: IWH
+iw_d,Football-Data: IWD
+iw_a,Football-Data: IWA
+vc_h,Football-Data: VCH | BVH
+vc_d,Football-Data: VCD | BVD
+vc_a,Football-Data: VCA | BVA
+lb_h,Football-Data: LBH
+lb_d,Football-Data: LBD
+lb_a,Football-Data: LBA
+bfe_h,Football-Data: BFEH
+bfe_d,Football-Data: BFED
+bfe_a,Football-Data: BFEA
+max_h,Football-Data: MaxH | BbMxH
+max_d,Football-Data: MaxD | BbMxD
+max_a,Football-Data: MaxA | BbMxA
+avg_h,Football-Data: AvgH | BbAvH
+avg_d,Football-Data: AvgD | BbAvD
+avg_a,Football-Data: AvgA | BbAvA
+n_books_1x2,Football-Data: Bb1X2
+b365c_h,Football-Data: B365CH
+b365c_d,Football-Data: B365CD
+b365c_a,Football-Data: B365CA
+psc_h,Football-Data: PSCH
+psc_d,Football-Data: PSCD
+psc_a,Football-Data: PSCA
+maxc_h,Football-Data: MaxCH
+maxc_d,Football-Data: MaxCD
+maxc_a,Football-Data: MaxCA
+avgc_h,Football-Data: AvgCH
+avgc_d,Football-Data: AvgCD
+avgc_a,Football-Data: AvgCA
+b365_o25,Football-Data: B365>2.5
+b365_u25,Football-Data: B365<2.5
+p_o25,Football-Data: P>2.5
+p_u25,Football-Data: P<2.5
+max_o25,Football-Data: Max>2.5 | BbMx>2.5
+max_u25,Football-Data: Max<2.5 | BbMx<2.5
+avg_o25,Football-Data: Avg>2.5 | BbAv>2.5
+avg_u25,Football-Data: Avg<2.5 | BbAv<2.5
+n_books_ou,Football-Data: BbOU
+b365c_o25,Football-Data: B365C>2.5
+b365c_u25,Football-Data: B365C<2.5
+pc_o25,Football-Data: PC>2.5
+pc_u25,Football-Data: PC<2.5
+avgc_o25,Football-Data: AvgC>2.5
+avgc_u25,Football-Data: AvgC<2.5
+b365_ahh,Football-Data: B365AHH
+b365_aha,Football-Data: B365AHA
+p_ahh,Football-Data: PAHH
+p_aha,Football-Data: PAHA
+avg_ahh,Football-Data: AvgAHH | BbAvAHH
+avg_aha,Football-Data: AvgAHA | BbAvAHA
+max_ahh,Football-Data: MaxAHH | BbMxAHH
+max_aha,Football-Data: MaxAHA | BbMxAHA
+n_books_ah,Football-Data: BbAH
+ahc_line,Football-Data: AHCh
+avgc_ahh,Football-Data: AvgCAHH
+avgc_aha,Football-Data: AvgCAHA
+pc_ahh,Football-Data: PCAHH
+pc_aha,Football-Data: PCAHA
