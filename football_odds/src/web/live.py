@@ -157,7 +157,9 @@ def live_for_fixture(league: str, date_uk: str, home: str, away: str) -> dict | 
     days = []
     try:
         d = dt.date.fromisoformat(date_uk[:10])
-        days = [d.strftime("%Y%m%d"), (d + dt.timedelta(days=1)).strftime("%Y%m%d")]
+        # ESPN groups its scoreboard by US date: a 01:30 UK kick-off (Argentina, MLS, Mexico) sits on
+        # the previous day there, a late one may sit on the next
+        days = [(d + dt.timedelta(days=k)).strftime("%Y%m%d") for k in (0, -1, 1)]
     except ValueError:
         return None
     for yyyymmdd in days:
@@ -165,6 +167,27 @@ def live_for_fixture(league: str, date_uk: str, home: str, away: str) -> dict | 
         if ev:
             return {k: ev[k] for k in ("home_score", "away_score", "ht_home", "ht_away", "state", "detail", "clock", "period")} | {"source": "espn"}
     return None
+
+
+def debug_day(fixtures: list[dict]) -> dict:
+    """Diagnostics for /api/live-debug: per league, what ESPN returned and which fixtures matched.
+    `fixtures` = [{league, date_uk, home, away}]."""
+    out: dict[str, Any] = {}
+    for f in fixtures:
+        lg = f["league"]
+        entry = out.setdefault(lg, {"slug": ESPN_LEAGUES.get(lg), "events": {}, "fixtures": []})
+        try:
+            d = dt.date.fromisoformat(f["date_uk"][:10])
+        except ValueError:
+            continue
+        for k in (0, -1, 1):
+            key = (d + dt.timedelta(days=k)).strftime("%Y%m%d")
+            if key not in entry["events"]:
+                entry["events"][key] = [f"{e['home']} ({e.get('home_short', '')}) - {e['away']} ({e.get('away_short', '')}) {e['home_score']}-{e['away_score']} {e['state']}"
+                                        for e in _fetch_scoreboard(lg, key)]
+        info = live_for_fixture(lg, f["date_uk"], f["home"], f["away"])
+        entry["fixtures"].append({"home": f["home"], "away": f["away"], "matched": bool(info), "info": info})
+    return out
 
 
 def status_label_tr(info: dict[str, Any]) -> str:

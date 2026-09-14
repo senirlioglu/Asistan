@@ -357,6 +357,19 @@ def live(date: str) -> dict:
     return {"date": date, "live": out, "any_live": any_live, "fetched_at": dt.datetime.now(dt.timezone.utc).isoformat()}
 
 
+@app.get("/api/live-debug/{date}")
+def live_debug(date: str) -> dict:
+    """What ESPN answers for each league of the day and which fixtures matched (for diagnosing missing badges)."""
+    from .live import debug_day
+
+    df = _all_matches()
+    table = df[df["date_tr"].astype(str) == date] if not df.empty else df
+    if table.empty:
+        raise HTTPException(404, f"no analysed matches on {date}")
+    fixtures = [{"league": _str(r["league"]), "date_uk": _str(r["date"])[:10], "home": _str(r["home"]), "away": _str(r["away"])} for _, r in table.iterrows()]
+    return {"date": date, "leagues": debug_day(fixtures)}
+
+
 @app.post("/api/refresh")
 def refresh(x_admin_key: str | None = Header(default=None)) -> dict:
     required = os.environ.get("FO_ADMIN_KEY", "")
