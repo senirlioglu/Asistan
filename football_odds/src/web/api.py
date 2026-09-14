@@ -103,6 +103,7 @@ def _match_payload(row: pd.Series, det: dict) -> dict:
 
 # --------------------------------------------------------------------------- routes
 @app.get("/api/health")
+@app.get("/_stcore/health")  # legacy path used by the Streamlit-era Railway healthcheck
 def health() -> dict:
     return {"ok": True}
 
