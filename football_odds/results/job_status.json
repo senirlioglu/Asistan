@@ -1,0 +1,10 @@
+{
+  "state": "ok",
+  "message": "11 fixtures analysed, 84073 historical matches",
+  "updated_at": "2026-09-14T05:04:29.469268+00:00",
+  "started_at": "2026-09-14T05:03:53.941587+00:00",
+  "finished_at": "2026-09-14T05:04:29.469156+00:00",
+  "duration_s": 36,
+  "n_fixtures": 11,
+  "n_history": 84073
+}

@@ -50,7 +50,8 @@ All commands run from the `football_odds/` directory.
 | backtest | `python -m src.cli backtest [--quick]` | walk-forward validation grid → parameter choice → unseen test seasons → calibration, ROI, buckets, league groups, odds movement → `results/backtest/` |
 | calibration backtest | `python -m src.cli backtest-calibration` | fast (seconds) walk-forward test of the market re-calibration models (isotonic / bucket) → `results/backtest/market_calibration_*` |
 | today analysis | `python -m src.cli today [--date YYYY-MM-DD] [--days N] [--update] [--refresh]` | fixtures with odds → analysis → `results/YYYY-MM-DD_predictions.csv/.xlsx`, `_details.json`, `analogues/…parquet` |
-| dashboard | `python -m src.cli dashboard` | Streamlit UI over the prediction files |
+| web app | `python -m src.cli web [--port 8000]` | FastAPI JSON API + hand-built Turkish, mobile-first HTML frontend (`src/web/`), with the daily scheduler — this is what the hosted deployment runs |
+| dashboard | `python -m src.cli dashboard` | legacy Streamlit UI over the same prediction files |
 | tests | `python -m pytest` | unit tests for every module (odds, mapping, similarity, statistics, metrics, signal, walk-forward look-ahead) |
 
 Typical daily run:
@@ -263,9 +264,12 @@ so flat-stake ROI stays negative at every threshold. Better estimate, no betting
 
 ## Hosted deployment (Railway / any container host)
 
-`serve.py` is a single-process entry point: it binds the Streamlit dashboard to `$PORT`, bootstraps the data when the
-container is empty (download → build → today, in a background thread), and re-runs that job every day at `FO_DAILY_UTC`.
-The dashboard has a **Data status** panel with a *Refresh now* button (protected by `FO_ADMIN_KEY` when set).
+`serve.py` is a single-process entry point: it serves the web app (FastAPI + `src/web/static/`) on `$PORT`, bootstraps
+the data when the container is empty (download → build → today, in a background thread), and re-runs that job every day
+at `FO_DAILY_UTC`. The status pill in the top bar starts a refresh (`POST /api/refresh`, protected by `FO_ADMIN_KEY` when
+set). Set `FO_UI=streamlit` to serve the legacy Streamlit dashboard instead.
+
+API: `GET /api/meta`, `GET /api/day/{YYYY-MM-DD}`, `GET /api/analogues/{date}/{match_id}?k=50`, `GET /api/health`.
 
 Railway, second service from the same repository:
 

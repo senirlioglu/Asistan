@@ -55,7 +55,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--refresh", action="store_true", help="force re-download of fixtures")
     p.add_argument("--update", action="store_true", help="refresh the current season's results and rebuild the database first")
 
-    sub.add_parser("dashboard", help="run the Streamlit dashboard")
+    sub.add_parser("dashboard", help="run the legacy Streamlit dashboard")
+    p = sub.add_parser("web", help="run the web app (FastAPI + HTML frontend) with the daily scheduler")
+    p.add_argument("--port", type=int, default=8000)
 
     args = parser.parse_args(argv)
     log = setup_logging(args.log_level)
@@ -101,6 +103,14 @@ def main(argv: list[str] | None = None) -> int:
         from pathlib import Path
         app = Path(__file__).resolve().parent / "dashboard" / "app.py"
         return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app)])
+
+    if args.command == "web":
+        import os
+        import runpy
+        from pathlib import Path
+        os.environ["PORT"] = str(args.port)
+        runpy.run_path(str(Path(__file__).resolve().parent.parent / "serve.py"), run_name="__main__")
+        return 0
 
     parser.error("unknown command")
     return 2

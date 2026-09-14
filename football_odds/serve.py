@@ -55,11 +55,18 @@ def main() -> int:
 
     threading.Thread(target=scheduler_loop, args=(settings, hhmm, days), name="fo-scheduler", daemon=True).start()
 
-    cmd = [sys.executable, "-m", "streamlit", "run", str(ROOT / "src" / "dashboard" / "app.py"),
-           "--server.port", port, "--server.address", "0.0.0.0", "--server.headless", "true",
-           "--browser.gatherUsageStats", "false"]
-    log.info("starting dashboard on port %s", port)
-    return subprocess.call(cmd, cwd=str(ROOT))
+    if os.environ.get("FO_UI", "web") == "streamlit":  # legacy dashboard, kept for local use
+        cmd = [sys.executable, "-m", "streamlit", "run", str(ROOT / "src" / "dashboard" / "app.py"),
+               "--server.port", port, "--server.address", "0.0.0.0", "--server.headless", "true",
+               "--browser.gatherUsageStats", "false"]
+        log.info("starting Streamlit dashboard on port %s", port)
+        return subprocess.call(cmd, cwd=str(ROOT))
+
+    import uvicorn
+
+    log.info("starting web app on port %s", port)
+    uvicorn.run("src.web.api:app", host="0.0.0.0", port=int(port), log_level="info", access_log=False)
+    return 0
 
 
 if __name__ == "__main__":
