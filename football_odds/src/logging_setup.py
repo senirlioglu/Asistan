@@ -14,7 +14,8 @@ def setup_logging(level: str | None = None) -> logging.Logger:
     level_name = (level or os.environ.get("LOG_LEVEL", "INFO")).upper()
     root = logging.getLogger()
     if not _CONFIGURED:
-        handler = logging.StreamHandler(sys.stderr)
+        # stdout: hosted log viewers (Railway) classify every stderr line as an error
+        handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(
             logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%H:%M:%S")
         )

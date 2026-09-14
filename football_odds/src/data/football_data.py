@@ -202,12 +202,12 @@ def normalise_frame(df: pd.DataFrame, season: str, league: str) -> pd.DataFrame:
     mapped = mapped[mapped["home_team"].notna() & mapped["away_team"].notna()].copy()
     mapped["date"] = parse_dates(mapped["date"])
     mapped = mapped[mapped["date"].notna()].copy()
-    for col in numeric_canonical_columns():
-        mapped[col] = pd.to_numeric(mapped[col], errors="coerce")
-    for col in [c for c in mapped.columns if c.startswith("raw__")]:
-        mapped[col] = pd.to_numeric(mapped[col], errors="coerce")
-    for col in ("home_team", "away_team", "ftr", "htr", "time"):
-        mapped[col] = mapped[col].astype("string").str.strip()
+    # convert in bulk (one block per dtype) instead of column by column, which fragments the frame
+    num_cols = numeric_canonical_columns() + [c for c in mapped.columns if c.startswith("raw__")]
+    mapped[num_cols] = mapped[num_cols].apply(pd.to_numeric, errors="coerce")
+    text_cols = ["home_team", "away_team", "ftr", "htr", "time"]
+    mapped[text_cols] = mapped[text_cols].apply(lambda s: s.astype("string").str.strip())
+    mapped = mapped.copy()
     mapped["league"] = league
     mapped["season"] = season
     mapped["season_start_year"] = season_start_year(season)
