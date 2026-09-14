@@ -211,9 +211,14 @@
     ].map(([l, v]) => `<div class="stat"><span class="label">${l}</span><div class="v num">${v}</div></div>`).join("");
     const bt = state.meta.backtest || {};
     const v = $("#verdict");
+    const kEl = $("#intro-k"); if (kEl && bt.k) kEl.textContent = bt.k;
     if (bt.brier_market != null) {
       const ok = bt.backtest_ok;
-      v.innerHTML = `Körleme test (${(bt.test_seasons || []).length} sezon, ${bt.n_test_matches} maç): sistem ${ok ? "<b>piyasadan daha iyi tahmin etti</b>" : "<b>piyasadan daha iyi tahmin edemedi</b>; bu yüzden hiçbir maçta \"belirgin sapma\" verilmez"}. Kalibrasyon skoru (düşük iyi): piyasa ${num(bt.brier_market, 4)}, sistem ${num(bt.brier_adj, 4)}.`;
+      const worse = !ok && bt.brier_adj > bt.brier_market && bt.brier_adj_p_value != null && bt.brier_adj_p_value < 0.05;
+      const verdict = ok ? "<b>piyasadan daha iyi tahmin etti</b>"
+        : worse ? "<b>piyasadan biraz daha kötü tahmin etti</b> (fark küçük ama şansla açıklanmıyor); bu yüzden hiçbir maçta \"belirgin sapma\" verilmez"
+        : "<b>piyasadan daha iyi tahmin edemedi</b>; bu yüzden hiçbir maçta \"belirgin sapma\" verilmez";
+      v.innerHTML = `Körleme test (${(bt.test_seasons || []).length} sezon, ${bt.n_test_matches} maç): sistem ${verdict}. Kalibrasyon skoru (düşük iyi): piyasa ${num(bt.brier_market, 4)}, sistem ${num(bt.brier_adj, 4)}.`;
     } else { v.hidden = true; }
   }
 
@@ -510,9 +515,9 @@
   const GLOSSARY = [
     ["Oran (1 / X / 2)", "Bahis şirketinin fiyatı. 1 = ev sahibi kazanır, X = beraberlik, 2 = deplasman kazanır. Oran ne kadar düşükse şirket o sonucu o kadar olası görüyor."],
     ["Piyasanın beklentisi", "Oranlardan hesaplanan ihtimal: 1/oran alınır, şirketin kâr payı (marj) çıkarılır, üçünün toplamı %100 yapılır. Birçok şirketin ortalaması kullanılır."],
-    ["Benzer maçlar", "2011'den bugüne 38 ligden 130 binden fazla maç arasında piyasa ihtimalleri bu maça en yakın 500 maç. Yalnızca analiz gününden önce oynanmış maçlar kullanılır."],
+    ["Benzer maçlar", "2011'den bugüne 38 ligden 179 bin maç arasında piyasa ihtimalleri bu maça en yakın K maç (K körleme testte seçilir; şu an sayfanın başındaki sayı). Yalnızca analiz gününden önce oynanmış maçlar kullanılır."],
     ["Benzerlik %", "İki maçın ihtimal profilleri arasındaki yakınlık. %98 benzerlik, ihtimallerin toplam 2 puan farklı olduğu anlamına gelir. %95'in altı zayıf benzerliktir."],
-    ["Geçmiş (ham)", "Benzer maçlarda o sonucun gerçekleşme yüzdesi. 500 maçın 290'ında ev sahibi kazandıysa %58."],
+    ["Geçmiş (ham)", "Benzer maçlarda o sonucun gerçekleşme yüzdesi. 100 maçın 58'inde ev sahibi kazandıysa %58."],
     ["Geçmiş (düzeltilmiş)", "Ham yüzde, az örneklemin abartmasını önlemek için piyasaya doğru biraz çekilir. Kartlarda ve sapmada bu değer kullanılır."],
     ["Sapma (puan)", "Düzeltilmiş geçmiş yüzdesi eksi piyasa yüzdesi. +3 puan: bu sonuç geçmişte piyasanın beklediğinden 3 puan daha sık gerçekleşmiş. Sapma, kârlı bahis demek değildir."],
     ["%95 güven aralığı", "Geçmiş yüzdesinin gerçek değerinin büyük ihtimalle içinde olduğu aralık. Piyasa bu aralığın içindeyse fark şans eseri olabilir; dışındaysa fark anlamlıdır."],

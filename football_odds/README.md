@@ -280,6 +280,13 @@ Follow-up (`python -m src.cli backtest-calibration`): a walk-forward isotonic re
 does beat the average market on Brier (−0.00047, p=0.017, 4/5 seasons) — but the gain is ~0.5 pp against a ~6.5 % margin,
 so flat-stake ROI stays negative at every threshold. Better estimate, no betting edge. Details in `docs/PHASE_REPORT.md`.
 
+### Rerun on 38 leagues (2026-09-14)
+
+Same protocol on the enlarged pool (179 545 matches, 38 732 test matches): selected `1x2_ou / mahalanobis / global /
+K=100 / prior 200`; Brier market 0.59715 vs adjusted 0.59747, **p = 0.044 in the market's favour**. The verdict is the
+same as before and slightly firmer: the analogue model does not beat the market; with more data it is measurably a
+little worse. Details and per-league table in `docs/PHASE_REPORT.md` and `results/backtest/summary.md`.
+
 ## Hosted deployment (Railway / any container host)
 
 `serve.py` is a single-process entry point: it serves the web app (FastAPI + `src/web/static/`) on `$PORT`, bootstraps
