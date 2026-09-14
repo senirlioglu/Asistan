@@ -156,6 +156,12 @@ button { cursor: pointer; }
 .tag.strong { background: var(--strong-bg); color: var(--strong-ink); border-color: var(--strong-line); }
 .tag.low { background: var(--low-bg); color: var(--low-ink); }
 .goals { font-size: 0.8rem; color: var(--ink-3); }
+.comment { margin: 0; padding: 8px 10px; border-radius: var(--radius-s); background: var(--surface-2); border-left: 3px solid var(--market); color: var(--ink-2); font-size: 0.88rem; line-height: 1.45; max-width: 70ch; }
+.comment b { font-weight: 600; color: var(--ink); }
+.comment .comment-label { display: inline-block; margin-right: 4px; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--market); }
+.comment.full { font-size: 0.95rem; }
+.tally { background: var(--surface-2); border-left: 3px solid var(--market); padding: 8px 12px; border-radius: 0 var(--radius-s) var(--radius-s) 0; color: var(--ink-2); font-size: 0.9rem; margin: -6px 0 14px; }
+.tally b { color: var(--ink); }
 .live { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; vertical-align: 1px; }
 .live.in { background: #dcefe2; color: var(--good); }
 .live.post { background: var(--surface-2); color: var(--ink); }

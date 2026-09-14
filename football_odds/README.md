@@ -269,7 +269,19 @@ the data when the container is empty (download → build → today, in a backgro
 at `FO_DAILY_UTC`. The status pill in the top bar starts a refresh (`POST /api/refresh`, protected by `FO_ADMIN_KEY` when
 set). Set `FO_UI=streamlit` to serve the legacy Streamlit dashboard instead.
 
-API: `GET /api/meta`, `GET /api/day/{YYYY-MM-DD}`, `GET /api/analogues/{date}/{match_id}?k=50`, `GET /api/health`.
+API: `GET /api/meta`, `GET /api/day/{YYYY-MM-DD}`, `GET /api/analogues/{date}/{match_id}?k=50`,
+`GET /api/teams/{date}/{match_id}`, `GET /api/live/{YYYY-MM-DD}`, `GET /api/health`.
+
+Live scores (`src/web/live.py`) come from ESPN's public scoreboard JSON (unofficial, best effort, 45 s cache); finished
+matches already in the database are answered from there. The page re-polls every minute while a match is in play.
+
+**Commentary** (`commentary()` in `src/web/static/app.js`) is generated in the browser from the numbers already on the
+card, so it is rule-based text, not a model: before kick-off it states the market favourite, the analogue frequency and
+whether the two agree (within 2 points = agree), the 2.5-goal view of both, and the first-half shares; in play it
+conditions the 9-way HT/FT distribution of the analogues on the current half-time state and reports how many goals are
+still needed for over 2.5 against the second-half goal counts; after the final whistle it says which of the two views
+(market or history) sat closer to the actual result and total goals, and the day summary tallies that over every
+finished match. The tally is descriptive: a good day does not overturn the blind backtest, which is stated next to it.
 
 Railway, second service from the same repository:
 
