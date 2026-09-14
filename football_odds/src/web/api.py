@@ -146,6 +146,7 @@ def _match_payload(row: pd.Series, det: dict) -> dict:
     out["scopes"] = det.get("scopes", {})
     out["tolerance"] = det.get("tolerance", {})
     out["htft"] = det.get("htft", {})
+    out["halves"] = {k: (_num(v) if k != "n" else v) for k, v in (det.get("halves") or {}).items()}
     ht = det.get("ht", {}) or {}
     out["ht"] = {k: _num(ht.get(k)) for k in ("home", "draw", "away")} | {"n": ht.get("n")}
     return out

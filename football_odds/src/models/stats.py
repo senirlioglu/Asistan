@@ -96,6 +96,8 @@ class OutcomeStats:
     ht_away: float = float("nan")
     htft: dict[str, float] = field(default_factory=dict)   # "1/1", "X/2", ... -> share
     n_ht: int = 0
+    # goals per half (rows with a half-time score only)
+    halves: dict[str, float] = field(default_factory=dict)  # fh_avg, fh_over05, fh_over15, sh_avg, sh_over05, sh_over15, more_goals_2h
 
     def probs(self) -> np.ndarray:
         return np.array([self.home, self.draw, self.away])
@@ -136,6 +138,7 @@ def outcome_stats(neigh: pd.DataFrame, weights: np.ndarray | None = None) -> Out
     ht_home = ht_draw = ht_away = float("nan")
     htft: dict[str, float] = {}
     n_ht = 0
+    halves: dict[str, float] = {}
     if "htr" in neigh.columns:
         htr = neigh["htr"].astype("string").fillna("").to_numpy()
         ftr = neigh["ftr"].astype("string").fillna("").to_numpy()
@@ -146,6 +149,20 @@ def outcome_stats(neigh: pd.DataFrame, weights: np.ndarray | None = None) -> Out
             ht_home, ht_draw, ht_away = (weighted_rate(htr == c, w_ht) for c in ("H", "D", "A"))
             labels = np.array([htft_label(a, b) for a, b in zip(htr, ftr)])
             htft = {k: weighted_rate(labels == k, w_ht) for k in HTFT_ORDER}
+        if "hthg" in neigh.columns and "htag" in neigh.columns:
+            hthg = neigh["hthg"].to_numpy(dtype=float)
+            htag = neigh["htag"].to_numpy(dtype=float)
+            ok = np.isfinite(hthg) & np.isfinite(htag) & np.isfinite(total)
+            if ok.any():
+                w_h = np.where(ok, w, 0.0)
+                fh = np.where(ok, hthg + htag, 0.0)
+                sh = np.where(ok, total - fh, 0.0)
+                halves = {
+                    "n": int(ok.sum()),
+                    "fh_avg": float(np.sum(w_h * fh) / w_h.sum()), "fh_over05": weighted_rate(fh > 0.5, w_h), "fh_over15": weighted_rate(fh > 1.5, w_h),
+                    "sh_avg": float(np.sum(w_h * sh) / w_h.sum()), "sh_over05": weighted_rate(sh > 0.5, w_h), "sh_over15": weighted_rate(sh > 1.5, w_h),
+                    "more_goals_2h": weighted_rate(sh > fh, w_h), "equal_halves": weighted_rate(sh == fh, w_h),
+                }
 
     return OutcomeStats(
         n=n, n_eff=n_eff, home=home, draw=draw, away=away,
@@ -153,7 +170,7 @@ def outcome_stats(neigh: pd.DataFrame, weights: np.ndarray | None = None) -> Out
         over25=over, under25=1 - over, btts_yes=btts, btts_no=1 - btts,
         avg_goals=float(np.sum(w * total) / w.sum()), median_goals=weighted_median(total, w),
         home_goals_avg=float(np.sum(w * fthg) / w.sum()), away_goals_avg=float(np.sum(w * ftag) / w.sum()),
-        scorelines=sl, goals_dist=gd, ht_home=ht_home, ht_draw=ht_draw, ht_away=ht_away, htft=htft, n_ht=n_ht,
+        scorelines=sl, goals_dist=gd, ht_home=ht_home, ht_draw=ht_draw, ht_away=ht_away, htft=htft, n_ht=n_ht, halves=halves,
     )
 
 

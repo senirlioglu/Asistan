@@ -179,6 +179,7 @@ def analyze_match(index: SimilarityIndex, row: pd.Series, as_of, params: Analysi
     summary["goals_dist"] = st.goals_dist
     summary["ht_h"], summary["ht_d"], summary["ht_a"], summary["n_ht"] = st.ht_home * 100, st.ht_draw * 100, st.ht_away * 100, st.n_ht
     summary["htft"] = st.htft
+    summary["halves"] = st.halves
 
     tolerance: dict[str, dict[float, int]] = {}
     if tolerance_levels:
@@ -196,6 +197,6 @@ def analyze_match(index: SimilarityIndex, row: pd.Series, as_of, params: Analysi
 def summaries_to_frame(analyses: list[MatchAnalysis]) -> pd.DataFrame:
     rows = []
     for a in analyses:
-        s = {k: v for k, v in a.summary.items() if k not in ("scorelines", "goals_dist", "htft")}
+        s = {k: v for k, v in a.summary.items() if k not in ("scorelines", "goals_dist", "htft", "halves")}
         rows.append(s)
     return pd.DataFrame(rows)

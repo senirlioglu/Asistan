@@ -102,6 +102,7 @@ def run_today(settings: Settings, date: dt.date | None = None, days: int = 1, pr
         details[a.summary["match_id"]] = {
             "scorelines": a.summary["scorelines"], "goals_dist": a.summary["goals_dist"],
             "htft": a.summary.get("htft", {}),
+            "halves": a.summary.get("halves", {}),
             "ht": {"home": a.summary.get("ht_h"), "draw": a.summary.get("ht_d"), "away": a.summary.get("ht_a"), "n": a.summary.get("n_ht")},
             "tolerance": {mode: {str(k): v for k, v in lv.items()} for mode, lv in a.tolerance.items()},
             "scopes": {name: {"n": sr.stats.n, "hist": sr.stats.probs().tolist(), "adj": sr.adjusted.tolist(),

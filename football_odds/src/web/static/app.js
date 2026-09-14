@@ -256,7 +256,19 @@
       <p class="sentence">İlk yarı sonucu: ev sahibi önde <b>${pct(ht.home)}</b>, berabere <b>${pct(ht.draw)}</b>, deplasman önde <b>${pct(ht.away)}</b>${ht.n ? ` (${ht.n} maç)` : ""}.
       En sık İY/MS: ${top.map(([k, v]) => `<b>${k}</b> ${pct(100 * v)}`).join(" · ")}.</p>
       <div class="vbars">${HTFT_ORDER.map((k) => `<div class="vbar"><span class="num">${(100 * (d[k] || 0)).toFixed(0)}%</span><i style="height:${Math.max(2, ((d[k] || 0) / max) * 80)}%"></i><small>${k}</small></div>`).join("")}</div>
-      <p class="note">İY/MS = ilk yarı sonucu / maç sonucu. 1 = ev sahibi, X = beraberlik, 2 = deplasman. Örnek: X/2 = ilk yarı berabere, maçı deplasman kazandı.</p></section>`;
+      <p class="note">İY/MS = ilk yarı sonucu / maç sonucu. 1 = ev sahibi, X = beraberlik, 2 = deplasman. Örnek: X/2 = ilk yarı berabere, maçı deplasman kazandı.</p>
+      ${halvesTable(m.halves)}</section>`;
+  }
+
+  function halvesTable(h) {
+    if (!h || h.fh_avg == null) return "";
+    const p = (v) => pct(100 * v);
+    return `<h3 style="margin-top:12px">Yarı yarı gol (benzer maçlar)</h3>
+      <div class="table-wrap"><table><thead><tr><th>Yarı</th><th class="num">Ort. gol</th><th class="num">0,5 üst</th><th class="num">1,5 üst</th></tr></thead><tbody>
+      <tr><td>İlk yarı</td><td class="num">${num(h.fh_avg)}</td><td class="num">${p(h.fh_over05)}</td><td class="num">${p(h.fh_over15)}</td></tr>
+      <tr><td>İkinci yarı</td><td class="num">${num(h.sh_avg)}</td><td class="num">${p(h.sh_over05)}</td><td class="num">${p(h.sh_over15)}</td></tr>
+      </tbody></table></div>
+      <p class="note">İkinci yarıda daha çok gol: ${p(h.more_goals_2h)} · iki yarı eşit: ${p(h.equal_halves)} · ilk yarıda daha çok: ${p(1 - h.more_goals_2h - h.equal_halves)}. "0,5 üst" = o yarıda en az 1 gol, "1,5 üst" = en az 2 gol. Yarılar için piyasa oranı kaynakta yok; bunlar yalnızca gerçekleşen sonuçlardır.</p>`;
   }
 
   function vbars(obj, title, note) {
@@ -364,6 +376,7 @@
     ["2,5 üstü / altı", "Maçta toplam 3 ve daha fazla gol (üst) ya da 2 ve daha az gol (alt). Benzer maçlarda üst oranı gösterilir."],
     ["İki takım da gol attı (KG)", "Benzer maçların yüzde kaçında her iki takım da en az bir gol attı."],
     ["İY/MS (ilk yarı / maç sonu)", "Benzer maçlarda ilk yarı ve maç sonu sonuçlarının birlikte dağılımı. 1 = ev sahibi, X = beraberlik, 2 = deplasman; 1/1 ilk yarıyı da maçı da ev sahibi önde bitirdi, X/2 ilk yarı berabere, maçı deplasman kazandı demektir. Listedeki her benzer maçın ilk yarı skoru ve maç sonu skoru ayrı sütunlarda yazar."],
+    ["Yarı yarı gol", "Benzer maçlarda ilk yarı ve ikinci yarı ayrı ayrı: ortalama gol, en az 1 gol (0,5 üst) ve en az 2 gol (1,5 üst) oranı, hangi yarıda daha çok gol atıldığı. Maç sonu 2,5 üstü ile aynı mantık, yalnızca yarıya bölünmüş. Yarılar için piyasa oranı kaynakta olmadığından karşılaştırma yapılmaz."],
     ["Aynı takımlar", "Detay panelindeki bu bölüm oran benzerliğinden bağımsızdır: iki takımın birbirine karşı geçmiş maçları ve her takımın bugünkü gibi fiyatlandığı (±5 puan) kendi maçlarında ne yaptığı. Az maça dayandığı için yüzdeler kaba fikir verir; güven aralığı yanında yazar."],
     ["Körleme test", "Sistem 2017–2021 sezonlarında ayarlandı, 2021–2026 sezonlarında hiç görmediği maçlarda denendi; bir maçı analiz ederken yalnızca ondan önce oynanmış maçları görebilir. Sonuç: piyasadan daha iyi tahmin edemedi."],
     ["Kalibrasyon skoru (Brier)", "Tahmin kalitesi ölçüsü; düşük daha iyi. Piyasa 0.5899, sistem 0.5897: fark yok denecek kadar küçük ve istatistiksel olarak anlamsız."],

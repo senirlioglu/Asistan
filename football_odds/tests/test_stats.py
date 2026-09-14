@@ -63,9 +63,17 @@ def test_half_time_layer():
     neigh = pd.DataFrame({
         "result_code": [0, 2, 1, 0], "fthg": [2, 0, 1, 1], "ftag": [1, 1, 1, 0], "ftr": ["H", "A", "D", "H"],
         "htr": ["D", "A", "D", None],  # last row: half-time unknown -> excluded from the HT layer only
+        "hthg": [0, 0, 1, None], "htag": [0, 1, 1, None],
     })
     st = outcome_stats(neigh)
     assert st.n == 4 and st.n_ht == 3
+    # halves: first-half goals 0, 1, 2 ; second-half goals 3, 0, 0
+    h = st.halves
+    assert h["n"] == 3
+    assert h["fh_avg"] == pytest.approx(1.0) and h["sh_avg"] == pytest.approx(1.0)
+    assert h["fh_over05"] == pytest.approx(2 / 3) and h["fh_over15"] == pytest.approx(1 / 3)
+    assert h["sh_over05"] == pytest.approx(1 / 3) and h["sh_over15"] == pytest.approx(1 / 3)
+    assert h["more_goals_2h"] == pytest.approx(1 / 3) and h["equal_halves"] == pytest.approx(0.0)
     assert st.ht_draw == pytest.approx(2 / 3) and st.ht_away == pytest.approx(1 / 3) and st.ht_home == pytest.approx(0.0)
     assert st.htft["X/1"] == pytest.approx(1 / 3) and st.htft["2/2"] == pytest.approx(1 / 3) and st.htft["X/X"] == pytest.approx(1 / 3)
     assert sum(st.htft.values()) == pytest.approx(1.0)
