@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..config import load_settings
 from ..pipeline.jobs import is_running, read_status, start_background
+from .live import ESPN_LEAGUES
 
 STATIC = Path(__file__).resolve().parent / "static"
 settings = load_settings()
@@ -145,6 +146,7 @@ def _match_payload(row: pd.Series, det: dict) -> dict:
         "avg_sim": _num(row.get("avg_similarity")), "median_sim": _num(row.get("median_similarity")), "min_sim": _num(row.get("min_similarity")),
         "over25": _num(row.get("over25")), "under25": _num(row.get("under25")), "btts": _num(row.get("btts")),
         "avg_goals": _num(row.get("avg_goals")), "market_over25": _num(row.get("market_over25")),
+        "live_available": _str(row["league"]) in ESPN_LEAGUES,  # False => no in-play score source; result comes next morning
     }
     for grp, cols in (("odds", "odds"), ("market", "market"), ("hist", "hist"), ("adj", "adj"), ("edge", "edge"), ("fair", "fair")):
         out[grp] = {k: _num(row.get(f"{cols}_{k}")) for k in ("h", "d", "a")}

@@ -299,6 +299,10 @@ API: `GET /api/meta`, `GET /api/day/{YYYY-MM-DD}`, `GET /api/analogues/{date}/{m
 
 Live scores (`src/web/live.py`) come from ESPN's public scoreboard JSON (unofficial, best effort, 45 s cache); finished
 matches already in the database are answered from there. The page re-polls every minute while a match is in play.
+ESPN files matches under the US date, so a fixture is looked up on its UK date, the day before and the day after.
+ESPN has no scoreboard for Poland, Romania, Finland, Ireland, Switzerland and Scottish League One/Two (checked against
+its league list, 218 entries); those cards show "canlı skor yok" and get their result from Football-Data with the next
+daily job. `/api/live-debug/{date}` and `/api/espn-raw?path=…` are read-only diagnostics for this pipeline.
 
 **Commentary** (`commentary()` in `src/web/static/app.js`) is generated in the browser from the numbers already on the
 card, so it is rule-based text, not a model: before kick-off it states the market favourite, the analogue frequency and
