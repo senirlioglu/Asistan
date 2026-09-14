@@ -25,7 +25,7 @@
   };
   const CONF = { HIGH: "Yüksek", MEDIUM: "Orta", LOW: "Düşük", "VERY LOW": "Çok düşük" };
 
-  const state = { meta: null, date: null, day: null, leagues: new Set(), sort: "edge", onlyDev: false, view: "list", pollTimer: null };
+  const state = { meta: null, date: null, day: null, leagues: new Set(), sort: "time", onlyDev: false, view: "list", pollTimer: null };
 
   // ------------------------------------------------------------------ api
   async function api(path, opts) {

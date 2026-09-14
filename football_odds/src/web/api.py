@@ -73,7 +73,28 @@ def _all_matches_cached(key: tuple) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     df = pd.concat(frames, ignore_index=True)
-    return df.sort_values("stamp").drop_duplicates("match_id", keep="last").reset_index(drop=True)
+    df = df.sort_values("stamp").drop_duplicates("match_id", keep="last").reset_index(drop=True)
+    # Football-Data kick-off times are UK local time -> convert to Turkey (UTC+3); a late kick-off
+    # can roll into the next Turkish calendar day, so the Turkish date is what the site groups by
+    tr = [_to_turkey(_str(d), _str(t)) for d, t in zip(df["date"], df.get("time", pd.Series([""] * len(df))))]
+    df["date_tr"] = [x[0] for x in tr]
+    df["time_tr"] = [x[1] for x in tr]
+    return df
+
+
+def _to_turkey(date_str: str, time_str: str) -> tuple[str, str]:
+    """('2026-09-14', '20:00' UK) -> ('2026-09-14', '22:00'). Missing time -> same date, ''."""
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    if not date_str or not time_str:
+        return date_str, ""
+    try:
+        naive = _dt.datetime.strptime(f"{date_str[:10]} {time_str[:5]}", "%Y-%m-%d %H:%M")
+    except ValueError:
+        return date_str[:10], ""
+    local = naive.replace(tzinfo=ZoneInfo("Europe/London")).astimezone(ZoneInfo("Europe/Istanbul"))
+    return local.date().isoformat(), local.strftime("%H:%M")
 
 
 def _all_matches() -> pd.DataFrame:
@@ -84,7 +105,7 @@ def _all_matches() -> pd.DataFrame:
 def _dates() -> list[str]:
     """Match dates (not run dates), ascending."""
     df = _all_matches()
-    return sorted(df["date"].astype(str).unique().tolist()) if not df.empty else []
+    return sorted(df["date_tr"].astype(str).unique().tolist()) if not df.empty else []
 
 
 def _load_details(stamp: str) -> dict:
@@ -107,7 +128,10 @@ def _match_payload(row: pd.Series, det: dict) -> dict:
     out = {
         "id": _str(row["match_id"]), "stamp": _str(row.get("stamp")),
         "league": _str(row["league"]), "league_name": LEAGUE_TR.get(_str(row["league"]), _str(row["league"])),
-        "date": _str(row["date"]), "time": _str(row.get("time")), "home": _str(row["home"]), "away": _str(row["away"]),
+        # date/time are Turkey local (converted from Football-Data's UK time); the originals stay as *_uk
+        "date": _str(row.get("date_tr")) or _str(row["date"]), "time": _str(row.get("time_tr")),
+        "date_uk": _str(row["date"]), "time_uk": _str(row.get("time")),
+        "home": _str(row["home"]), "away": _str(row["away"]),
         "n": int(row["n"]), "n_eff": _num(row.get("n_eff")), "confidence": _str(row["confidence"]), "signal": _str(row["signal"]),
         "signal_outcome": _str(row.get("signal_outcome")) or "home",
         "avg_sim": _num(row.get("avg_similarity")), "median_sim": _num(row.get("median_similarity")), "min_sim": _num(row.get("min_similarity")),
@@ -152,7 +176,7 @@ def meta() -> dict:
 def day(date: str) -> dict:
     """All analysed matches played on `date` (a match date, not a run date)."""
     df = _all_matches()
-    table = df[df["date"].astype(str) == date] if not df.empty else df
+    table = df[df["date_tr"].astype(str) == date] if not df.empty else df
     if table.empty:
         raise HTTPException(404, f"no analysed matches on {date}")
     details_by_stamp: dict[str, dict] = {}
