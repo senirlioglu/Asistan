@@ -175,11 +175,22 @@ button { cursor: pointer; }
 .sheet-body h3 { font-size: 0.95rem; margin-bottom: 6px; }
 .sheet-body .note { color: var(--ink-3); font-size: 0.8rem; margin: 4px 0 0; max-width: 65ch; }
 
-.sheet-body { overflow-x: hidden; }
-.table-wrap { overflow-x: auto; max-width: 100%; }
+/* grid children default to min-width:auto, which stops a wide table from shrinking and kills the
+   horizontal scroll; min-width:0 on every level between the sheet and the table fixes that */
+.sheet-body, .sheet-body > section, .sheet-body > section > div, .teambox { min-width: 0; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 table { border-collapse: collapse; width: 100%; font-size: 0.8rem; }
 th, td { text-align: left; padding: 6px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { white-space: nowrap; }
+td.wrap { white-space: normal; min-width: 120px; }
+td.num, td:has(> .badge) { white-space: nowrap; }
+@media (max-width: 640px) {
+  .hide-sm { display: none; }
+  table { font-size: 0.78rem; }
+  th, td { padding: 6px 4px; }
+  .table-hint { display: block; }
+}
+.table-hint { display: none; color: var(--ink-3); font-size: 0.72rem; margin: 2px 0 0; }
 th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 600; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td .yes { color: var(--good); font-weight: 600; }

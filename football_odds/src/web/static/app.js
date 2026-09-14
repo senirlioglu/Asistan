@@ -239,7 +239,7 @@
     const body = $("#sheet-body");
     const rows = ["home", "draw", "away"].map((oc) => {
       const k = KEY[oc]; const [outside, ci] = outsideCI(m, oc);
-      return `<tr><td>${OUT[k]}</td><td class="num">${pct(m.market[k], 1)}</td><td class="num">${pct(m.hist[k], 1)}</td><td class="num">${pct(m.adj[k], 1)}</td><td class="num">${pp(m.edge[k])}</td><td class="num">${ci || "–"}</td><td class="num">${num(m.fair[k])}</td><td>${outside ? '<span class="yes">Hayır, anlamlı</span>' : '<span class="no">Evet, olabilir</span>'}</td></tr>`;
+      return `<tr><td>${OUT[k]}</td><td class="num">${pct(m.market[k], 1)}</td><td class="num hide-sm">${pct(m.hist[k], 1)}</td><td class="num">${pct(m.adj[k], 1)}</td><td class="num">${pp(m.edge[k])}</td><td class="num hide-sm">${ci || "–"}</td><td class="num hide-sm">${num(m.fair[k])}</td><td class="wrap">${outside ? '<span class="yes">Hayır, anlamlı</span>' : '<span class="no">Evet, olabilir</span>'}</td></tr>`;
     }).join("");
     const scopeTr = { global: "Tüm ligler", same_league: "Sadece aynı lig", similar_leagues: "Benzer ligler" };
     const scopes = Object.entries(m.scopes || {}).map(([k, v]) => `<tr><td>${scopeTr[k] || k}</td><td class="num">${v.n}</td><td class="num">${v.hist.map((x) => `%${(100 * x).toFixed(0)}`).join(" / ")}</td><td class="num">${v.adj.map((x) => `%${(100 * x).toFixed(0)}`).join(" / ")}</td><td class="num">${pct(v.avg_similarity, 1)}</td></tr>`).join("");
@@ -247,7 +247,7 @@
     const top = Object.entries(m.scorelines || {}).filter(([k]) => k !== "other").sort((a, b) => b[1] - a[1]).slice(0, 8);
     body.innerHTML = `
       <section><h3>Üç ihtimal, üç bakış</h3><div class="table-wrap"><table>
-        <thead><tr><th>Sonuç</th><th class="num">Piyasa</th><th class="num">Geçmiş (ham)</th><th class="num">Düzeltilmiş</th><th class="num">Sapma</th><th class="num">%95 aralık</th><th class="num">Adil oran</th><th>Şansla açıklanır mı?</th></tr></thead>
+        <thead><tr><th>Sonuç</th><th class="num">Piyasa</th><th class="num hide-sm">Geçmiş (ham)</th><th class="num">Düzeltilmiş</th><th class="num">Sapma</th><th class="num hide-sm">%95 aralık</th><th class="num hide-sm">Adil oran</th><th>Şansla açıklanır mı?</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
         <p class="note">Adil oran = 1 / düzeltilmiş geçmiş ihtimal. Piyasa oranı bundan yüksekse piyasa bu sonucu geçmişe göre daha az olası görüyor; bu tek başına kârlı bahis demek değildir.</p></section>
       ${htftSection(m)}
@@ -268,9 +268,9 @@
   const OUTCOME_BADGE = { G: ["G", "Galibiyet", "win"], B: ["B", "Beraberlik", "draw"], M: ["M", "Mağlubiyet", "loss"] };
 
   function teamRows(rows) {
-    return `<div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Maç</th><th class="num">1 / X / 2</th><th class="num">Takımın ihtimali</th><th>Sonuç</th></tr></thead><tbody>
-      ${rows.map((r) => { const [l, t, c] = OUTCOME_BADGE[r.outcome] || ["?", "", ""]; return `<tr><td class="num">${fmtShort(r.date)}</td><td>${esc(r.home)} – ${esc(r.away)} <small class="muted">${r.venue === "ev" ? "(ev)" : "(dep.)"}</small></td><td class="num">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num">${pct(r.p_team)}</td><td><span class="badge ${c}" title="${t}">${l}</span> ${esc(r.score)}</td></tr>`; }).join("")}
-      </tbody></table></div>`;
+    return `<div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Maç</th><th class="num hide-sm">1 / X / 2</th><th class="num">İhtimali</th><th>Sonuç</th></tr></thead><tbody>
+      ${rows.map((r) => { const [l, t, c] = OUTCOME_BADGE[r.outcome] || ["?", "", ""]; return `<tr><td class="num">${fmtShort(r.date)}</td><td class="wrap">${esc(r.home)} – ${esc(r.away)} <small class="muted">${r.venue === "ev" ? "(ev)" : "(dep.)"}</small></td><td class="num hide-sm">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num">${pct(r.p_team)}</td><td><span class="badge ${c}" title="${t}">${l}</span> ${esc(r.score)}</td></tr>`; }).join("")}
+      </tbody></table></div><p class="table-hint">Telefonda oranlar gizli; tabloyu sola kaydırarak veya ekranı döndürerek tüm sütunları görebilirsin.</p>`;
   }
 
   function teamBlock(t, side) {
@@ -308,9 +308,9 @@
         ? `<p class="note">Bu listede ${m.home} veya ${m.away}'nın kendi maçlarından <b>${same} tane</b> var (işaretli satırlar). Benzerlik yalnızca oran profiline bakar; takım adı hesaba girmez, bu maçlar tesadüfen buradadır.</p>`
         : `<p class="note">Listede ${m.home} veya ${m.away}'nın kendi maçı yok. Benzerlik yalnızca oran profiline bakar; takım adı hesaba girmez.</p>`;
       box.innerHTML = `<p class="note">Gösterilen ${data.rows.length} maçta: ev sahibi %${data.share.h.toFixed(0)} · beraberlik %${data.share.d.toFixed(0)} · deplasman %${data.share.a.toFixed(0)}</p>${sameNote}
-        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th class="num">1 / X / 2</th><th class="num">Benzerlik</th><th class="num">İlk yarı</th><th class="num">Maç sonu</th><th>İY/MS</th><th>2,5</th><th>KG</th></tr></thead><tbody>
-        ${data.rows.map((r) => `<tr class="${r.same_team ? "same-team" : ""}"><td class="num">${fmtShort(r.date)}</td><td>${esc(r.league_name)}</td><td>${r.same_team ? "★ " : ""}${esc(r.home)} – ${esc(r.away)}</td><td class="num">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num">${pct(r.sim, 1)}</td><td class="num">${esc(r.ht_score || "–")}</td><td class="num res-${r.result}">${esc(r.score)}</td><td class="num"><b>${esc(r.htft || "–")}</b></td><td>${r.over25 ? "Üst" : "Alt"}</td><td>${r.btts ? "Var" : "Yok"}</td></tr>`).join("")}
-        </tbody></table></div>`;
+        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th class="hide-sm">Lig</th><th>Maç</th><th class="num hide-sm">1 / X / 2</th><th class="num hide-sm">Benzerlik</th><th class="num">İY</th><th class="num">MS</th><th>İY/MS</th><th>2,5</th><th>KG</th></tr></thead><tbody>
+        ${data.rows.map((r) => `<tr class="${r.same_team ? "same-team" : ""}"><td class="num">${fmtShort(r.date)}</td><td class="hide-sm">${esc(r.league_name)}</td><td class="wrap">${r.same_team ? "★ " : ""}${esc(r.home)} – ${esc(r.away)}</td><td class="num hide-sm">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num hide-sm">${pct(r.sim, 1)}</td><td class="num">${esc(r.ht_score || "–")}</td><td class="num res-${r.result}">${esc(r.score)}</td><td class="num"><b>${esc(r.htft || "–")}</b></td><td>${r.over25 ? "Üst" : "Alt"}</td><td>${r.btts ? "Var" : "Yok"}</td></tr>`).join("")}
+        </tbody></table></div><p class="table-hint">Telefonda lig, oranlar ve benzerlik sütunları gizli; ekranı döndürünce hepsi görünür. İY = ilk yarı skoru, MS = maç sonu skoru.</p>`;
     } catch (e) { box.textContent = "Liste yüklenemedi: " + e.message; }
   }
 
