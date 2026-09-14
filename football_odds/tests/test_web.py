@@ -59,6 +59,10 @@ def test_day_payload_shape_and_nan_to_null(client):
     assert m["stamp"] == "2026-09-14"  # which prediction/analogue file the row came from
     # Football-Data's 20:00 UK (BST in September) is 22:00 in Turkey; the UK originals are kept
     assert m["time"] == "22:00" and m["date"] == "2026-09-14" and m["time_uk"] == "20:00"
+    assert m["odds"]["h"] == 1.72 and m["edge"]["h"] == 4.7 and m["ci"]["h"] == [56.4, 66.9]
+    assert m["market_over25"] is None  # NaN -> null
+    assert m["tolerance"]["probs"]["0.02"] == 120
+    assert client.get("/api/day/2000-01-01").status_code == 404
 
 
 def test_uk_to_turkey_conversion_rolls_the_date():
@@ -66,10 +70,6 @@ def test_uk_to_turkey_conversion_rolls_the_date():
     assert web._to_turkey("2026-12-14", "20:00") == ("2026-12-14", "23:00")   # GMT: +3h
     assert web._to_turkey("2026-12-14", "22:30") == ("2026-12-15", "01:30")   # rolls into the next Turkish day
     assert web._to_turkey("2026-09-14", "") == ("2026-09-14", "")
-    assert m["odds"]["h"] == 1.72 and m["edge"]["h"] == 4.7 and m["ci"]["h"] == [56.4, 66.9]
-    assert m["market_over25"] is None  # NaN -> null
-    assert m["tolerance"]["probs"]["0.02"] == 120
-    assert client.get("/api/day/2000-01-01").status_code == 404
 
 
 def test_analogues(client):
