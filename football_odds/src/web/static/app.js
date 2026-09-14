@@ -212,6 +212,21 @@
   }
 
   // ------------------------------------------------------------------ detail sheet
+  const HTFT_ORDER = ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"];
+
+  function htftSection(m) {
+    const d = m.htft || {};
+    if (!Object.keys(d).length) return "";
+    const ht = m.ht || {};
+    const max = Math.max(...HTFT_ORDER.map((k) => d[k] || 0)) || 1;
+    const top = HTFT_ORDER.map((k) => [k, d[k] || 0]).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return `<section><h3>İlk yarı / maç sonu (benzer maçlar)</h3>
+      <p class="sentence">İlk yarı sonucu: ev sahibi önde <b>${pct(ht.home)}</b>, berabere <b>${pct(ht.draw)}</b>, deplasman önde <b>${pct(ht.away)}</b>${ht.n ? ` (${ht.n} maç)` : ""}.
+      En sık İY/MS: ${top.map(([k, v]) => `<b>${k}</b> ${pct(100 * v)}`).join(" · ")}.</p>
+      <div class="vbars">${HTFT_ORDER.map((k) => `<div class="vbar"><span class="num">${(100 * (d[k] || 0)).toFixed(0)}%</span><i style="height:${Math.max(2, ((d[k] || 0) / max) * 80)}%"></i><small>${k}</small></div>`).join("")}</div>
+      <p class="note">İY/MS = ilk yarı sonucu / maç sonucu. 1 = ev sahibi, X = beraberlik, 2 = deplasman. Örnek: X/2 = ilk yarı berabere, maçı deplasman kazandı.</p></section>`;
+  }
+
   function vbars(obj, title, note) {
     const entries = Object.entries(obj); if (!entries.length) return "";
     const max = Math.max(...entries.map(([, v]) => v)) || 1;
@@ -235,6 +250,7 @@
         <thead><tr><th>Sonuç</th><th class="num">Piyasa</th><th class="num">Geçmiş (ham)</th><th class="num">Düzeltilmiş</th><th class="num">Sapma</th><th class="num">%95 aralık</th><th class="num">Adil oran</th><th>Şansla açıklanır mı?</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
         <p class="note">Adil oran = 1 / düzeltilmiş geçmiş ihtimal. Piyasa oranı bundan yüksekse piyasa bu sonucu geçmişe göre daha az olası görüyor; bu tek başına kârlı bahis demek değildir.</p></section>
+      ${htftSection(m)}
       ${vbars(m.goals_dist || {}, "Toplam gol dağılımı (benzer maçlar)")}
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
@@ -292,8 +308,8 @@
         ? `<p class="note">Bu listede ${m.home} veya ${m.away}'nın kendi maçlarından <b>${same} tane</b> var (işaretli satırlar). Benzerlik yalnızca oran profiline bakar; takım adı hesaba girmez, bu maçlar tesadüfen buradadır.</p>`
         : `<p class="note">Listede ${m.home} veya ${m.away}'nın kendi maçı yok. Benzerlik yalnızca oran profiline bakar; takım adı hesaba girmez.</p>`;
       box.innerHTML = `<p class="note">Gösterilen ${data.rows.length} maçta: ev sahibi %${data.share.h.toFixed(0)} · beraberlik %${data.share.d.toFixed(0)} · deplasman %${data.share.a.toFixed(0)}</p>${sameNote}
-        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th class="num">1 / X / 2</th><th class="num">Benzerlik</th><th>Sonuç</th><th>2,5</th><th>KG</th></tr></thead><tbody>
-        ${data.rows.map((r) => `<tr class="${r.same_team ? "same-team" : ""}"><td class="num">${fmtShort(r.date)}</td><td>${esc(r.league_name)}</td><td>${r.same_team ? "★ " : ""}${esc(r.home)} – ${esc(r.away)}</td><td class="num">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num">${pct(r.sim, 1)}</td><td class="res-${r.result}">${RES[r.result] || r.result} ${esc(r.score)}</td><td>${r.over25 ? "Üst" : "Alt"}</td><td>${r.btts ? "Var" : "Yok"}</td></tr>`).join("")}
+        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th class="num">1 / X / 2</th><th class="num">Benzerlik</th><th class="num">İlk yarı</th><th class="num">Maç sonu</th><th>İY/MS</th><th>2,5</th><th>KG</th></tr></thead><tbody>
+        ${data.rows.map((r) => `<tr class="${r.same_team ? "same-team" : ""}"><td class="num">${fmtShort(r.date)}</td><td>${esc(r.league_name)}</td><td>${r.same_team ? "★ " : ""}${esc(r.home)} – ${esc(r.away)}</td><td class="num">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num">${pct(r.sim, 1)}</td><td class="num">${esc(r.ht_score || "–")}</td><td class="num res-${r.result}">${esc(r.score)}</td><td class="num"><b>${esc(r.htft || "–")}</b></td><td>${r.over25 ? "Üst" : "Alt"}</td><td>${r.btts ? "Var" : "Yok"}</td></tr>`).join("")}
         </tbody></table></div>`;
     } catch (e) { box.textContent = "Liste yüklenemedi: " + e.message; }
   }
@@ -315,6 +331,7 @@
     ["Adil oran", "1 / düzeltilmiş geçmiş ihtimal; geçmişe göre 'olması gereken' oran. Marj ve belirsizlik dahil değildir."],
     ["2,5 üstü / altı", "Maçta toplam 3 ve daha fazla gol (üst) ya da 2 ve daha az gol (alt). Benzer maçlarda üst oranı gösterilir."],
     ["İki takım da gol attı (KG)", "Benzer maçların yüzde kaçında her iki takım da en az bir gol attı."],
+    ["İY/MS (ilk yarı / maç sonu)", "Benzer maçlarda ilk yarı ve maç sonu sonuçlarının birlikte dağılımı. 1 = ev sahibi, X = beraberlik, 2 = deplasman; 1/1 ilk yarıyı da maçı da ev sahibi önde bitirdi, X/2 ilk yarı berabere, maçı deplasman kazandı demektir. Listedeki her benzer maçın ilk yarı skoru ve maç sonu skoru ayrı sütunlarda yazar."],
     ["Aynı takımlar", "Detay panelindeki bu bölüm oran benzerliğinden bağımsızdır: iki takımın birbirine karşı geçmiş maçları ve her takımın bugünkü gibi fiyatlandığı (±5 puan) kendi maçlarında ne yaptığı. Az maça dayandığı için yüzdeler kaba fikir verir; güven aralığı yanında yazar."],
     ["Körleme test", "Sistem 2017–2021 sezonlarında ayarlandı, 2021–2026 sezonlarında hiç görmediği maçlarda denendi; bir maçı analiz ederken yalnızca ondan önce oynanmış maçları görebilir. Sonuç: piyasadan daha iyi tahmin edemedi."],
     ["Kalibrasyon skoru (Brier)", "Tahmin kalitesi ölçüsü; düşük daha iyi. Piyasa 0.5899, sistem 0.5897: fark yok denecek kadar küçük ve istatistiksel olarak anlamsız."],

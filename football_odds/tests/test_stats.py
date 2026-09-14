@@ -57,6 +57,21 @@ def test_outcome_stats_basic():
     assert st_w.home == pytest.approx(1.0) and st_w.n_eff == pytest.approx(1.0)
 
 
+def test_half_time_layer():
+    from src.models.stats import htft_label
+
+    neigh = pd.DataFrame({
+        "result_code": [0, 2, 1, 0], "fthg": [2, 0, 1, 1], "ftag": [1, 1, 1, 0], "ftr": ["H", "A", "D", "H"],
+        "htr": ["D", "A", "D", None],  # last row: half-time unknown -> excluded from the HT layer only
+    })
+    st = outcome_stats(neigh)
+    assert st.n == 4 and st.n_ht == 3
+    assert st.ht_draw == pytest.approx(2 / 3) and st.ht_away == pytest.approx(1 / 3) and st.ht_home == pytest.approx(0.0)
+    assert st.htft["X/1"] == pytest.approx(1 / 3) and st.htft["2/2"] == pytest.approx(1 / 3) and st.htft["X/X"] == pytest.approx(1 / 3)
+    assert sum(st.htft.values()) == pytest.approx(1.0)
+    assert htft_label("H", "A") == "1/2" and htft_label("D", "D") == "X/X" and htft_label(None, "H") == ""
+
+
 def test_fair_odds_and_ci_check():
     assert fair_odds(0.618) == pytest.approx(1.618, abs=1e-3)
     assert market_outside_ci(0.55, (0.564, 0.669))

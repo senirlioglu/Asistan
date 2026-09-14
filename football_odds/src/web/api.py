@@ -121,6 +121,9 @@ def _match_payload(row: pd.Series, det: dict) -> dict:
     out["goals_dist"] = det.get("goals_dist", {})
     out["scopes"] = det.get("scopes", {})
     out["tolerance"] = det.get("tolerance", {})
+    out["htft"] = det.get("htft", {})
+    ht = det.get("ht", {}) or {}
+    out["ht"] = {k: _num(ht.get(k)) for k in ("home", "draw", "away")} | {"n": ht.get("n")}
     return out
 
 
@@ -188,6 +191,7 @@ def analogues(stamp: str, match_id: str, k: int = Query(50, ge=1, le=500)) -> di
             "odds": [_num(r["cons_h"]), _num(r["cons_d"]), _num(r["cons_a"])], "sim": _num(r["similarity"]),
             "result": _str(r["ftr"]), "score": _str(r["score"]), "over25": _str(r["ou25"]) == "Over", "btts": _str(r["btts"]) == "Yes",
             "years_old": _num(r.get("years_old")), "same_team": bool(teams & {home, away}),
+            "ht_score": _str(r.get("ht_score")), "htft": _str(r.get("htft")),
         })
     counts = sub["ftr"].value_counts(normalize=True).reindex(["H", "D", "A"]).fillna(0) * 100
     return {"rows": rows, "share": {"h": round(float(counts["H"]), 1), "d": round(float(counts["D"]), 1), "a": round(float(counts["A"]), 1)},

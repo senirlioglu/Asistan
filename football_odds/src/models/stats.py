@@ -90,9 +90,26 @@ class OutcomeStats:
     away_goals_avg: float
     scorelines: dict[str, float] = field(default_factory=dict)
     goals_dist: dict[str, float] = field(default_factory=dict)
+    # half-time layer (rows without a half-time result are excluded from these rates)
+    ht_home: float = float("nan")
+    ht_draw: float = float("nan")
+    ht_away: float = float("nan")
+    htft: dict[str, float] = field(default_factory=dict)   # "1/1", "X/2", ... -> share
+    n_ht: int = 0
 
     def probs(self) -> np.ndarray:
         return np.array([self.home, self.draw, self.away])
+
+
+HTFT_ORDER = ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"]
+_RES_SYMBOL = {"H": "1", "D": "X", "A": "2"}
+
+
+def htft_label(htr: str | None, ftr: str | None) -> str:
+    """'H','A' -> '1/2'; empty when the half-time result is unknown."""
+    if htr not in _RES_SYMBOL or ftr not in _RES_SYMBOL:
+        return ""
+    return f"{_RES_SYMBOL[htr]}/{_RES_SYMBOL[ftr]}"
 
 
 def outcome_stats(neigh: pd.DataFrame, weights: np.ndarray | None = None) -> OutcomeStats:
@@ -114,13 +131,29 @@ def outcome_stats(neigh: pd.DataFrame, weights: np.ndarray | None = None) -> Out
     sl["other"] = max(0.0, 1.0 - sum(sl.values()))
     gd = {str(g): weighted_rate(total == g, w) for g in range(5)}
     gd["5+"] = weighted_rate(total >= 5, w)
+
+    # half-time layer
+    ht_home = ht_draw = ht_away = float("nan")
+    htft: dict[str, float] = {}
+    n_ht = 0
+    if "htr" in neigh.columns:
+        htr = neigh["htr"].astype("string").fillna("").to_numpy()
+        ftr = neigh["ftr"].astype("string").fillna("").to_numpy()
+        has = np.isin(htr, ["H", "D", "A"]) & np.isin(ftr, ["H", "D", "A"])
+        n_ht = int(has.sum())
+        if n_ht:
+            w_ht = np.where(has, w, 0.0)
+            ht_home, ht_draw, ht_away = (weighted_rate(htr == c, w_ht) for c in ("H", "D", "A"))
+            labels = np.array([htft_label(a, b) for a, b in zip(htr, ftr)])
+            htft = {k: weighted_rate(labels == k, w_ht) for k in HTFT_ORDER}
+
     return OutcomeStats(
         n=n, n_eff=n_eff, home=home, draw=draw, away=away,
         ci_home=wilson_interval(home, n_eff), ci_draw=wilson_interval(draw, n_eff), ci_away=wilson_interval(away, n_eff),
         over25=over, under25=1 - over, btts_yes=btts, btts_no=1 - btts,
         avg_goals=float(np.sum(w * total) / w.sum()), median_goals=weighted_median(total, w),
         home_goals_avg=float(np.sum(w * fthg) / w.sum()), away_goals_avg=float(np.sum(w * ftag) / w.sum()),
-        scorelines=sl, goals_dist=gd,
+        scorelines=sl, goals_dist=gd, ht_home=ht_home, ht_draw=ht_draw, ht_away=ht_away, htft=htft, n_ht=n_ht,
     )
 
 

@@ -16,7 +16,7 @@ import pandas as pd
 from ..features.vectors import feature_columns
 from .signal import Signal, classify_signal
 from .similarity import NeighbourResult, SimilarityIndex
-from .stats import (OUTCOMES, OutcomeStats, confidence_label, fair_odds, market_outside_ci, outcome_stats,
+from .stats import (OUTCOMES, OutcomeStats, confidence_label, fair_odds, htft_label, market_outside_ci, outcome_stats,
                     p_value_from_z, shrink, two_proportion_z)
 from .time_weights import time_weights, years_between
 
@@ -68,7 +68,8 @@ class MatchAnalysis:
 
 
 ANALOGUE_COLUMNS = ["date", "league", "season", "home_team", "away_team", "cons_h", "cons_d", "cons_a",
-                    "p_home", "p_draw", "p_away", "ftr", "fthg", "ftag", "total_goals", "btts", "over25"]
+                    "p_home", "p_draw", "p_away", "ftr", "fthg", "ftag", "total_goals", "btts", "over25",
+                    "hthg", "htag", "htr"]
 
 
 def _weights(index: SimilarityIndex, res: NeighbourResult, as_of, half_life: float | None) -> np.ndarray:
@@ -86,6 +87,11 @@ def analogue_frame(index: SimilarityIndex, res: NeighbourResult, weights: np.nda
     out["score"] = out["fthg"].astype("Int64").astype(str) + "-" + out["ftag"].astype("Int64").astype(str)
     out["ou25"] = np.where(out["total_goals"] > 2.5, "Over", "Under")
     out["btts"] = np.where(out["btts"].astype(bool), "Yes", "No")
+    if "hthg" in out.columns:
+        has_ht = out["hthg"].notna() & out["htag"].notna()
+        out["ht_score"] = np.where(has_ht, out["hthg"].astype("Int64").astype(str) + "-" + out["htag"].astype("Int64").astype(str), "")
+        out["htft"] = [htft_label(h if isinstance(h, str) else None, f if isinstance(f, str) else None)
+                       for h, f in zip(out["htr"], out["ftr"])]
     return out.reset_index(drop=True)
 
 
@@ -171,6 +177,8 @@ def analyze_match(index: SimilarityIndex, row: pd.Series, as_of, params: Analysi
         summary[f"{name}_avg_sim"] = sr.avg_similarity
     summary["scorelines"] = st.scorelines
     summary["goals_dist"] = st.goals_dist
+    summary["ht_h"], summary["ht_d"], summary["ht_a"], summary["n_ht"] = st.ht_home * 100, st.ht_draw * 100, st.ht_away * 100, st.n_ht
+    summary["htft"] = st.htft
 
     tolerance: dict[str, dict[float, int]] = {}
     if tolerance_levels:
@@ -188,6 +196,6 @@ def analyze_match(index: SimilarityIndex, row: pd.Series, as_of, params: Analysi
 def summaries_to_frame(analyses: list[MatchAnalysis]) -> pd.DataFrame:
     rows = []
     for a in analyses:
-        s = {k: v for k, v in a.summary.items() if k not in ("scorelines", "goals_dist")}
+        s = {k: v for k, v in a.summary.items() if k not in ("scorelines", "goals_dist", "htft")}
         rows.append(s)
     return pd.DataFrame(rows)
