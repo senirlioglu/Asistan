@@ -143,9 +143,17 @@ def consensus_1x2(df: pd.DataFrame) -> pd.DataFrame:
                 means[:, j] = np.where(n_books > 0, np.nanmean(np.where(n_books[:, None] > 0, masked, 1.0), axis=1), np.nan)
     have_books = np.all(np.isfinite(means), axis=1)
 
-    cons = np.where(have_avg[:, None], avg, means)
+    # last resort: the closing market average. Football-Data's "extra" league files (Argentina,
+    # Brazil, MLS, ...) publish closing prices only, so for those leagues the closing consensus IS
+    # the market. Such rows are flagged (`avg_closing`) so that closing-vs-pre-closing analyses
+    # can leave them out — there is no pre-closing price to compare against.
+    closing = (df[["avgc_h", "avgc_d", "avgc_a"]].to_numpy(dtype=float) if all(c in df.columns for c in ("avgc_h", "avgc_d", "avgc_a"))
+               else np.full((len(df), 3), np.nan))
+    have_closing = np.all(np.isfinite(closing), axis=1)
+
+    cons = np.where(have_avg[:, None], avg, np.where(have_books[:, None], means, closing))
     out["cons_h"], out["cons_d"], out["cons_a"] = cons[:, 0], cons[:, 1], cons[:, 2]
-    source = np.where(have_avg, "avg", np.where(have_books, "books_mean", "none"))
+    source = np.where(have_avg, "avg", np.where(have_books, "books_mean", np.where(have_closing, "avg_closing", "none")))
     out["consensus_source"] = source
     out["n_books_used"] = np.where(have_avg, df["n_books_1x2"].fillna(0).to_numpy(dtype=float), n_books)
     return out
@@ -199,6 +207,9 @@ def add_market_features(df: pd.DataFrame, method: str = "proportional", min_odds
     # Closing 1X2 (2019/20+)
     cl = market_block(df, ("avgc_h", "avgc_d", "avgc_a"), ("home", "draw", "away"), method, min_odds, max_odds, max_overround)
     df["pc_home"], df["pc_draw"], df["pc_away"] = cl["p_home"], cl["p_draw"], cl["p_away"]
+    # when the closing price already served as the market there is no separate closing benchmark
+    from_closing = (df["consensus_source"] == "avg_closing").to_numpy()
+    df.loc[from_closing, ["pc_home", "pc_draw", "pc_away"]] = np.nan
     df["has_closing"] = df["pc_home"].notna()
     for o in ("home", "draw", "away"):
         df[f"delta_p_{o}"] = df[f"pc_{o}"] - df[f"p_{o}"]

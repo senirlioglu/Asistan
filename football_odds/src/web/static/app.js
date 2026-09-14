@@ -464,7 +464,7 @@
   }
 
   function teamBlock(t, side) {
-    if (!t.n_total) return `<div class="teambox"><h4>${esc(t.team)}</h4><p class="note">Veritabanında bu takımın maçı yok (havuzdaki 16 lig dışında oynuyor olabilir).</p></div>`;
+    if (!t.n_total) return `<div class="teambox"><h4>${esc(t.team)}</h4><p class="note">Veritabanında bu takımın maçı yok (havuzdaki 38 lig dışında oynuyor olabilir).</p></div>`;
     if (!t.n_similar) return `<div class="teambox"><h4>${esc(t.team)}</h4><p class="note">Havuzda ${t.n_total} maçı var ama hiçbirinde bugünkü gibi (${side} olarak ~${pct(t.p_today)}) fiyatlanmamış.</p></div>`;
     const conf = t.n_similar < 30 ? "çok az örnek, sadece fikir verir" : t.n_similar < 100 ? "az örnek" : "yeterli örnek";
     return `<div class="teambox"><h4>${esc(t.team)}</h4>
@@ -482,7 +482,7 @@
         ? `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4>
            <p class="sentence">Havuzda <b>${h.n}</b> karşılaşma var${h.shown < h.n ? ` (son ${h.shown} tanesi listede)` : ""}: ${esc(m.home)} ${h.home_wins} galibiyet, ${h.draws} beraberlik, ${esc(m.away)} ${h.away_wins} galibiyet.</p>
            ${teamRows(h.rows)}</div>`
-        : `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4><p class="note">Havuzda (2011'den beri, 16 lig) bu iki takım birbiriyle oynamamış.</p></div>`;
+        : `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4><p class="note">Havuzda (2011'den beri, 38 lig) bu iki takım birbiriyle oynamamış.</p></div>`;
       box.innerHTML = `<p class="note">Bu bölüm sadece bu iki takıma bakar; oran benzerliğiyle ilgisi yoktur. Az sayıda maça dayanır, o yüzden yüzdeler kaba fikir verir.</p>${h2h}${teamBlock(d.home, "ev sahibi")}${teamBlock(d.away, "deplasman")}`;
     } catch (e) { box.innerHTML = `<p class="note">Takım geçmişi yüklenemedi: ${esc(e.message)}</p>`; }
   }
@@ -510,7 +510,7 @@
   const GLOSSARY = [
     ["Oran (1 / X / 2)", "Bahis şirketinin fiyatı. 1 = ev sahibi kazanır, X = beraberlik, 2 = deplasman kazanır. Oran ne kadar düşükse şirket o sonucu o kadar olası görüyor."],
     ["Piyasanın beklentisi", "Oranlardan hesaplanan ihtimal: 1/oran alınır, şirketin kâr payı (marj) çıkarılır, üçünün toplamı %100 yapılır. Birçok şirketin ortalaması kullanılır."],
-    ["Benzer maçlar", "2011'den bugüne 16 ligden 84 bin maç arasında piyasa ihtimalleri bu maça en yakın 500 maç. Yalnızca analiz gününden önce oynanmış maçlar kullanılır."],
+    ["Benzer maçlar", "2011'den bugüne 38 ligden 130 binden fazla maç arasında piyasa ihtimalleri bu maça en yakın 500 maç. Yalnızca analiz gününden önce oynanmış maçlar kullanılır."],
     ["Benzerlik %", "İki maçın ihtimal profilleri arasındaki yakınlık. %98 benzerlik, ihtimallerin toplam 2 puan farklı olduğu anlamına gelir. %95'in altı zayıf benzerliktir."],
     ["Geçmiş (ham)", "Benzer maçlarda o sonucun gerçekleşme yüzdesi. 500 maçın 290'ında ev sahibi kazandıysa %58."],
     ["Geçmiş (düzeltilmiş)", "Ham yüzde, az örneklemin abartmasını önlemek için piyasaya doğru biraz çekilir. Kartlarda ve sapmada bu değer kullanılır."],

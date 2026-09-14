@@ -37,6 +37,13 @@ LEAGUE_TR = {
     "I1": "İtalya · Serie A", "I2": "İtalya · Serie B", "D1": "Almanya · Bundesliga", "D2": "Almanya · 2. Bundesliga",
     "F1": "Fransa · Ligue 1", "F2": "Fransa · Ligue 2", "N1": "Hollanda · Eredivisie", "P1": "Portekiz · Primeira Liga",
     "B1": "Belçika · Pro League", "T1": "Türkiye · Süper Lig", "G1": "Yunanistan · Süper Lig", "SC0": "İskoçya · Premiership",
+    "E2": "İngiltere · League One", "E3": "İngiltere · League Two", "EC": "İngiltere · National League",
+    "SC1": "İskoçya · Championship", "SC2": "İskoçya · League One", "SC3": "İskoçya · League Two",
+    "ARG": "Arjantin · Liga Profesional", "AUT": "Avusturya · Bundesliga", "BRA": "Brezilya · Série A", "CHN": "Çin · Süper Lig",
+    "DNK": "Danimarka · Superliga", "FIN": "Finlandiya · Veikkausliiga", "IRL": "İrlanda · Premier Division", "JPN": "Japonya · J1 Ligi",
+    "MEX": "Meksika · Liga MX", "NOR": "Norveç · Eliteserien", "POL": "Polonya · Ekstraklasa", "ROU": "Romanya · Superliga",
+    "RUS": "Rusya · Premier Lig", "SWE": "İsveç · Allsvenskan", "SWZ": "İsviçre · Süper Lig",
+    "USA": "ABD · MLS",
 }
 
 app = FastAPI(title="football-odds", docs_url=None, redoc_url=None)

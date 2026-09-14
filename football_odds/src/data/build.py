@@ -11,7 +11,7 @@ import pandas as pd
 from ..config import Settings
 from ..features.odds import add_market_features
 from ..logging_setup import get_logger
-from .football_data import load_raw_season
+from .football_data import load_raw_extra_league, load_raw_season
 from .quality import data_quality_report, write_quality_report
 from .schema import RESULT_CODES
 
@@ -62,11 +62,22 @@ def build_processed(settings: Settings, seasons: list[str] | None = None, league
     missing: list[str] = []
     for season in seasons:
         for league in leagues:
+            if settings.is_extra_league(league):
+                continue
             part = load_raw_season(settings, season, league)
             if part is None or part.empty:
                 missing.append(f"{season}/{league}")
                 continue
             frames.append(part)
+    # extra leagues: one file holds every season
+    for league in leagues:
+        if not settings.is_extra_league(league):
+            continue
+        part = load_raw_extra_league(settings, league)
+        if part is None or part.empty:
+            missing.append(f"all/{league}")
+            continue
+        frames.append(part)
     if not frames:
         raise RuntimeError("no raw files found — run `python -m src.cli download` first")
     df = pd.concat(frames, ignore_index=True)

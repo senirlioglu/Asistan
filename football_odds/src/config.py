@@ -62,8 +62,24 @@ class Settings:
 
     # ---- leagues / seasons ---------------------------------------------
     @property
-    def leagues(self) -> dict[str, dict[str, Any]]:
+    def main_leagues(self) -> dict[str, dict[str, Any]]:
+        """Divisions served as mmz4281/<season>/<div>.csv (one file per season)."""
         return self.get("data.leagues", {})
+
+    @property
+    def extra_leagues(self) -> dict[str, dict[str, Any]]:
+        """Countries served as new/<file>.csv (one file, every season, closing odds only)."""
+        return self.get("data.extra_leagues", {}) or {}
+
+    @property
+    def leagues(self) -> dict[str, dict[str, Any]]:
+        merged = dict(self.main_leagues)
+        for code, meta in self.extra_leagues.items():
+            merged[code] = {**meta, "core": False, "source": "extra"}
+        return merged
+
+    def is_extra_league(self, code: str) -> bool:
+        return code in self.extra_leagues
 
     @property
     def core_leagues(self) -> list[str]:
@@ -106,13 +122,33 @@ def load_settings(path: str | os.PathLike[str] | None = None) -> Settings:
 
 
 def season_label(code: str) -> str:
-    """'1112' -> '2011/12'."""
+    """'1112' -> '2011/12'; calendar-year seasons ('Y2015', used by the extra leagues) -> '2015'."""
+    code = str(code)
+    if code.startswith("Y"):
+        return code[1:]
     start = int(code[:2])
     return f"20{start:02d}/{code[2:]}"
 
 
 def season_start_year(code: str) -> int:
+    code = str(code)
+    if code.startswith("Y"):
+        return int(code[1:])
     return 2000 + int(code[:2])
+
+
+def extra_season_code(raw: str) -> str | None:
+    """Season strings of the extra files -> our codes: '2016/2017' -> '1617', '2015' -> 'Y2015'.
+    Returns None for anything unparseable."""
+    s = str(raw or "").strip()
+    if "/" in s:
+        a, b = s.split("/", 1)
+        if a.isdigit() and b.isdigit() and len(a) == 4:
+            return f"{int(a) % 100:02d}{int(b) % 100:02d}"
+        return None
+    if s.isdigit() and len(s) == 4:
+        return f"Y{s}"
+    return None
 
 
 def current_season_code(today=None) -> str:

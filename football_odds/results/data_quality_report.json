@@ -1,24 +1,41 @@
 {
-  "generated_at": "2026-09-14T05:04:22.324695+00:00",
-  "n_rows": 84076,
-  "n_leagues": 16,
-  "n_seasons": 16,
+  "generated_at": "2026-09-14T18:53:20.475948+00:00",
+  "n_rows": 179549,
+  "n_leagues": 38,
+  "n_seasons": 31,
   "date_min": "2011-07-15",
   "date_max": "2026-09-10",
-  "missing_1x2_odds_pct": 0.11,
-  "missing_ou_odds_pct": 0.19,
-  "missing_closing_odds_pct": 53.24,
+  "missing_1x2_odds_pct": 0.12,
+  "missing_ou_odds_pct": 35.24,
+  "missing_closing_odds_pct": 69.85,
   "missing_result_pct": 0.0,
   "duplicate_matches": 0,
-  "invalid_odds_values": 3,
-  "overround_1x2_mean": 1.0646,
-  "overround_1x2_p99": 1.0924,
+  "invalid_odds_values": 11,
+  "overround_1x2_mean": 1.0694,
+  "overround_1x2_p99": 1.0997,
   "consensus_sources": {
-    "avg": 83975,
-    "none": 87,
-    "books_mean": 14
+    "avg": 116352,
+    "avg_closing": 62993,
+    "none": 189,
+    "books_mean": 15
   },
   "league_coverage": [
+    {
+      "league": "ARG",
+      "matches": 6355,
+      "seasons": 16,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
+      "league": "AUT",
+      "matches": 2668,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
     {
       "league": "B1",
       "matches": 4050,
@@ -26,6 +43,22 @@
       "odds_pct": 100.0,
       "ou_pct": 100.0,
       "closing_pct": 52.6
+    },
+    {
+      "league": "BRA",
+      "matches": 5576,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
+      "league": "CHN",
+      "matches": 3013,
+      "seasons": 13,
+      "odds_pct": 99.8,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
     },
     {
       "league": "D1",
@@ -44,6 +77,14 @@
       "closing_pct": 47.1
     },
     {
+      "league": "DNK",
+      "matches": 2994,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
       "league": "E0",
       "matches": 5730,
       "seasons": 16,
@@ -60,6 +101,30 @@
       "closing_pct": 47.1
     },
     {
+      "league": "E2",
+      "matches": 8188,
+      "seasons": 16,
+      "odds_pct": 100.0,
+      "ou_pct": 100.0,
+      "closing_pct": 46.0
+    },
+    {
+      "league": "E3",
+      "matches": 8228,
+      "seasons": 16,
+      "odds_pct": 100.0,
+      "ou_pct": 99.9,
+      "closing_pct": 46.3
+    },
+    {
+      "league": "EC",
+      "matches": 8130,
+      "seasons": 16,
+      "odds_pct": 99.7,
+      "ou_pct": 99.4,
+      "closing_pct": 45.5
+    },
+    {
       "league": "F1",
       "matches": 5404,
       "seasons": 16,
@@ -74,6 +139,14 @@
       "odds_pct": 100.0,
       "ou_pct": 99.8,
       "closing_pct": 44.7
+    },
+    {
+      "league": "FIN",
+      "matches": 2682,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
     },
     {
       "league": "G1",
@@ -95,9 +168,33 @@
       "league": "I2",
       "matches": 6266,
       "seasons": 16,
-      "odds_pct": 99.9,
+      "odds_pct": 100.0,
       "ou_pct": 99.8,
-      "closing_pct": 42.9
+      "closing_pct": 42.8
+    },
+    {
+      "league": "IRL",
+      "matches": 2707,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
+      "league": "JPN",
+      "matches": 4583,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
+      "league": "MEX",
+      "matches": 4714,
+      "seasons": 15,
+      "odds_pct": 99.9,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
     },
     {
       "league": "N1",
@@ -108,6 +205,14 @@
       "closing_pct": 46.3
     },
     {
+      "league": "NOR",
+      "matches": 3534,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
       "league": "P1",
       "matches": 4436,
       "seasons": 16,
@@ -116,12 +221,60 @@
       "closing_pct": 49.3
     },
     {
+      "league": "POL",
+      "matches": 4140,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
+      "league": "ROU",
+      "matches": 4245,
+      "seasons": 15,
+      "odds_pct": 99.9,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
+      "league": "RUS",
+      "matches": 3416,
+      "seasons": 15,
+      "odds_pct": 97.4,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
       "league": "SC0",
       "matches": 3404,
       "seasons": 16,
       "odds_pct": 100.0,
       "ou_pct": 99.9,
       "closing_pct": 46.4
+    },
+    {
+      "league": "SC1",
+      "matches": 2637,
+      "seasons": 16,
+      "odds_pct": 100.0,
+      "ou_pct": 100.0,
+      "closing_pct": 45.4
+    },
+    {
+      "league": "SC2",
+      "matches": 2618,
+      "seasons": 16,
+      "odds_pct": 100.0,
+      "ou_pct": 100.0,
+      "closing_pct": 45.0
+    },
+    {
+      "league": "SC3",
+      "matches": 2617,
+      "seasons": 16,
+      "odds_pct": 100.0,
+      "ou_pct": 100.0,
+      "closing_pct": 44.9
     },
     {
       "league": "SP1",
@@ -140,160 +293,319 @@
       "closing_pct": 46.9
     },
     {
+      "league": "SWE",
+      "matches": 3543,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
+      "league": "SWZ",
+      "matches": 2712,
+      "seasons": 15,
+      "odds_pct": 99.9,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
+    },
+    {
       "league": "T1",
       "matches": 4960,
       "seasons": 16,
       "odds_pct": 99.4,
       "ou_pct": 99.4,
       "closing_pct": 50.1
+    },
+    {
+      "league": "USA",
+      "matches": 6173,
+      "seasons": 15,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0
     }
   ],
   "season_coverage": [
     {
       "season": "1112",
-      "matches": 5548,
-      "leagues": 16,
-      "odds_pct": 100.0,
-      "ou_pct": 99.9,
+      "matches": 7744,
+      "leagues": 22,
+      "odds_pct": 99.7,
+      "ou_pct": 99.6,
       "closing_pct": 0.0,
       "label": "2011/12"
     },
     {
       "season": "1213",
-      "matches": 5548,
-      "leagues": 16,
+      "matches": 9808,
+      "leagues": 30,
       "odds_pct": 100.0,
-      "ou_pct": 99.6,
+      "ou_pct": 78.7,
       "closing_pct": 0.0,
       "label": "2012/13"
     },
     {
       "season": "1314",
-      "matches": 5614,
-      "leagues": 16,
+      "matches": 9931,
+      "leagues": 30,
       "odds_pct": 100.0,
-      "ou_pct": 99.8,
+      "ou_pct": 78.5,
       "closing_pct": 0.0,
       "label": "2013/14"
     },
     {
       "season": "1415",
-      "matches": 5680,
-      "leagues": 16,
-      "odds_pct": 99.5,
-      "ou_pct": 99.5,
+      "matches": 9614,
+      "leagues": 29,
+      "odds_pct": 99.7,
+      "ou_pct": 81.7,
       "closing_pct": 0.0,
       "label": "2014/15"
     },
     {
       "season": "1516",
-      "matches": 5614,
-      "leagues": 16,
+      "matches": 9514,
+      "leagues": 29,
       "odds_pct": 100.0,
-      "ou_pct": 99.9,
+      "ou_pct": 82.0,
       "closing_pct": 0.0,
       "label": "2015/16"
     },
     {
       "season": "1617",
-      "matches": 5614,
-      "leagues": 16,
+      "matches": 10019,
+      "leagues": 30,
       "odds_pct": 100.0,
-      "ou_pct": 99.9,
+      "ou_pct": 77.9,
       "closing_pct": 0.0,
       "label": "2016/17"
     },
     {
       "season": "1718",
-      "matches": 5614,
-      "leagues": 16,
+      "matches": 9949,
+      "leagues": 30,
       "odds_pct": 100.0,
-      "ou_pct": 99.7,
+      "ou_pct": 78.3,
       "closing_pct": 0.0,
       "label": "2017/18"
     },
     {
       "season": "1819",
-      "matches": 5494,
-      "leagues": 16,
-      "odds_pct": 99.6,
-      "ou_pct": 99.4,
+      "matches": 9786,
+      "leagues": 30,
+      "odds_pct": 99.8,
+      "ou_pct": 78.2,
       "closing_pct": 0.0,
       "label": "2018/19"
     },
     {
       "season": "1920",
-      "matches": 5200,
-      "leagues": 16,
+      "matches": 8873,
+      "leagues": 30,
       "odds_pct": 99.9,
-      "ou_pct": 99.9,
-      "closing_pct": 100.0,
+      "ou_pct": 77.7,
+      "closing_pct": 77.7,
       "label": "2019/20"
     },
     {
       "season": "2021",
-      "matches": 5712,
-      "leagues": 16,
-      "odds_pct": 99.9,
-      "ou_pct": 99.9,
-      "closing_pct": 100.0,
+      "matches": 9361,
+      "leagues": 29,
+      "odds_pct": 100.0,
+      "ou_pct": 81.6,
+      "closing_pct": 81.7,
       "label": "2020/21"
     },
     {
       "season": "2122",
-      "matches": 5672,
-      "leagues": 16,
+      "matches": 9603,
+      "leagues": 29,
       "odds_pct": 100.0,
-      "ou_pct": 100.0,
-      "closing_pct": 100.0,
+      "ou_pct": 81.4,
+      "closing_pct": 81.4,
       "label": "2021/22"
     },
     {
       "season": "2223",
-      "matches": 5634,
-      "leagues": 16,
-      "odds_pct": 99.5,
-      "ou_pct": 99.5,
-      "closing_pct": 99.5,
+      "matches": 9613,
+      "leagues": 29,
+      "odds_pct": 99.7,
+      "ou_pct": 81.1,
+      "closing_pct": 81.1,
       "label": "2022/23"
     },
     {
       "season": "2324",
-      "matches": 5603,
-      "leagues": 16,
+      "matches": 9628,
+      "leagues": 29,
       "odds_pct": 100.0,
-      "ou_pct": 100.0,
-      "closing_pct": 100.0,
+      "ou_pct": 81.0,
+      "closing_pct": 81.0,
       "label": "2023/24"
     },
     {
       "season": "2425",
-      "matches": 5485,
-      "leagues": 16,
+      "matches": 9494,
+      "leagues": 29,
       "odds_pct": 100.0,
-      "ou_pct": 100.0,
-      "closing_pct": 99.9,
+      "ou_pct": 80.9,
+      "closing_pct": 80.8,
       "label": "2024/25"
     },
     {
       "season": "2526",
-      "matches": 5451,
-      "leagues": 16,
-      "odds_pct": 100.0,
-      "ou_pct": 100.0,
-      "closing_pct": 99.9,
+      "matches": 9462,
+      "leagues": 29,
+      "odds_pct": 99.0,
+      "ou_pct": 80.7,
+      "closing_pct": 80.6,
       "label": "2025/26"
     },
     {
       "season": "2627",
-      "matches": 593,
-      "leagues": 16,
+      "matches": 1236,
+      "leagues": 30,
       "odds_pct": 100.0,
-      "ou_pct": 99.8,
-      "closing_pct": 100.0,
+      "ou_pct": 70.2,
+      "closing_pct": 70.3,
       "label": "2026/27"
+    },
+    {
+      "season": "Y2012",
+      "matches": 1889,
+      "leagues": 7,
+      "odds_pct": 99.9,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2012"
+    },
+    {
+      "season": "Y2013",
+      "matches": 1908,
+      "leagues": 7,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2013"
+    },
+    {
+      "season": "Y2014",
+      "matches": 2338,
+      "leagues": 9,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2014"
+    },
+    {
+      "season": "Y2015",
+      "matches": 2640,
+      "leagues": 9,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2015"
+    },
+    {
+      "season": "Y2016",
+      "matches": 2414,
+      "leagues": 9,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2016"
+    },
+    {
+      "season": "Y2017",
+      "matches": 2199,
+      "leagues": 8,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2017"
+    },
+    {
+      "season": "Y2018",
+      "matches": 2205,
+      "leagues": 8,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2018"
+    },
+    {
+      "season": "Y2019",
+      "matches": 2190,
+      "leagues": 8,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2019"
+    },
+    {
+      "season": "Y2020",
+      "matches": 2016,
+      "leagues": 9,
+      "odds_pct": 99.9,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2020"
+    },
+    {
+      "season": "Y2021",
+      "matches": 2746,
+      "leagues": 9,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2021"
+    },
+    {
+      "season": "Y2022",
+      "matches": 2901,
+      "leagues": 9,
+      "odds_pct": 99.9,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2022"
+    },
+    {
+      "season": "Y2023",
+      "matches": 2859,
+      "leagues": 9,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2023"
+    },
+    {
+      "season": "Y2024",
+      "matches": 2937,
+      "leagues": 9,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2024"
+    },
+    {
+      "season": "Y2025",
+      "matches": 2887,
+      "leagues": 9,
+      "odds_pct": 100.0,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2025"
+    },
+    {
+      "season": "Y2026",
+      "matches": 1785,
+      "leagues": 8,
+      "odds_pct": 99.9,
+      "ou_pct": 0.0,
+      "closing_pct": 0.0,
+      "label": "2026"
     }
   ],
   "missing_files": [],
-  "rows_written": 84073
+  "rows_written": 179545
 }
