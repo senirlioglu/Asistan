@@ -71,6 +71,39 @@ def test_analogues(client):
     assert client.get("/api/analogues/2026-09-14/nope").json()["rows"] == []
 
 
+def test_teams_endpoint_head_to_head_and_similar_pricing(client, tmp_path, monkeypatch):
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    rows = [
+        # Arsenal home vs Everton, Arsenal priced 56% -> similar to today's 55%, Arsenal won
+        dict(date="2024-03-01", league="E0", season="2324", home_team="Arsenal", away_team="Everton", cons_h=1.7, cons_d=3.8, cons_a=4.8,
+             p_home=0.56, p_draw=0.24, p_away=0.20, ftr="H", fthg=2, ftag=0, result_code=0, total_goals=2),
+        # Everton home vs Arsenal (h2h, reversed venue), Arsenal priced 40% -> not similar; draw
+        dict(date="2023-10-01", league="E0", season="2324", home_team="Everton", away_team="Arsenal", cons_h=2.5, cons_d=3.3, cons_a=2.7,
+             p_home=0.38, p_draw=0.28, p_away=0.34, ftr="D", fthg=1, ftag=1, result_code=1, total_goals=2),
+        # Arsenal away at Chelsea priced 53% -> similar, Arsenal lost
+        dict(date="2025-01-10", league="E0", season="2425", home_team="Chelsea", away_team="Arsenal", cons_h=3.0, cons_d=3.5, cons_a=1.85,
+             p_home=0.27, p_draw=0.20, p_away=0.53, ftr="H", fthg=1, ftag=0, result_code=0, total_goals=1),
+        # a match AFTER the analysed date must be ignored
+        dict(date="2026-10-01", league="E0", season="2627", home_team="Arsenal", away_team="Everton", cons_h=1.7, cons_d=3.8, cons_a=4.8,
+             p_home=0.55, p_draw=0.25, p_away=0.20, ftr="H", fthg=3, ftag=0, result_code=0, total_goals=3),
+    ]
+    pd.DataFrame(rows).to_parquet(processed / "matches.parquet", index=False)
+    monkeypatch.setattr(web.settings, "raw", web.settings.with_overrides(**{"data.processed_dir": str(processed)}).raw)
+    web._history_cached.cache_clear()
+    d = client.get("/api/teams/2026-09-14/abc").json()
+    assert d["h2h"]["n"] == 2 and d["h2h"]["home_wins"] == 1 and d["h2h"]["draws"] == 1
+    assert d["h2h"]["rows"][0]["date"] == "2024-03-01"  # newest first, future match excluded
+    home = d["home"]
+    assert home["team"] == "Arsenal" and home["n_total"] == 3 and home["n_similar"] == 2
+    assert home["win_pct"] == 50.0 and home["rows"][0]["outcome"] == "M" and home["rows"][0]["venue"] == "dep"
+    away = d["away"]
+    # Everton was priced 20 % away in the 2024 match (today 20.1 %) -> one similar match, lost it
+    assert away["team"] == "Everton" and away["n_total"] == 2 and away["n_similar"] == 1
+    assert away["rows"][0]["outcome"] == "M" and away["win_pct"] == 0.0
+    assert client.get("/api/teams/2026-09-14/nope").status_code == 404
+
+
 def test_refresh_requires_key_when_set(client, monkeypatch):
     monkeypatch.setenv("FO_ADMIN_KEY", "s3cret")
     assert client.post("/api/refresh").status_code == 401

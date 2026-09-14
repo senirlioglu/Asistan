@@ -160,6 +160,98 @@ def analogues(stamp: str, match_id: str, k: int = Query(50, ge=1, le=500)) -> di
             "same_team_count": int(sum(r["same_team"] for r in rows)), "teams": sorted(teams)}
 
 
+HISTORY_COLS = ["date", "league", "season", "home_team", "away_team", "cons_h", "cons_d", "cons_a", "p_home", "p_draw", "p_away",
+                "ftr", "fthg", "ftag", "result_code", "total_goals"]
+
+
+@lru_cache(maxsize=2)
+def _history_cached(mtime: float) -> pd.DataFrame:
+    p = settings.processed_dir / "matches.parquet"
+    df = pd.read_parquet(p, columns=HISTORY_COLS)
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+def _history() -> pd.DataFrame | None:
+    p = settings.processed_dir / "matches.parquet"
+    if not p.exists():
+        return None
+    return _history_cached(p.stat().st_mtime)
+
+
+def _wilson(p: float, n: int, z: float = 1.96) -> tuple[float, float]:
+    if n <= 0:
+        return (float("nan"), float("nan"))
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return (max(0.0, c - h), min(1.0, c + h))
+
+
+def _row_payload(r: pd.Series, perspective: str | None = None) -> dict:
+    out = {"date": r["date"].strftime("%Y-%m-%d"), "league": _str(r["league"]), "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])),
+           "home": _str(r["home_team"]), "away": _str(r["away_team"]), "odds": [_num(r["cons_h"]), _num(r["cons_d"]), _num(r["cons_a"])],
+           "result": _str(r["ftr"]), "score": f"{int(r['fthg'])}-{int(r['ftag'])}" if pd.notna(r["fthg"]) else "",
+           "p": [_num(100 * r["p_home"]), _num(100 * r["p_draw"]), _num(100 * r["p_away"])]}
+    if perspective:
+        at_home = _str(r["home_team"]) == perspective
+        res = _str(r["ftr"])
+        out["venue"] = "ev" if at_home else "dep"
+        out["outcome"] = "G" if res == ("H" if at_home else "A") else ("B" if res == "D" else "M")
+        out["p_team"] = _num(100 * (r["p_home"] if at_home else r["p_away"]))
+    return out
+
+
+def _team_record(hist: pd.DataFrame, team: str, p_today: float, as_of: pd.Timestamp, tol: float = 0.05, limit: int = 15) -> dict:
+    mine = hist[((hist["home_team"] == team) | (hist["away_team"] == team)) & (hist["date"] < as_of)]
+    if mine.empty:
+        return {"team": team, "n_total": 0, "n_similar": 0, "rows": []}
+    at_home = mine["home_team"] == team
+    p_team = mine["p_home"].where(at_home, mine["p_away"])
+    sim = mine[(p_team - p_today).abs() <= tol].sort_values("date", ascending=False)
+    res = sim["ftr"].to_numpy()
+    home_mask = (sim["home_team"] == team).to_numpy()
+    wins = ((res == "H") & home_mask) | ((res == "A") & ~home_mask)
+    draws = res == "D"
+    n = int(len(sim))
+    w = float(wins.mean()) if n else float("nan")
+    lo, hi = _wilson(w, n) if n else (float("nan"), float("nan"))
+    return {
+        "team": team, "n_total": int(len(mine)), "n_similar": n, "p_today": round(100 * p_today, 1), "tolerance_pp": round(100 * tol),
+        "win_pct": _num(100 * w) if n else None, "draw_pct": _num(100 * float(draws.mean())) if n else None,
+        "loss_pct": _num(100 * float(1 - wins.mean() - draws.mean())) if n else None,
+        "ci": [_num(100 * lo), _num(100 * hi)] if n else None,
+        "avg_goals": _num(float(sim["total_goals"].mean())) if n else None,
+        "first_season": _str(mine["season"].min()), "rows": [_row_payload(r, team) for _, r in sim.head(limit).iterrows()],
+    }
+
+
+@app.get("/api/teams/{stamp}/{match_id}")
+def teams(stamp: str, match_id: str) -> dict:
+    """The fixture's own teams: head-to-head history and each team's record when priced like today."""
+    hist = _history()
+    if hist is None:
+        raise HTTPException(503, "veritabanı henüz kurulmadı")
+    table = _load_table(stamp)
+    hit = table[table["match_id"].astype(str) == match_id]
+    if hit.empty:
+        raise HTTPException(404, "maç bulunamadı")
+    row = hit.iloc[0]
+    home, away = _str(row["home"]), _str(row["away"])
+    as_of = pd.Timestamp(stamp)
+    h2h = hist[(((hist["home_team"] == home) & (hist["away_team"] == away)) | ((hist["home_team"] == away) & (hist["away_team"] == home)))
+               & (hist["date"] < as_of)].sort_values("date", ascending=False)
+    h2h_rows = [_row_payload(r, home) for _, r in h2h.head(12).iterrows()]
+    n_h2h = int(len(h2h))
+    home_wins = sum(1 for r in h2h_rows if r["outcome"] == "G")
+    return {
+        "home": _team_record(hist, home, float(row["market_h"]) / 100, as_of),
+        "away": _team_record(hist, away, float(row["market_a"]) / 100, as_of),
+        "h2h": {"n": n_h2h, "rows": h2h_rows, "home_wins": home_wins, "draws": sum(1 for r in h2h_rows if r["outcome"] == "B"),
+                "away_wins": sum(1 for r in h2h_rows if r["outcome"] == "M"), "shown": len(h2h_rows)},
+    }
+
+
 @app.post("/api/refresh")
 def refresh(x_admin_key: str | None = Header(default=None)) -> dict:
     required = os.environ.get("FO_ADMIN_KEY", "")
