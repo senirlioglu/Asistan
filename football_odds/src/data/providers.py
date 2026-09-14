@@ -62,6 +62,31 @@ class ParquetHistoricalProvider(HistoricalDataProvider):
 
 # --------------------------------------------------------------------------- Football-Data fixtures
 
+def extra_league_code(settings: Settings, country: str, league: str) -> str | None:
+    """(Country, League) of an extra-league row -> our code; None when the pair is not configured."""
+    country, league = str(country or "").strip(), str(league or "").strip()
+    fallback = None
+    for code, meta in settings.extra_leagues.items():
+        if str(meta.get("fd_country", "")).strip() != country:
+            continue
+        want = meta.get("fd_league")
+        if want is None:
+            fallback = code
+        elif str(want).strip() == league:
+            return code
+    return fallback
+
+
+def extra_fixture_frames(raw: pd.DataFrame, settings: Settings, season: str) -> list[pd.DataFrame]:
+    raw = raw.copy()
+    raw.columns = [str(c).strip() for c in raw.columns]
+    if "Country" not in raw.columns:
+        return []
+    raw["Div"] = [extra_league_code(settings, c, l) for c, l in zip(raw["Country"], raw.get("League", pd.Series([""] * len(raw))))]
+    raw = raw[raw["Div"].notna()]
+    return [normalise_frame(part, season, str(div)) for div, part in raw.groupby("Div")]
+
+
 class FootballDataFixturesProvider(CurrentOddsProvider):
     """fixtures.csv: the coming week's matches with the same bookmaker columns as the result files."""
 
@@ -76,6 +101,14 @@ class FootballDataFixturesProvider(CurrentOddsProvider):
         season = current_season_code()
         for div, part in raw.groupby(raw["Div"].astype(str)):
             frames.append(normalise_frame(part, season, str(div)))
+        # extra leagues: new_league_fixtures.csv has Country/League instead of Div
+        if self.settings.extra_leagues and self.settings.get("current.extra_fixtures_url"):
+            try:
+                xpath = download_fixtures(self.settings, force=self.force_refresh, url=self.settings.get("current.extra_fixtures_url"),
+                                          name="new_league_fixtures.csv")
+                frames.extend(extra_fixture_frames(read_raw_csv(xpath), self.settings, season))
+            except Exception as exc:  # noqa: BLE001 - the main fixtures must still go through
+                log.warning("extra-league fixtures unavailable: %s", exc)
         if not frames:
             return pd.DataFrame()
         df = pd.concat(frames, ignore_index=True)

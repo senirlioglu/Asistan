@@ -12,6 +12,7 @@ Numbers that are NaN in the CSV become null in JSON; the frontend treats null as
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import math
 import os
@@ -36,6 +37,13 @@ LEAGUE_TR = {
     "I1": "İtalya · Serie A", "I2": "İtalya · Serie B", "D1": "Almanya · Bundesliga", "D2": "Almanya · 2. Bundesliga",
     "F1": "Fransa · Ligue 1", "F2": "Fransa · Ligue 2", "N1": "Hollanda · Eredivisie", "P1": "Portekiz · Primeira Liga",
     "B1": "Belçika · Pro League", "T1": "Türkiye · Süper Lig", "G1": "Yunanistan · Süper Lig", "SC0": "İskoçya · Premiership",
+    "E2": "İngiltere · League One", "E3": "İngiltere · League Two", "EC": "İngiltere · National League",
+    "SC1": "İskoçya · Championship", "SC2": "İskoçya · League One", "SC3": "İskoçya · League Two",
+    "ARG": "Arjantin · Liga Profesional", "AUT": "Avusturya · Bundesliga", "BRA": "Brezilya · Série A", "CHN": "Çin · Süper Lig",
+    "DNK": "Danimarka · Superliga", "FIN": "Finlandiya · Veikkausliiga", "IRL": "İrlanda · Premier Division", "JPN": "Japonya · J1 Ligi",
+    "MEX": "Meksika · Liga MX", "NOR": "Norveç · Eliteserien", "POL": "Polonya · Ekstraklasa", "ROU": "Romanya · Superliga",
+    "RUS": "Rusya · Premier Lig", "SWE": "İsveç · Allsvenskan", "SWZ": "İsviçre · Süper Lig",
+    "USA": "ABD · MLS",
 }
 
 app = FastAPI(title="football-odds", docs_url=None, redoc_url=None)
@@ -313,6 +321,40 @@ def teams(stamp: str, match_id: str) -> dict:
         "h2h": {"n": n_h2h, "rows": h2h_rows, "home_wins": home_wins, "draws": sum(1 for r in h2h_rows if r["outcome"] == "B"),
                 "away_wins": sum(1 for r in h2h_rows if r["outcome"] == "M"), "shown": len(h2h_rows)},
     }
+
+
+@app.get("/api/live/{date}")
+def live(date: str) -> dict:
+    """Live minute/score (ESPN, best effort) or the final result from the database, per match id."""
+    from .live import live_for_fixture, status_label_tr
+
+    df = _all_matches()
+    table = df[df["date_tr"].astype(str) == date] if not df.empty else df
+    if table.empty:
+        return {"date": date, "live": {}, "any_live": False}
+    hist = _history()
+    out: dict[str, dict] = {}
+    any_live = False
+    for _, row in table.iterrows():
+        mid = _str(row["match_id"])
+        info: dict | None = None
+        # 1) result already in the processed database (Football-Data published it)
+        if hist is not None:
+            hit = hist[(hist["league"] == _str(row["league"])) & (hist["home_team"] == _str(row["home"])) & (hist["away_team"] == _str(row["away"]))
+                       & (hist["date"].dt.strftime("%Y-%m-%d") == _str(row["date"])[:10])]
+            if not hit.empty and hit.iloc[0]["result_code"] is not None and str(hit.iloc[0]["ftr"]) in ("H", "D", "A"):
+                r = hit.iloc[0]
+                info = {"home_score": int(r["fthg"]), "away_score": int(r["ftag"]), "state": "post", "detail": "FT", "clock": "", "period": 2,
+                        "ht_home": int(r["hthg"]) if pd.notna(r.get("hthg")) else None, "ht_away": int(r["htag"]) if pd.notna(r.get("htag")) else None,
+                        "source": "football-data"}
+        # 2) otherwise ESPN (today's and recent matches)
+        if info is None:
+            info = live_for_fixture(_str(row["league"]), _str(row["date"])[:10], _str(row["home"]), _str(row["away"]))
+        if info:
+            info["label"] = status_label_tr(info)
+            any_live = any_live or info.get("state") == "in"
+            out[mid] = info
+    return {"date": date, "live": out, "any_live": any_live, "fetched_at": dt.datetime.now(dt.timezone.utc).isoformat()}
 
 
 @app.post("/api/refresh")

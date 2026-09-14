@@ -77,6 +77,13 @@ LEAGUE_TR = {
     "I1": "İtalya · Serie A", "I2": "İtalya · Serie B", "D1": "Almanya · Bundesliga", "D2": "Almanya · 2. Bundesliga",
     "F1": "Fransa · Ligue 1", "F2": "Fransa · Ligue 2", "N1": "Hollanda · Eredivisie", "P1": "Portekiz · Primeira Liga",
     "B1": "Belçika · Pro League", "T1": "Türkiye · Süper Lig", "G1": "Yunanistan · Süper Lig", "SC0": "İskoçya · Premiership",
+    "E2": "İngiltere · League One", "E3": "İngiltere · League Two", "EC": "İngiltere · National League",
+    "SC1": "İskoçya · Championship", "SC2": "İskoçya · League One", "SC3": "İskoçya · League Two",
+    "ARG": "Arjantin · Liga Profesional", "AUT": "Avusturya · Bundesliga", "BRA": "Brezilya · Série A", "CHN": "Çin · Süper Lig",
+    "DNK": "Danimarka · Superliga", "FIN": "Finlandiya · Veikkausliiga", "IRL": "İrlanda · Premier Division", "JPN": "Japonya · J1 Ligi",
+    "MEX": "Meksika · Liga MX", "NOR": "Norveç · Eliteserien", "POL": "Polonya · Ekstraklasa", "ROU": "Romanya · Superliga",
+    "RUS": "Rusya · Premier Lig", "SWE": "İsveç · Allsvenskan", "SWZ": "İsviçre · Süper Lig",
+    "USA": "ABD · MLS",
 }
 SIGNAL_TR = {
     "STRONG HISTORICAL DEVIATION": ("Belirgin sapma", "strong"),
@@ -390,7 +397,7 @@ st.markdown("## Sözlük: sayılar ne anlama geliyor?")
 glossary = [
     ("Oran (1 / X / 2)", "Bahis şirketinin fiyatı. 1 = ev sahibi kazanır, X = beraberlik, 2 = deplasman kazanır. Oran ne kadar düşükse şirket o sonucu o kadar olası görüyor."),
     ("Piyasanın beklentisi", "Oranlardan hesaplanan ihtimal. 1/oran alınır, şirketin kâr payı (marj) çıkarılır, üçü toplamı %100 yapılır. Piyasadaki birçok şirketin ortalaması kullanılır."),
-    ("Benzer maçlar", "Geçmiş 15 sezondan (2011'den bugüne, 16 lig, 84 bin maç) piyasa ihtimalleri bu maça en yakın 500 maç. Yalnızca analiz gününden önce oynanmış maçlar kullanılır."),
+    ("Benzer maçlar", "Geçmiş 15 sezondan (2011'den bugüne, 38 lig, 130 binden fazla maç) piyasa ihtimalleri bu maça en yakın 500 maç. Yalnızca analiz gününden önce oynanmış maçlar kullanılır."),
     ("Benzerlik %", "İki maçın ihtimal profilleri arasındaki fark. %98 benzerlik, ihtimallerin toplam 2 puan farklı olduğu anlamına gelir. %95'in altı zayıf benzerliktir."),
     ("Geçmiş (ham)", "Benzer maçlarda o sonucun gerçekleşme yüzdesi. Örnek: 500 maçın 290'ında ev sahibi kazandıysa %58."),
     ("Geçmiş (düzeltilmiş)", "Ham yüzde, az örneklemin abartmasını önlemek için piyasaya doğru biraz çekilir. Kararlarda bu değer kullanılır."),

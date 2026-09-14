@@ -67,10 +67,26 @@ re-run occasionally (e.g. once a season) because its `selected_params.json` driv
 ## Data source and audit findings
 
 Source: [Football-Data.co.uk](https://www.football-data.co.uk) (`notes.txt` documents the columns).
-16 leagues × 16 seasons (2011/12 → 2026/27) are configured; 8 are `core` (Premier League,
-Championship, La Liga, Serie A, Bundesliga, Ligue 1, Eredivisie, Primeira Liga), 8 extra
-(Belgium, Turkey, Greece, Scotland, Segunda, Serie B, 2. Bundesliga, Ligue 2). Fixtures with
-pre-match odds come from `fixtures.csv` on the same site.
+38 leagues × up to 16 seasons (2011/12 → 2026/27) are configured, in two file families:
+
+* **22 main divisions** (`mmz4281/<season>/<div>.csv`, one file per season, pre-closing consensus
+  odds, half-time score, O/U 2.5): 8 `core` (Premier League, Championship, La Liga, Serie A,
+  Bundesliga, Ligue 1, Eredivisie, Primeira Liga) + Belgium, Turkey, Greece, Scottish Premiership,
+  Segunda, Serie B, 2. Bundesliga, Ligue 2, League One, League Two, National League, Scottish
+  Championship / League One / League Two. Fixtures: `fixtures.csv`.
+* **16 extra leagues** (`new/<COUNTRY>.csv`, ONE file per country holding every season since 2012):
+  Argentina, Austria, Brazil, China, Denmark, Finland, Ireland, Japan, Mexico, Norway, Poland,
+  Romania, Russia, Sweden, Switzerland, USA. These files publish **closing odds only**
+  (`AvgCH/MaxCH/PSCH/B365CH`), no half-time score and no O/U market, so for them "market" is the
+  closing consensus (`consensus_source = avg_closing`) and the closing-vs-pre-closing benchmarks
+  skip them. Calendar-year seasons get the codes `Y2015`, split seasons the usual `1617`.
+  Fixtures: `new_league_fixtures.csv` (pre-closing `AvgH`), matched on Country + League.
+  Switzerland's Challenge League has two rows on Football-Data and is not configured.
+
+That is the whole football coverage of Football-Data. Leagues İddaa lists but Football-Data does
+not carry (Czechia, Ukraine, Croatia, Serbia, Hungary, Bulgaria, South Korea, Australia, Saudi
+Arabia, second divisions outside the list above, the UEFA and domestic cups, national teams)
+would need another odds source with 10+ seasons of history.
 
 Audit results (`results/audit/audit_summary.md`, 256/256 files present):
 
@@ -86,8 +102,10 @@ Audit results (`results/audit/audit_summary.md`, 256/256 files present):
 | **BTTS odds** | **never published** → BTTS is derived from the final score only |
 | `HxG/AxG` | 2026/27 only, post-match expected goals → excluded from every feature |
 
-Data quality (`results/data_quality_report.md`): 84 073 matches, 0.1 % without 1X2 odds, 0.2 %
-without O/U odds, 0 duplicates, 3 rows without a result (dropped), mean 1X2 overround 1.065.
+Data quality (`results/data_quality_report.md`): 179 545 matches (84 073 before the 22 leagues
+added on 2026-09-14), 0.1 % without 1X2 odds, 0 duplicates, mean 1X2 overround 1.065 for the
+main divisions. The extra leagues have no O/U market, so the O/U-based layers (`1x2_ou` feature
+set, goal-market comparison) simply skip them.
 A handful of rows carry corrupt odds (e.g. draw at 1.25 with a 20 % overround); consensus
 markets with overround outside `[0.98, odds.max_overround]` are treated as missing.
 
@@ -269,7 +287,19 @@ the data when the container is empty (download → build → today, in a backgro
 at `FO_DAILY_UTC`. The status pill in the top bar starts a refresh (`POST /api/refresh`, protected by `FO_ADMIN_KEY` when
 set). Set `FO_UI=streamlit` to serve the legacy Streamlit dashboard instead.
 
-API: `GET /api/meta`, `GET /api/day/{YYYY-MM-DD}`, `GET /api/analogues/{date}/{match_id}?k=50`, `GET /api/health`.
+API: `GET /api/meta`, `GET /api/day/{YYYY-MM-DD}`, `GET /api/analogues/{date}/{match_id}?k=50`,
+`GET /api/teams/{date}/{match_id}`, `GET /api/live/{YYYY-MM-DD}`, `GET /api/health`.
+
+Live scores (`src/web/live.py`) come from ESPN's public scoreboard JSON (unofficial, best effort, 45 s cache); finished
+matches already in the database are answered from there. The page re-polls every minute while a match is in play.
+
+**Commentary** (`commentary()` in `src/web/static/app.js`) is generated in the browser from the numbers already on the
+card, so it is rule-based text, not a model: before kick-off it states the market favourite, the analogue frequency and
+whether the two agree (within 2 points = agree), the 2.5-goal view of both, and the first-half shares; in play it
+conditions the 9-way HT/FT distribution of the analogues on the current half-time state and reports how many goals are
+still needed for over 2.5 against the second-half goal counts; after the final whistle it says which of the two views
+(market or history) sat closer to the actual result and total goals, and the day summary tallies that over every
+finished match. The tally is descriptive: a good day does not overturn the blind backtest, which is stated next to it.
 
 Railway, second service from the same repository:
 

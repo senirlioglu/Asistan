@@ -129,7 +129,61 @@
       state.day = { date: stamp, matches: [] };
     }
     if (state.leagues.size === 0) state.day.matches.forEach((m) => state.leagues.add(m.league));
-    renderSummary(); renderFlagged(); renderLeagueChips(); renderCards();
+    state.live = {};
+    renderSummary(); renderFlagged(); renderLeagueChips(); renderCards(); renderTally();
+    loadLive();
+  }
+
+  // ------------------------------------------------------------------ live scores
+  async function loadLive() {
+    if (!state.day || !state.day.matches.length) return;
+    const date = state.date;
+    try {
+      const d = await api(`/api/live/${date}`);
+      if (state.date !== date) return;
+      state.live = d.live || {};
+      applyLive();
+      clearTimeout(state.liveTimer);
+      if (d.any_live) state.liveTimer = setTimeout(loadLive, 60000);
+    } catch (_) { /* live is best effort */ }
+  }
+
+  function liveBadge(info) {
+    if (!info) return "";
+    const score = `${info.home_score}-${info.away_score}`;
+    const ht = info.ht_home != null ? ` <small>(İY ${info.ht_home}-${info.ht_away})</small>` : "";
+    if (info.state === "in") return `<span class="live in"><i></i>${esc(info.label || "canlı")} · ${score}${ht}</span>`;
+    if (info.state === "post") return `<span class="live post">MS ${score}${ht}</span>`;
+    return "";
+  }
+
+  function applyLive() {
+    const byId = new Map(state.day.matches.map((m) => [m.id, m]));
+    document.querySelectorAll(".card[data-id]").forEach((c) => {
+      const m = byId.get(c.dataset.id), info = state.live[c.dataset.id];
+      const slot = c.querySelector(".live-slot");
+      if (slot) slot.innerHTML = liveBadge(info);
+      const com = c.querySelector("[data-comment]");
+      if (com && m) com.innerHTML = `<b class="comment-label">Yorum</b> ${commentary(m, info).short}`;
+    });
+    const open = $("#sheet-live");
+    if (open && open.dataset.id) open.innerHTML = liveBadge(state.live[open.dataset.id]);
+    const sc = $("#sheet-comment");
+    if (sc && byId.has(sc.dataset.id)) sc.innerHTML = commentary(byId.get(sc.dataset.id), state.live[sc.dataset.id]).full;
+    renderTally();
+  }
+
+  function renderTally() {
+    // Over the day's finished matches: whose expectation (market or history) sat closer to what happened.
+    const box = $("#tally");
+    const done = state.day.matches.filter((m) => state.live?.[m.id]?.state === "post");
+    if (!done.length) { box.hidden = true; return; }
+    const t = { market: 0, hist: 0, live: 0 };
+    done.forEach((m) => { const c = commentary(m, state.live[m.id]).closer || {}; t.market += c.market || 0; t.hist += c.hist || 0; });
+    state.day.matches.forEach((m) => { if (state.live?.[m.id]?.state === "in") t.live++; });
+    const lead = t.hist > t.market ? "geçmiş sayımları" : t.market > t.hist ? "piyasa" : "ikisi eşit";
+    box.hidden = false;
+    box.innerHTML = `Bugün biten <b>${done.length} maçta</b> gerçeğe daha yakın olan: <b>${lead}</b>. Piyasa ${t.market} başlıkta, geçmiş ${t.hist} başlıkta daha yakındı (maç sonucu ve 2,5 gol ayrı birer başlık)${t.live ? ` · ${t.live} maç sürüyor` : ""}. Küçük sayılar tesadüf olabilir; körleme testin sonucu değişmez.`;
   }
 
   function renderFlagged() {
@@ -198,6 +252,96 @@
     return s;
   }
 
+  // ------------------------------------------------------------------ commentary
+  const SIDE = { h: "ev sahibi", d: "beraberlik", a: "deplasman" };
+  const fav = (o) => ["h", "d", "a"].reduce((b, k) => ((o[k] ?? -1) > (o[b] ?? -1) ? k : b), "h");
+  const resultKey = (hs, as) => (hs > as ? "h" : hs < as ? "a" : "d");
+  const tone = (diff) => (Math.abs(diff) < 2 ? "aynı görüşte" : diff > 0 ? "geçmiş biraz daha iyimser" : "geçmiş biraz daha temkinli");
+
+  function htConditional(htft, s) {
+    // P(FT outcome | HT state s) from the 9-way HT/FT distribution
+    const sym = { h: "1", d: "X", a: "2" }[s];
+    const p = { h: htft[`${sym}/1`] || 0, d: htft[`${sym}/X`] || 0, a: htft[`${sym}/2`] || 0 };
+    const t = p.h + p.d + p.a;
+    return t > 0 ? { h: p.h / t, d: p.d / t, a: p.a / t, n: t } : null;
+  }
+
+  function commentary(m, live) {
+    const f = fav(m.market), name = SIDE[f];
+    const mk = m.market[f], hs = m.adj[f], diff = (hs ?? 0) - (mk ?? 0);
+    const mo = m.market_over25, ho = m.over25;
+    const parts = [], short = [];
+    const state = live?.state;
+
+    if (state === "post") {
+      const r = resultKey(live.home_score, live.away_score), total = live.home_score + live.away_score;
+      const won = r === f;
+      const mkR = m.market[r], hsR = m.adj[r];
+      let s1 = `<b>Sonuç ${live.home_score}-${live.away_score}, ${SIDE[r]}.</b> `;
+      if (won) s1 += `Piyasa ${pct(mk)}, benzer maçlar ${pct(hs)} ile ${name} bekliyordu; ikisi de doğru yönü gösterdi${Math.abs(diff) >= 2 ? ` (${diff > 0 ? "geçmiş" : "piyasa"} daha kararlıydı)` : ""}.`;
+      else s1 += `Piyasa ${pct(mk)}, benzer maçlar ${pct(hs)} ile ${name} bekliyordu; sonuç ters geldi. Bu profildeki maçların yaklaşık ${pct(hsR)}'i böyle bitiyor; tek maç bir olasılığı yanlışlamaz.`;
+      parts.push(s1); short.push(s1);
+      let closerCount = { market: 0, hist: 0 };
+      if (mkR != null && hsR != null && Math.abs(mkR - hsR) >= 1) (hsR > mkR ? closerCount.hist++ : closerCount.market++);
+      if (mo != null && ho != null) {
+        const over = total > 2.5;
+        const pm = over ? mo : 100 - mo, ph = over ? ho : 100 - ho;
+        let s2 = `Gol: toplam ${total}, 2,5 <b>${over ? "üstü" : "altı"}</b>. Piyasa üst ${pct(mo)}, benzer maçlar ${pct(ho)} demişti → `;
+        s2 += (over ? mo >= 50 : mo < 50) ? "piyasanın beklentisi tuttu" : "piyasanın beklentisi tutmadı";
+        s2 += Math.abs(pm - ph) >= 1 ? ` (${ph > pm ? "geçmiş" : "piyasa"} gerçeğe biraz daha yakındı).` : ".";
+        parts.push(s2);
+        if (Math.abs(pm - ph) >= 1) (ph > pm ? closerCount.hist++ : closerCount.market++);
+      }
+      if (live.ht_home != null && m.htft && Object.keys(m.htft).length) {
+        const htKey = resultKey(live.ht_home, live.ht_away);
+        const sym = { h: "1", d: "X", a: "2" };
+        const combo = `${sym[htKey]}/${sym[r]}`, share = m.htft[combo] || 0;
+        const rank = HTFT_ORDER.map((k) => m.htft[k] || 0).sort((a, b) => b - a).indexOf(share) + 1;
+        parts.push(`İY/MS <b>${combo}</b>: benzer maçlarda ${pct(100 * share)} görülen, ${rank <= 2 ? "en sık" : rank <= 4 ? "orta sıklıkta" : "nadir"} bir kombinasyon.`);
+      }
+      const tally = closerCount.hist > closerCount.market ? "geçmiş" : closerCount.market > closerCount.hist ? "piyasa" : "ikisi eşit";
+      parts.push(`<span class="muted">Bu maçta gerçeğe daha yakın olan: <b>${tally}</b> (${closerCount.market} başlıkta piyasa, ${closerCount.hist} başlıkta geçmiş). Tek maçtan genelleme yapılmaz; gün özetindeki sayaca bak.</span>`);
+      return { short: short.join(" "), full: parts.join(" "), closer: closerCount };
+    }
+
+    if (state === "in") {
+      const lead = resultKey(live.home_score, live.away_score), total = live.home_score + live.away_score;
+      const minute = parseInt(String(live.clock || "").replace(/\D/g, ""), 10) || 0;
+      const secondHalf = (live.period || 0) >= 2 || minute > 45;
+      let s1 = `<b>${live.label || "Canlı"} · ${live.home_score}-${live.away_score}.</b> `;
+      const cond = secondHalf && m.htft ? htConditional(m.htft, live.ht_home != null ? resultKey(live.ht_home, live.ht_away) : lead) : null;
+      if (cond) {
+        const base = live.ht_home != null ? `Devre arası ${live.ht_home}-${live.ht_away}` : `Şu an ${SIDE[lead]}${lead === "d" ? "" : " önde"}`;
+        s1 += `${base}; benzer maçlarda bu durumdan maç sonu: ev sahibi ${pct(100 * cond.h)}, beraberlik ${pct(100 * cond.d)}, deplasman ${pct(100 * cond.a)}. `;
+      }
+      s1 += lead === f ? `Maç, piyasanın (${pct(mk)}) ve geçmişin (${pct(hs)}) işaret ettiği yönde gidiyor.`
+        : lead === "d" ? `Favori ${name} (${pct(mk)}) henüz öne geçemedi.` : `Favori ${name} (${pct(mk)}) geride; bu profildeki maçların ${pct(m.adj[lead])}'i böyle bitiyor.`;
+      parts.push(s1); short.push(s1);
+      if (m.halves && m.halves.sh_avg != null) {
+        const need = Math.max(0, 3 - total);
+        let s2 = `Gol: şu ana kadar ${total}. 2,5 üstü için ${need === 0 ? "sınır geçildi" : `en az ${need} gol daha gerekli`}; `;
+        s2 += secondHalf ? `benzer maçlarda ikinci yarıda ortalama ${num(m.halves.sh_avg)} gol atıldı, en az 1 gol ${pct(100 * m.halves.sh_over05)}, en az 2 gol ${pct(100 * m.halves.sh_over15)}.`
+          : `benzer maçlarda ilk yarıda ortalama ${num(m.halves.fh_avg)} gol, maç toplamı ${num(m.avg_goals)}; 2,5 üstü ${pct(ho)} (piyasa ${pct(mo)}).`;
+        parts.push(s2);
+      }
+      return { short: short.join(" "), full: parts.join(" ") };
+    }
+
+    // pre-match
+    let s1 = `Piyasa favorisi <b>${name}</b> (${pct(mk)}); benzer ${m.n} maçta ${pct(hs)} → ${tone(diff)}.`;
+    parts.push(s1); short.push(s1);
+    if (mo != null && ho != null) {
+      const gd = ho - mo;
+      parts.push(`Gol: piyasa 2,5 üstü ${pct(mo)}, benzer maçlar ${pct(ho)}${Math.abs(gd) < 3 ? " → aynı görüşte" : gd > 0 ? " → geçmiş daha gollü" : " → geçmiş daha az gollü"}; iki takım da gol attı ${pct(m.btts)}, ortalama ${num(m.avg_goals)} gol.`);
+    }
+    if (m.ht && m.ht.home != null && m.htft) {
+      const top = HTFT_ORDER.map((k) => [k, m.htft[k] || 0]).sort((a, b) => b[1] - a[1])[0];
+      parts.push(`İlk yarı: benzer maçların ${pct(m.ht.home)}'inde ev sahibi, ${pct(m.ht.draw)}'inde berabere, ${pct(m.ht.away)}'inde deplasman devreye önde girdi; en sık İY/MS ${top[0]} (${pct(100 * top[1])}).`);
+    }
+    parts.push(`<span class="muted">Bu yorum yalnızca oran profiline ve geçmiş sayımlara dayanır; kadro, form ve sakatlık bilgisi içermez.</span>`);
+    return { short: short.join(" "), full: parts.join(" ") };
+  }
+
   function barRow(name, market, hist, scale) {
     const w = (v) => `${Math.max(1, ((v ?? 0) / scale) * 100)}%`;
     return `<div class="bar-row"><span class="name">${name}</span><div class="bar-pair">
@@ -209,13 +353,14 @@
     const [sigLabel, sigCls] = SIGNAL[m.signal] || [m.signal, ""];
     const scale = Math.max(...["h", "d", "a"].flatMap((k) => [m.market[k] ?? 0, m.adj[k] ?? 0])) * 1.08;
     return `
-      <div class="card-top"><span>${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}</span><span class="num">Benzerlik ${pct(m.avg_sim, 1)}</span></div>
+      <div class="card-top"><span>${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} <span class="live-slot">${liveBadge(state.live?.[m.id])}</span></span><span class="num">Benzerlik ${pct(m.avg_sim, 1)}</span></div>
       <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
       <div class="odds">${["h", "d", "a"].map((k) => `<div class="odd"><span class="label">${OUT[k]}</span><div class="v num">${num(m.odds[k])}</div><div class="p num">piyasa ${pct(m.market[k])}</div></div>`).join("")}</div>
       <div class="legend"><span><i></i>Piyasanın beklentisi</span><span><i class="hist"></i>Benzer maçlarda gerçekleşen</span></div>
       <div class="bars">${barRow("Ev sahibi", m.market.h, m.adj.h, scale)}${barRow("Beraberlik", m.market.d, m.adj.d, scale)}${barRow("Deplasman", m.market.a, m.adj.a, scale)}</div>
       <p class="sentence">${sentence(m)}</p>
       <div class="tags"><span class="tag ${sigCls}">${sigLabel}</span><span class="tag">Güven: ${CONF[m.confidence] || m.confidence} · ${m.n} maç</span></div>
+      <p class="comment" data-comment><b class="comment-label">Yorum</b> ${commentary(m, state.live?.[m.id]).short}</p>
       <div class="goals">Benzer maçlarda gol: 2,5 üstü ${pct(m.over25)} · iki takım da gol attı ${pct(m.btts)} · ortalama ${num(m.avg_goals)} gol${m.market_over25 != null ? ` · piyasanın 2,5 üstü beklentisi ${pct(m.market_over25)}` : ""}</div>
       <span class="card-more">Ayrıntılar ve benzer maçlar →</span>`;
   }
@@ -237,7 +382,7 @@
     }
     if (!ms.length) { wrap.appendChild(el("p", "count", "Filtrelere uyan maç yok.")); return; }
     ms.forEach((m) => {
-      const c = el("button", "card", cardHTML(m)); c.type = "button"; c.setAttribute("aria-label", `${m.home} – ${m.away} ayrıntıları`);
+      const c = el("button", "card", cardHTML(m)); c.type = "button"; c.dataset.id = m.id; c.setAttribute("aria-label", `${m.home} – ${m.away} ayrıntıları`);
       c.onclick = () => openSheet(m);
       wrap.appendChild(c);
     });
@@ -278,7 +423,7 @@
   }
 
   async function openSheet(m) {
-    $("#sheet-sub").textContent = `${m.league_name}${m.time ? " · " + m.time : ""} · ${fmtDate(m.date)}`;
+    $("#sheet-sub").innerHTML = `${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)} <span id="sheet-live" data-id="${esc(m.id)}">${liveBadge(state.live?.[m.id])}</span>`;
     $("#sheet-title").textContent = `${m.home} – ${m.away}`;
     const body = $("#sheet-body");
     const rows = ["home", "draw", "away"].map((oc) => {
@@ -290,6 +435,7 @@
     const tol = m.tolerance?.probs ? Object.entries(m.tolerance.probs).map(([k, v]) => `±${(100 * Number(k)).toFixed(0)} puan: ${v} maç`).join(" · ") : "";
     const top = Object.entries(m.scorelines || {}).filter(([k]) => k !== "other").sort((a, b) => b[1] - a[1]).slice(0, 8);
     body.innerHTML = `
+      <section><h3>Yorum</h3><p class="sentence comment full" id="sheet-comment" data-id="${esc(m.id)}">${commentary(m, state.live?.[m.id]).full}</p></section>
       <section><h3>Üç ihtimal, üç bakış</h3><div class="table-wrap"><table>
         <thead><tr><th>Sonuç</th><th class="num">Piyasa</th><th class="num hide-sm">Geçmiş (ham)</th><th class="num">Düzeltilmiş</th><th class="num">Sapma</th><th class="num hide-sm">%95 aralık</th><th class="num hide-sm">Adil oran</th><th>Şansla açıklanır mı?</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
@@ -318,7 +464,7 @@
   }
 
   function teamBlock(t, side) {
-    if (!t.n_total) return `<div class="teambox"><h4>${esc(t.team)}</h4><p class="note">Veritabanında bu takımın maçı yok (havuzdaki 16 lig dışında oynuyor olabilir).</p></div>`;
+    if (!t.n_total) return `<div class="teambox"><h4>${esc(t.team)}</h4><p class="note">Veritabanında bu takımın maçı yok (havuzdaki 38 lig dışında oynuyor olabilir).</p></div>`;
     if (!t.n_similar) return `<div class="teambox"><h4>${esc(t.team)}</h4><p class="note">Havuzda ${t.n_total} maçı var ama hiçbirinde bugünkü gibi (${side} olarak ~${pct(t.p_today)}) fiyatlanmamış.</p></div>`;
     const conf = t.n_similar < 30 ? "çok az örnek, sadece fikir verir" : t.n_similar < 100 ? "az örnek" : "yeterli örnek";
     return `<div class="teambox"><h4>${esc(t.team)}</h4>
@@ -336,7 +482,7 @@
         ? `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4>
            <p class="sentence">Havuzda <b>${h.n}</b> karşılaşma var${h.shown < h.n ? ` (son ${h.shown} tanesi listede)` : ""}: ${esc(m.home)} ${h.home_wins} galibiyet, ${h.draws} beraberlik, ${esc(m.away)} ${h.away_wins} galibiyet.</p>
            ${teamRows(h.rows)}</div>`
-        : `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4><p class="note">Havuzda (2011'den beri, 16 lig) bu iki takım birbiriyle oynamamış.</p></div>`;
+        : `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4><p class="note">Havuzda (2011'den beri, 38 lig) bu iki takım birbiriyle oynamamış.</p></div>`;
       box.innerHTML = `<p class="note">Bu bölüm sadece bu iki takıma bakar; oran benzerliğiyle ilgisi yoktur. Az sayıda maça dayanır, o yüzden yüzdeler kaba fikir verir.</p>${h2h}${teamBlock(d.home, "ev sahibi")}${teamBlock(d.away, "deplasman")}`;
     } catch (e) { box.innerHTML = `<p class="note">Takım geçmişi yüklenemedi: ${esc(e.message)}</p>`; }
   }
@@ -364,7 +510,7 @@
   const GLOSSARY = [
     ["Oran (1 / X / 2)", "Bahis şirketinin fiyatı. 1 = ev sahibi kazanır, X = beraberlik, 2 = deplasman kazanır. Oran ne kadar düşükse şirket o sonucu o kadar olası görüyor."],
     ["Piyasanın beklentisi", "Oranlardan hesaplanan ihtimal: 1/oran alınır, şirketin kâr payı (marj) çıkarılır, üçünün toplamı %100 yapılır. Birçok şirketin ortalaması kullanılır."],
-    ["Benzer maçlar", "2011'den bugüne 16 ligden 84 bin maç arasında piyasa ihtimalleri bu maça en yakın 500 maç. Yalnızca analiz gününden önce oynanmış maçlar kullanılır."],
+    ["Benzer maçlar", "2011'den bugüne 38 ligden 130 binden fazla maç arasında piyasa ihtimalleri bu maça en yakın 500 maç. Yalnızca analiz gününden önce oynanmış maçlar kullanılır."],
     ["Benzerlik %", "İki maçın ihtimal profilleri arasındaki yakınlık. %98 benzerlik, ihtimallerin toplam 2 puan farklı olduğu anlamına gelir. %95'in altı zayıf benzerliktir."],
     ["Geçmiş (ham)", "Benzer maçlarda o sonucun gerçekleşme yüzdesi. 500 maçın 290'ında ev sahibi kazandıysa %58."],
     ["Geçmiş (düzeltilmiş)", "Ham yüzde, az örneklemin abartmasını önlemek için piyasaya doğru biraz çekilir. Kartlarda ve sapmada bu değer kullanılır."],

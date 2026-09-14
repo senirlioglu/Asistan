@@ -30,7 +30,36 @@ data:
     I2:  {name: "Serie B",           country: "Italy",       tier: 2, core: false}
     D2:  {name: "2. Bundesliga",     country: "Germany",     tier: 2, core: false}
     F2:  {name: "Ligue 2",           country: "France",      tier: 2, core: false}
+    E2:  {name: "League One",        country: "England",     tier: 3, core: false}
+    E3:  {name: "League Two",        country: "England",     tier: 4, core: false}
+    EC:  {name: "National League",   country: "England",     tier: 5, core: false}
+    SC1: {name: "Championship",      country: "Scotland",    tier: 2, core: false}
+    SC2: {name: "League One",        country: "Scotland",    tier: 3, core: false}
+    SC3: {name: "League Two",        country: "Scotland",    tier: 4, core: false}
   include_extra_leagues: true
+
+  # Football-Data "extra" files: https://www.football-data.co.uk/new/<file>.csv — ONE file per country
+  # holding every season, with Country/League/Season columns instead of Div. They carry closing odds
+  # only (AvgCH/MaxCH/PSCH/B365CH), no half-time score and no O/U market, so for these leagues
+  # "market" means the closing consensus. Fixtures come from new_league_fixtures.csv (pre-closing
+  # AvgH etc.), matched on Country + League. `fd_league: null` takes every competition in the file.
+  extra_leagues:
+    ARG:  {name: "Liga Profesional",  country: "Argentina",   file: "ARG", fd_country: "Argentina",   fd_league: null}
+    AUT:  {name: "Bundesliga",        country: "Austria",     file: "AUT", fd_country: "Austria",     fd_league: "Bundesliga"}
+    BRA:  {name: "Série A",           country: "Brazil",      file: "BRA", fd_country: "Brazil",      fd_league: "Serie A"}
+    CHN:  {name: "Super League",      country: "China",       file: "CHN", fd_country: "China",       fd_league: "Super League"}
+    DNK:  {name: "Superliga",         country: "Denmark",     file: "DNK", fd_country: "Denmark",     fd_league: "Superliga"}
+    FIN:  {name: "Veikkausliiga",     country: "Finland",     file: "FIN", fd_country: "Finland",     fd_league: "Veikkausliiga"}
+    IRL:  {name: "Premier Division",  country: "Ireland",     file: "IRL", fd_country: "Ireland",     fd_league: "Premier Division"}
+    JPN:  {name: "J1 League",         country: "Japan",       file: "JPN", fd_country: "Japan",       fd_league: "J1 League"}
+    MEX:  {name: "Liga MX",           country: "Mexico",      file: "MEX", fd_country: "Mexico",      fd_league: "Liga MX"}
+    NOR:  {name: "Eliteserien",       country: "Norway",      file: "NOR", fd_country: "Norway",      fd_league: "Eliteserien"}
+    POL:  {name: "Ekstraklasa",       country: "Poland",      file: "POL", fd_country: "Poland",      fd_league: "Ekstraklasa"}
+    ROU:  {name: "Superliga",         country: "Romania",     file: "ROU", fd_country: "Romania",     fd_league: "Superliga"}
+    RUS:  {name: "Premier League",    country: "Russia",      file: "RUS", fd_country: "Russia",      fd_league: "Premier League"}
+    SWE:  {name: "Allsvenskan",       country: "Sweden",      file: "SWE", fd_country: "Sweden",      fd_league: "Allsvenskan"}
+    SWZ:  {name: "Super League",      country: "Switzerland", file: "SWZ", fd_country: "Switzerland", fd_league: "Super League"}
+    USA:  {name: "MLS",               country: "USA",         file: "USA", fd_country: "USA",         fd_league: "MLS"}
 
   # Season codes as used in Football-Data URLs (mmz4281/<season>/<div>.csv).
   seasons:
@@ -108,4 +137,5 @@ backtest:
 current:
   provider: "football_data_fixtures"   # football_data_fixtures | the_odds_api
   fixtures_url: "https://www.football-data.co.uk/fixtures.csv"
+  extra_fixtures_url: "https://www.football-data.co.uk/new_league_fixtures.csv"
   the_odds_api_key_env: "THE_ODDS_API_KEY"
