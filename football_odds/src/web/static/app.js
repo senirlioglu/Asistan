@@ -247,9 +247,13 @@
       const data = await api(`/api/analogues/${state.date}/${m.id}?k=${k}`);
       if (!data.rows.length) { box.textContent = "Benzer maç listesi bulunamadı."; return; }
       const RES = { H: "Ev", D: "Ber.", A: "Dep." };
-      box.innerHTML = `<p class="note">Gösterilen ${data.rows.length} maçta: ev sahibi %${data.share.h.toFixed(0)} · beraberlik %${data.share.d.toFixed(0)} · deplasman %${data.share.a.toFixed(0)}</p>
+      const same = data.same_team_count || 0;
+      const sameNote = same
+        ? `<p class="note">Bu listede ${m.home} veya ${m.away}'nın kendi maçlarından <b>${same} tane</b> var (işaretli satırlar). Benzerlik yalnızca oran profiline bakar; takım adı hesaba girmez, bu maçlar tesadüfen buradadır.</p>`
+        : `<p class="note">Listede ${m.home} veya ${m.away}'nın kendi maçı yok. Benzerlik yalnızca oran profiline bakar; takım adı hesaba girmez.</p>`;
+      box.innerHTML = `<p class="note">Gösterilen ${data.rows.length} maçta: ev sahibi %${data.share.h.toFixed(0)} · beraberlik %${data.share.d.toFixed(0)} · deplasman %${data.share.a.toFixed(0)}</p>${sameNote}
         <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Lig</th><th>Maç</th><th class="num">1 / X / 2</th><th class="num">Benzerlik</th><th>Sonuç</th><th>2,5</th><th>KG</th></tr></thead><tbody>
-        ${data.rows.map((r) => `<tr><td class="num">${fmtShort(r.date)}</td><td>${esc(r.league_name)}</td><td>${esc(r.home)} – ${esc(r.away)}</td><td class="num">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num">${pct(r.sim, 1)}</td><td class="res-${r.result}">${RES[r.result] || r.result} ${esc(r.score)}</td><td>${r.over25 ? "Üst" : "Alt"}</td><td>${r.btts ? "Var" : "Yok"}</td></tr>`).join("")}
+        ${data.rows.map((r) => `<tr class="${r.same_team ? "same-team" : ""}"><td class="num">${fmtShort(r.date)}</td><td>${esc(r.league_name)}</td><td>${r.same_team ? "★ " : ""}${esc(r.home)} – ${esc(r.away)}</td><td class="num">${r.odds.map((o) => num(o)).join(" / ")}</td><td class="num">${pct(r.sim, 1)}</td><td class="res-${r.result}">${RES[r.result] || r.result} ${esc(r.score)}</td><td>${r.over25 ? "Üst" : "Alt"}</td><td>${r.btts ? "Var" : "Yok"}</td></tr>`).join("")}
         </tbody></table></div>`;
     } catch (e) { box.textContent = "Liste yüklenemedi: " + e.message; }
   }

@@ -66,6 +66,8 @@ def test_analogues(client):
     a = client.get("/api/analogues/2026-09-14/abc?k=25").json()
     assert len(a["rows"]) == 1 and a["rows"][0]["home"] == "Sevilla" and a["rows"][0]["over25"] is False
     assert a["share"]["h"] == 100.0
+    # Sevilla–Alaves involves neither Arsenal nor Everton -> not flagged
+    assert a["rows"][0]["same_team"] is False and a["same_team_count"] == 0 and a["teams"] == ["Arsenal", "Everton"]
     assert client.get("/api/analogues/2026-09-14/nope").json()["rows"] == []
 
 

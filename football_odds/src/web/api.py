@@ -135,17 +135,29 @@ def analogues(stamp: str, match_id: str, k: int = Query(50, ge=1, le=500)) -> di
     if an.empty:
         return {"rows": []}
     sub = an[an["fixture_id"] == match_id].sort_values("distance").head(k)
+    # the fixture's own teams: analogues are chosen by odds profile only, so a row involving one of
+    # these teams is a coincidence — it is flagged so the reader can see how many there are
+    teams: set[str] = set()
+    try:
+        table = _load_table(stamp)
+        hit = table[table["match_id"].astype(str) == match_id]
+        if not hit.empty:
+            teams = {_str(hit.iloc[0]["home"]), _str(hit.iloc[0]["away"])}
+    except HTTPException:
+        pass
     rows = []
     for _, r in sub.iterrows():
+        home, away = _str(r["home_team"]), _str(r["away_team"])
         rows.append({
             "date": pd.Timestamp(r["date"]).strftime("%Y-%m-%d"), "league": _str(r["league"]),
-            "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": _str(r["home_team"]), "away": _str(r["away_team"]),
+            "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": home, "away": away,
             "odds": [_num(r["cons_h"]), _num(r["cons_d"]), _num(r["cons_a"])], "sim": _num(r["similarity"]),
             "result": _str(r["ftr"]), "score": _str(r["score"]), "over25": _str(r["ou25"]) == "Over", "btts": _str(r["btts"]) == "Yes",
-            "years_old": _num(r.get("years_old")),
+            "years_old": _num(r.get("years_old")), "same_team": bool(teams & {home, away}),
         })
     counts = sub["ftr"].value_counts(normalize=True).reindex(["H", "D", "A"]).fillna(0) * 100
-    return {"rows": rows, "share": {"h": round(float(counts["H"]), 1), "d": round(float(counts["D"]), 1), "a": round(float(counts["A"]), 1)}}
+    return {"rows": rows, "share": {"h": round(float(counts["H"]), 1), "d": round(float(counts["D"]), 1), "a": round(float(counts["A"]), 1)},
+            "same_team_count": int(sum(r["same_team"] for r in rows)), "teams": sorted(teams)}
 
 
 @app.post("/api/refresh")
