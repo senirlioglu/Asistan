@@ -86,7 +86,7 @@ def is_running(settings: Settings | None = None) -> bool:
     return False
 
 
-def run_daily_job(settings: Settings, days: int = 2, full_download: bool = False) -> bool:
+def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False) -> bool:
     """Download -> build -> today. Returns False when another run is already in progress."""
     if not _LOCK.acquire(blocking=False):
         log.info("job already running in this process, skipping")
@@ -119,7 +119,7 @@ def run_daily_job(settings: Settings, days: int = 2, full_download: bool = False
         _LOCK.release()
 
 
-def start_background(settings: Settings, days: int = 2, full_download: bool = False) -> threading.Thread | None:
+def start_background(settings: Settings, days: int = 7, full_download: bool = False) -> threading.Thread | None:
     if is_running(settings):
         return None
     t = threading.Thread(target=run_daily_job, args=(settings, days, full_download), name="fo-daily-job", daemon=True)

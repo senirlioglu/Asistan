@@ -56,6 +56,7 @@ def test_day_payload_shape_and_nan_to_null(client):
     assert len(d["matches"]) == 1
     m = d["matches"][0]
     assert m["home"] == "Arsenal" and m["league_name"].startswith("İngiltere")
+    assert m["stamp"] == "2026-09-14"  # which prediction/analogue file the row came from
     assert m["odds"]["h"] == 1.72 and m["edge"]["h"] == 4.7 and m["ci"]["h"] == [56.4, 66.9]
     assert m["market_over25"] is None  # NaN -> null
     assert m["tolerance"]["probs"]["0.02"] == 120

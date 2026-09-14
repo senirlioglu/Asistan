@@ -57,7 +57,7 @@ All commands run from the `football_odds/` directory.
 Typical daily run:
 
 ```bash
-python -m src.cli today --update --days 2     # refresh current season results, rebuild, analyse today + tomorrow
+python -m src.cli today --update --days 7     # refresh current season results, rebuild, analyse the next 7 days
 python -m src.cli dashboard
 ```
 
@@ -275,7 +275,7 @@ Railway, second service from the same repository:
 
 1. New service → GitHub repo `senirlioglu/Asistan`, branch of your choice.
 2. Settings → **Root Directory** = `football_odds` (so `Procfile` / `railway.json` / `requirements.txt` here are used).
-3. Variables (all optional): `FO_DAILY_UTC=06:30`, `FO_DAYS_AHEAD=2`, `FO_ADMIN_KEY=<secret>`, `LOG_LEVEL=INFO`.
+3. Variables (all optional): `FO_DAILY_UTC=06:30`, `FO_DAYS_AHEAD=7`, `FO_ADMIN_KEY=<secret>`, `LOG_LEVEL=INFO`.
 4. Generate a domain. First boot downloads 256 Football-Data files and builds the database (3–5 min); the page shows the
    progress in the status panel until the first prediction file exists.
 
@@ -288,12 +288,12 @@ use the *Refresh now* button, or trigger the GitHub Actions workflow and read it
 
 ## Daily automation
 
-`.github/workflows/football-odds-daily.yml` runs `download → build → today --days 2` every morning (06:30 UTC) or on demand
+`.github/workflows/football-odds-daily.yml` runs `download → build → today --days 7` every morning (06:30 UTC) or on demand
 (`workflow_dispatch`), caches the raw Football-Data files between runs and uploads the prediction files as a workflow
 artifact (30 days). Locally the equivalent is a cron line:
 
 ```
-30 6 * * *  cd /path/to/football_odds && python -m src.cli today --update --days 2 >> results/daily.log 2>&1
+30 6 * * *  cd /path/to/football_odds && python -m src.cli today --update --days 7 >> results/daily.log 2>&1
 ```
 
 ## Output files

@@ -8,7 +8,7 @@
 Environment:
     PORT            web port (Railway sets it)
     FO_DAILY_UTC    HH:MM, daily job time in UTC (default 06:30)
-    FO_DAYS_AHEAD   how many days of fixtures to analyse (default 2)
+    FO_DAYS_AHEAD   how many days of fixtures to analyse (default 7)
     FO_ADMIN_KEY    optional; when set the dashboard's "Refresh now" button asks for it
     LOG_LEVEL       default INFO
 """
@@ -50,7 +50,7 @@ def main() -> int:
     setup_logging()
     settings = load_settings()
     hhmm = os.environ.get("FO_DAILY_UTC", "06:30")
-    days = int(os.environ.get("FO_DAYS_AHEAD", "2"))
+    days = int(os.environ.get("FO_DAYS_AHEAD", "7"))
     port = os.environ.get("PORT", "8501")
 
     threading.Thread(target=scheduler_loop, args=(settings, hhmm, days), name="fo-scheduler", daemon=True).start()

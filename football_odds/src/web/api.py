@@ -54,15 +54,37 @@ def _str(v: Any) -> str:
     return "" if v is None or (isinstance(v, float) and math.isnan(v)) else str(v)
 
 
-def _dates() -> list[str]:
-    return sorted({p.name[:10] for p in RESULTS.glob("*_predictions.csv")}, reverse=True)
-
-
 def _load_table(stamp: str) -> pd.DataFrame:
     path = RESULTS / f"{stamp}_predictions.csv"
     if not path.exists():
         raise HTTPException(404, f"no predictions for {stamp}")
     return pd.read_csv(path)
+
+
+@lru_cache(maxsize=4)
+def _all_matches_cached(key: tuple) -> pd.DataFrame:
+    """Every prediction file, one row per match. A match analysed on several run days keeps the
+    newest analysis; `stamp` says which file (and therefore which analogue file) it came from."""
+    frames = []
+    for name, _ in key:
+        df = pd.read_csv(RESULTS / f"{name}_predictions.csv")
+        df["stamp"] = name
+        frames.append(df)
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+    return df.sort_values("stamp").drop_duplicates("match_id", keep="last").reset_index(drop=True)
+
+
+def _all_matches() -> pd.DataFrame:
+    key = tuple(sorted((p.name[:10], p.stat().st_mtime) for p in RESULTS.glob("*_predictions.csv")))
+    return _all_matches_cached(key)
+
+
+def _dates() -> list[str]:
+    """Match dates (not run dates), ascending."""
+    df = _all_matches()
+    return sorted(df["date"].astype(str).unique().tolist()) if not df.empty else []
 
 
 def _load_details(stamp: str) -> dict:
@@ -83,7 +105,8 @@ def _analogues(stamp: str) -> pd.DataFrame:
 
 def _match_payload(row: pd.Series, det: dict) -> dict:
     out = {
-        "id": _str(row["match_id"]), "league": _str(row["league"]), "league_name": LEAGUE_TR.get(_str(row["league"]), _str(row["league"])),
+        "id": _str(row["match_id"]), "stamp": _str(row.get("stamp")),
+        "league": _str(row["league"]), "league_name": LEAGUE_TR.get(_str(row["league"]), _str(row["league"])),
         "date": _str(row["date"]), "time": _str(row.get("time")), "home": _str(row["home"]), "away": _str(row["away"]),
         "n": int(row["n"]), "n_eff": _num(row.get("n_eff")), "confidence": _str(row["confidence"]), "signal": _str(row["signal"]),
         "signal_outcome": _str(row.get("signal_outcome")) or "home",
@@ -116,17 +139,28 @@ def meta() -> dict:
     bt = json.loads(bt_path.read_text()) if bt_path.exists() else {}
     backtest = {k: bt.get(k) for k in ("backtest_ok", "significant_improvement", "test_seasons", "n_test_matches",
                                         "brier_market", "brier_adj", "brier_adj_p_value", "k", "feature_set", "metric")}
-    return {"dates": _dates(), "status": status, "backtest": backtest, "days_ahead": int(os.environ.get("FO_DAYS_AHEAD", "2")),
+    import datetime as _dt
+    return {"dates": _dates(), "today": _dt.date.today().isoformat(), "status": status, "backtest": backtest,
+            "days_ahead": int(os.environ.get("FO_DAYS_AHEAD", "7")),
             "admin_required": bool(os.environ.get("FO_ADMIN_KEY", "")), "daily_utc": os.environ.get("FO_DAILY_UTC", "06:30")}
 
 
-@app.get("/api/day/{stamp}")
-def day(stamp: str) -> dict:
-    table = _load_table(stamp)
-    details = _load_details(stamp).get("matches", {})
-    matches = [_match_payload(row, details.get(_str(row["match_id"]), {})) for _, row in table.iterrows()]
+@app.get("/api/day/{date}")
+def day(date: str) -> dict:
+    """All analysed matches played on `date` (a match date, not a run date)."""
+    df = _all_matches()
+    table = df[df["date"].astype(str) == date] if not df.empty else df
+    if table.empty:
+        raise HTTPException(404, f"no analysed matches on {date}")
+    details_by_stamp: dict[str, dict] = {}
+    matches = []
+    for _, row in table.iterrows():
+        stamp = _str(row["stamp"])
+        if stamp not in details_by_stamp:
+            details_by_stamp[stamp] = _load_details(stamp).get("matches", {})
+        matches.append(_match_payload(row, details_by_stamp[stamp].get(_str(row["match_id"]), {})))
     matches.sort(key=lambda m: (m["date"], m["time"], m["league_name"]))
-    return {"date": stamp, "matches": matches}
+    return {"date": date, "matches": matches}
 
 
 @app.get("/api/analogues/{stamp}/{match_id}")
@@ -257,7 +291,7 @@ def refresh(x_admin_key: str | None = Header(default=None)) -> dict:
     required = os.environ.get("FO_ADMIN_KEY", "")
     if required and x_admin_key != required:
         raise HTTPException(401, "yönetici anahtarı yanlış")
-    days = int(os.environ.get("FO_DAYS_AHEAD", "2"))
+    days = int(os.environ.get("FO_DAYS_AHEAD", "7"))
     started = start_background(settings, days=days, full_download=not (settings.processed_dir / "matches.parquet").exists())
     return {"started": started is not None, "running": True}
 

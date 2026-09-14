@@ -103,8 +103,14 @@
       startPolling();
       return;
     }
-    meta.dates.forEach((d) => { const o = el("option"); o.value = d; o.textContent = fmtDate(d); sel.appendChild(o); });
-    const want = keepDate && state.date && meta.dates.includes(state.date) ? state.date : meta.dates[0];
+    const today = meta.today || new Date().toISOString().slice(0, 10);
+    meta.dates.forEach((d) => {
+      const o = el("option"); o.value = d;
+      o.textContent = fmtDate(d) + (d === today ? " · bugün" : d < today ? " · oynandı" : "");
+      sel.appendChild(o);
+    });
+    const upcoming = meta.dates.filter((d) => d >= today);
+    const want = keepDate && state.date && meta.dates.includes(state.date) ? state.date : (upcoming[0] || meta.dates[meta.dates.length - 1]);
     sel.value = want;
     await loadDay(want);
   }
@@ -264,7 +270,7 @@
   async function loadTeams(m) {
     const box = $("#teams");
     try {
-      const d = await api(`/api/teams/${state.date}/${m.id}`);
+      const d = await api(`/api/teams/${m.stamp || state.date}/${m.id}`);
       const h = d.h2h;
       const h2h = h.n
         ? `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4>
@@ -278,7 +284,7 @@
   async function loadAnalogues(m, k) {
     const box = $("#analogues");
     try {
-      const data = await api(`/api/analogues/${state.date}/${m.id}?k=${k}`);
+      const data = await api(`/api/analogues/${m.stamp || state.date}/${m.id}?k=${k}`);
       if (!data.rows.length) { box.textContent = "Benzer maç listesi bulunamadı."; return; }
       const RES = { H: "Ev", D: "Ber.", A: "Dep." };
       const same = data.same_team_count || 0;

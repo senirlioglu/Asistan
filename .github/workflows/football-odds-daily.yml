@@ -11,7 +11,7 @@ on:
     inputs:
       days:
         description: "How many days ahead to analyse"
-        default: "2"
+        default: "7"
         required: false
 
 jobs:
@@ -40,7 +40,7 @@ jobs:
           python -m src.cli download
           python -m src.cli build
       - name: Analyse upcoming fixtures
-        run: python -m src.cli today --days ${{ github.event.inputs.days || 2 }} --refresh
+        run: python -m src.cli today --days ${{ github.event.inputs.days || 7 }} --refresh
       - name: Tests
         run: python -m pytest -q
       - uses: actions/upload-artifact@v4
