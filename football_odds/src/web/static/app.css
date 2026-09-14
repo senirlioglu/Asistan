@@ -104,6 +104,14 @@ button { cursor: pointer; }
 .verdict { background: var(--surface-2); border-left: 3px solid var(--hist); padding: 8px 12px; border-radius: 0 var(--radius-s) var(--radius-s) 0; color: var(--ink-2); font-size: 0.9rem; margin: 8px 0 14px; }
 .verdict b { color: var(--ink); }
 
+.flagged { margin: 0 0 14px; }
+.flag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.flag { border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn-ink); border-radius: 10px; padding: 6px 10px; font-size: 0.85rem; text-align: left; display: grid; gap: 1px; }
+.flag.strong { border-color: var(--strong-line); background: var(--strong-bg); color: var(--strong-ink); }
+.flag b { font-family: var(--font-display); font-weight: 700; }
+.flag small { opacity: 0.85; }
+.day-empty { background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--radius); padding: 18px; color: var(--ink-2); max-width: 65ch; }
+
 .filters { display: grid; gap: 10px; margin-bottom: 8px; }
 .chips-scroll { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .chips-scroll::-webkit-scrollbar { display: none; }

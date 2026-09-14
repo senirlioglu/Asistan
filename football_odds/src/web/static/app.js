@@ -104,22 +104,47 @@
       return;
     }
     const today = meta.today || new Date().toISOString().slice(0, 10);
-    meta.dates.forEach((d) => {
+    // always offer today + the next 6 days, plus any earlier day that has data
+    const next7 = [];
+    for (let i = 0; i < 7; i++) { const d = new Date(today + "T12:00:00"); d.setDate(d.getDate() + i); next7.push(d.toISOString().slice(0, 10)); }
+    const has = new Set(meta.dates);
+    const all = [...new Set([...meta.dates.filter((d) => d < today), ...next7, ...meta.dates.filter((d) => d > next7[6])])].sort();
+    all.forEach((d) => {
       const o = el("option"); o.value = d;
-      o.textContent = fmtDate(d) + (d === today ? " · bugün" : d < today ? " · oynandı" : "");
+      const tag = d === today ? " · bugün" : d < today ? " · oynandı" : "";
+      o.textContent = fmtDate(d) + tag + (has.has(d) ? "" : " · henüz maç yok");
       sel.appendChild(o);
     });
-    const upcoming = meta.dates.filter((d) => d >= today);
-    const want = keepDate && state.date && meta.dates.includes(state.date) ? state.date : (upcoming[0] || meta.dates[meta.dates.length - 1]);
+    const want = keepDate && state.date && all.includes(state.date) ? state.date : today;
     sel.value = want;
     await loadDay(want);
   }
 
   async function loadDay(stamp) {
     state.date = stamp;
-    state.day = await api(`/api/day/${stamp}`);
+    try {
+      state.day = await api(`/api/day/${stamp}`);
+    } catch (e) {
+      if (!String(e.message).startsWith("404")) throw e;
+      state.day = { date: stamp, matches: [] };
+    }
     if (state.leagues.size === 0) state.day.matches.forEach((m) => state.leagues.add(m.league));
-    renderSummary(); renderLeagueChips(); renderCards();
+    renderSummary(); renderFlagged(); renderLeagueChips(); renderCards();
+  }
+
+  function renderFlagged() {
+    const box = $("#flagged"), list = $("#flag-list");
+    const flagged = state.day.matches.filter((m) => m.signal.includes("DEVIATION")).sort((a, b) => maxEdge(b) - maxEdge(a));
+    box.hidden = flagged.length === 0;
+    list.innerHTML = "";
+    flagged.forEach((m) => {
+      const [label, cls] = SIGNAL[m.signal] || [m.signal, ""];
+      const oc = KEY[m.signal_outcome] || "h";
+      const edge = m.edge[oc];
+      const b = el("button", "flag " + cls, `<b>${esc(m.home)} – ${esc(m.away)}</b><small>${label} · ${OUT[oc]} ${pp(edge)} · ${m.time || ""}</small>`);
+      b.type = "button"; b.onclick = () => openSheet(m);
+      list.appendChild(b);
+    });
   }
 
   function renderSummary() {
@@ -203,6 +228,13 @@
     else if (state.sort === "time") ms.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     else ms.sort((a, b) => a.league_name.localeCompare(b.league_name, "tr") || a.time.localeCompare(b.time));
     $("#count").textContent = `${fmtDate(state.date)} · ${ms.length} maç`;
+    if (!state.day.matches.length) {
+      const today = state.meta?.today || "";
+      const msg = state.date < today
+        ? "Bu gün için kayıtlı analiz yok."
+        : "Bu gün için henüz analiz yok. Football-Data yeni haftanın maçlarını oranlarıyla birlikte genellikle <b>Salı–Çarşamba</b> yükler; sabah 09:30'daki otomatik güncellemeden sonra bu günün maçları burada görünür. Daha erken görmek için sağ üstteki durum düğmesinden <b>Şimdi güncelle</b> diyebilirsin.";
+      wrap.appendChild(el("div", "day-empty", msg)); return;
+    }
     if (!ms.length) { wrap.appendChild(el("p", "count", "Filtrelere uyan maç yok.")); return; }
     ms.forEach((m) => {
       const c = el("button", "card", cardHTML(m)); c.type = "button"; c.setAttribute("aria-label", `${m.home} – ${m.away} ayrıntıları`);
