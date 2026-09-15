@@ -99,7 +99,8 @@
   }
 
   // ------------------------------------------------------------------ notes over nesine odds (Notlar)
-  state.nt = { data: null, date: null, rules: new Set(), only: true, loading: false };
+  state.nt = { data: null, date: null, rules: new Set(), leagues: new Set(), mode: "hits", q: "", sort: "time",
+               market: "", min: null, max: null, loading: false };
 
   async function loadNotes(refresh) {
     if (state.nt.loading) return;
@@ -127,38 +128,95 @@
     }).join("") + (h.note ? `<p class="note">${esc(h.note)}${h.n_matches ? ` Veritabanı: ${h.n_matches} maç.` : ""}</p>` : "");
   }
 
+  // value of an odds path like "o25.ust" on one match; "fav" = the lower of MS 1 / MS 2
+  function ntValue(m, path) {
+    if (path === "fav") {
+      const v = ["1", "2"].map((k) => m.ms[k]).filter((x) => x != null);
+      return v.length ? Math.min(...v) : null;
+    }
+    const i = path.indexOf(".");
+    const group = m[path.slice(0, i)];
+    const v = group ? group[path.slice(i + 1)] : null;
+    return typeof v === "number" ? v : null;
+  }
+
+  const NT_GRID = [
+    ["MS", ["ms.1", "ms.X", "ms.2"], ["1", "X", "2"]],
+    ["İlk yarı", ["iy.1", "iy.X", "iy.2"], ["1", "X", "2"]],
+    ["2,5 gol", ["o25.alt", "o25.ust"], ["Alt", "Üst"]],
+    ["3,5 gol", ["o35.alt", "o35.ust"], ["Alt", "Üst"]],
+    ["İY 0,5", ["iy05.alt", "iy05.ust"], ["Alt", "Üst"]],
+    ["Karşılıklı gol", ["iy_kg.var", "y2_kg.var"], ["İY var", "2.Y var"]],
+    ["İY/MS ters", ["iyms.1/2", "iyms.2/1"], ["1/2", "2/1"]],
+    ["Skor diğer", ["iy_skor.diger", "skor.diger"], ["İY", "MS"]],
+  ];
+
+  function ntOddsGrid(m) {
+    const cells = NT_GRID.map(([label, paths, names]) => {
+      const vs = paths.map((p, i) => { const v = ntValue(m, p); return v == null ? "" : `<span class="nt-o"><small>${names[i]}</small><b class="num">${v.toFixed(2)}</b></span>`; }).join("");
+      return vs ? `<div class="nt-grp"><span class="label">${label}</span><div class="nt-os">${vs}</div></div>` : "";
+    }).join("");
+    return cells ? `<div class="nt-grid">${cells}</div>` : "";
+  }
+
   function renderNotes() {
-    const d = state.nt.data;
+    const d = state.nt.data, s = state.nt;
     $("#nt-rule-list").innerHTML = ntRuleList(d);
     const sel = $("#nt-date"); sel.innerHTML = "";
-    d.dates.forEach((s) => { const o = el("option"); o.value = s; o.textContent = fmtDate(s); sel.appendChild(o); });
-    sel.value = state.nt.date;
-    const applied = d.rules.filter((r) => r.applied);
+    d.dates.forEach((x) => { const o = el("option"); o.value = x; o.textContent = fmtDate(x); sel.appendChild(o); });
+    sel.value = s.date;
+
+    // the filters apply in order: mode -> league -> search -> odds -> note
+    const byMode = d.matches.filter((m) => (s.mode === "all" ? true : s.mode === "ours" ? !!m.ours : m.hits.length));
+    const q = s.q.trim().toLocaleLowerCase("tr");
+    const match = (m) => (!q || `${m.home} ${m.away} ${m.league}`.toLocaleLowerCase("tr").includes(q))
+      && (!s.leagues.size || s.leagues.has(m.league))
+      && (!s.market || (() => { const v = ntValue(m, s.market); return v != null && (s.min == null || v >= s.min - 1e-9) && (s.max == null || v <= s.max + 1e-9); })())
+      && (!s.rules.size || m.hits.some((x) => s.rules.has(x.id)));
+
+    const leagues = [...new Map(byMode.map((m) => [m.league, 0])).keys()].sort((a, b) => a.localeCompare(b, "tr"));
+    const lwrap = $("#nt-leagues"); lwrap.innerHTML = "";
+    const lall = el("button", "chip" + (s.leagues.size === 0 ? " is-on" : ""), `Tüm ligler <small>${leagues.length}</small>`); lall.type = "button";
+    lall.onclick = () => { s.leagues = new Set(); renderNotes(); }; lwrap.appendChild(lall);
+    leagues.forEach((lg) => {
+      const n = byMode.filter((m) => m.league === lg).length;
+      const b = el("button", "chip" + (s.leagues.has(lg) ? " is-on" : ""), `${esc(lg)} <small>${n}</small>`); b.type = "button";
+      b.onclick = () => { if (s.leagues.has(lg)) s.leagues.delete(lg); else s.leagues.add(lg); renderNotes(); };
+      lwrap.appendChild(b);
+    });
+
     const chips = $("#nt-chips"); chips.innerHTML = "";
-    const all = el("button", "chip" + (state.nt.rules.size === 0 ? " is-on" : ""), "Tüm notlar"); all.type = "button";
-    all.onclick = () => { state.nt.rules = new Set(); renderNotes(); }; chips.appendChild(all);
-    applied.forEach((r) => {
-      const n = d.matches.filter((m) => m.hits.some((x) => x.id === r.id)).length;
-      const b = el("button", "chip" + (state.nt.rules.has(r.id) ? " is-on" : ""), `${r.no}. ${esc(r.title)} <small>${n}</small>`); b.type = "button";
-      b.onclick = () => { if (state.nt.rules.has(r.id)) state.nt.rules.delete(r.id); else state.nt.rules.add(r.id); renderNotes(); };
+    const all = el("button", "chip" + (s.rules.size === 0 ? " is-on" : ""), "Tüm notlar"); all.type = "button";
+    all.onclick = () => { s.rules = new Set(); renderNotes(); }; chips.appendChild(all);
+    d.rules.filter((r) => r.applied).forEach((r) => {
+      const n = byMode.filter((m) => m.hits.some((x) => x.id === r.id)).length;
+      const b = el("button", "chip" + (s.rules.has(r.id) ? " is-on" : ""), `${r.no}. ${esc(r.title)} <small>${n}</small>`); b.type = "button";
+      b.onclick = () => { if (s.rules.has(r.id)) s.rules.delete(r.id); else s.rules.add(r.id); renderNotes(); };
       chips.appendChild(b);
     });
-    let ms = d.matches.slice();
-    if (state.nt.rules.size) ms = ms.filter((m) => m.hits.some((x) => state.nt.rules.has(x.id)));
-    else if (state.nt.only) ms = ms.filter((m) => m.hits.length);
+
+    let ms = byMode.filter(match);
+    const key = { ms1: (m) => m.ms["1"] ?? 99, ms2: (m) => m.ms["2"] ?? 99 }[s.sort];
+    if (key) ms.sort((a, b) => key(a) - key(b));
+    else if (s.sort === "hits") ms.sort((a, b) => b.hits.length - a.hits.length || (a.time || "").localeCompare(b.time || ""));
+    else if (s.sort === "league") ms.sort((a, b) => a.league.localeCompare(b.league, "tr") || (a.time || "").localeCompare(b.time || ""));
+    else ms.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+
     const meta = d.meta || {};
-    $("#nt-count").textContent = `${fmtDate(d.date)} · nesine'de ${d.matches.length} maç, ${d.n_hits} tanesi en az bir nota uyuyor · oranlar ${meta.fetched_at ? meta.fetched_at.slice(11, 16) + " UTC" : "?"}${meta.from_cache ? " (önbellek)" : ""}${meta.error ? " · yenileme başarısız, eski oranlar" : ""}`;
+    $("#nt-count").textContent = `${fmtDate(d.date)} · nesine'de ${d.matches.length} maç, ${d.n_hits} tanesi bir nota uyuyor · gösterilen ${ms.length} · oranlar ${meta.fetched_at ? meta.fetched_at.slice(11, 16) + " UTC" : "?"}${meta.from_cache ? " (önbellek)" : ""}${meta.error ? " · yenileme başarısız, eski oranlar" : ""}`;
+
     const body = $("#nt-body");
-    if (!ms.length) { body.innerHTML = `<div class="day-empty">Bu gün için seçili notlara uyan maç yok.</div>`; return; }
-    body.innerHTML = ms.map((m) => {
-      const hits = m.hits.filter((x) => !state.nt.rules.size || state.nt.rules.has(x.id));
+    if (!ms.length) { body.innerHTML = `<div class="day-empty">Bu filtrelere uyan maç yok. Üstteki seçimi "Tüm maçlar" yapmayı ya da oran filtresini temizlemeyi dene.</div>`; return; }
+    body.innerHTML = ms.slice(0, 250).map((m) => {
+      const hits = m.hits.filter((x) => !s.rules.size || s.rules.has(x.id));
       const ev = (x) => Object.entries(x.evidence || {}).map(([k, v]) => `<span class="nt-ev"><span>${esc(k)}</span><b class="num">${fmtOdd(v)}</b></span>`).join("");
-      const ours = m.ours ? `<p class="note nt-ours">Bizim analiz (${esc(m.ours.league_name)}): piyasa ${pct(m.ours.market.h)} / ${pct(m.ours.market.d)} / ${pct(m.ours.market.a)} · geçmiş ${pct(m.ours.adj.h)} / ${pct(m.ours.adj.d)} / ${pct(m.ours.adj.a)} · 2,5 üst ${pct(m.ours.over25)} · ${m.ours.n} benzer maç</p>` : `<p class="note nt-ours">Bu maç bizim havuzda yok (lig kapsam dışı ya da henüz analiz edilmedi).</p>`;
+      const ours = m.ours ? `<p class="note nt-ours">Bizim analiz (${esc(m.ours.league_name)}): piyasa ${pct(m.ours.market.h)} / ${pct(m.ours.market.d)} / ${pct(m.ours.market.a)} · geçmiş ${pct(m.ours.adj.h)} / ${pct(m.ours.adj.d)} / ${pct(m.ours.adj.a)} · 2,5 üst ${pct(m.ours.over25)} · ${m.ours.n} benzer maç</p>` : "";
       return `<div class="nt-card"><div class="card-top"><span>${esc(m.league)} · ${esc(m.time)}</span><span class="num">MS ${fmtOdd(m.ms["1"] ?? "–")} / ${fmtOdd(m.ms["X"] ?? "–")} / ${fmtOdd(m.ms["2"] ?? "–")}</span></div>
         <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
         ${hits.map((x) => `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev(x)}</div><p class="nt-expect">${esc(x.expect)}</p></div>`).join("")}
+        ${s.mode === "hits" && hits.length ? "" : ntOddsGrid(m)}
         ${ours}</div>`;
-    }).join("");
+    }).join("") + (ms.length > 250 ? `<p class="note">İlk 250 maç gösteriliyor; daraltmak için filtre kullan.</p>` : "");
   }
 
   // ------------------------------------------------------------------ coupons (Oyun)
@@ -943,9 +1001,21 @@
     };
     $("#pp-from").onchange = onPDates; $("#pp-to").onchange = onPDates;
     $("#pp-edge").onchange = (e) => { state.pp.edge = Number(e.target.value); loadPaper(); };
-    $("#nt-date").onchange = (e) => { state.nt.date = e.target.value; loadNotes(); };
-    $("#nt-only").onchange = (e) => { state.nt.only = e.target.checked; if (state.nt.data) renderNotes(); };
+    $("#nt-date").onchange = (e) => { state.nt.date = e.target.value; state.nt.leagues = new Set(); loadNotes(); };
     $("#nt-refresh").onclick = () => loadNotes(true);
+    const ntRe = () => { if (state.nt.data) renderNotes(); };
+    document.querySelectorAll('input[name="nt-mode"]').forEach((r) => (r.onchange = () => { state.nt.mode = r.value; state.nt.leagues = new Set(); ntRe(); }));
+    $("#nt-q").oninput = (e) => { state.nt.q = e.target.value; ntRe(); };
+    $("#nt-sort").onchange = (e) => { state.nt.sort = e.target.value; ntRe(); };
+    $("#nt-market").onchange = (e) => { state.nt.market = e.target.value; ntRe(); };
+    const num2 = (v) => (v === "" || isNaN(Number(v)) ? null : Number(v));
+    $("#nt-min").oninput = (e) => { state.nt.min = num2(e.target.value); ntRe(); };
+    $("#nt-max").oninput = (e) => { state.nt.max = num2(e.target.value); ntRe(); };
+    $("#nt-clear").onclick = () => {
+      state.nt.market = ""; state.nt.min = null; state.nt.max = null; state.nt.q = "";
+      $("#nt-market").value = ""; $("#nt-min").value = ""; $("#nt-max").value = ""; $("#nt-q").value = "";
+      ntRe();
+    };
     try { if (!localStorage.getItem("fo.introClosed")) $("#intro").hidden = false; } catch (_) { $("#intro").hidden = false; }
     $("#intro-close").onclick = () => { $("#intro").hidden = true; try { localStorage.setItem("fo.introClosed", "1"); } catch (_) {} };
     try {

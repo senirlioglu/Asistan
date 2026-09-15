@@ -70,8 +70,9 @@ button { cursor: pointer; }
 .topbar-inner { max-width: 760px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: 1rem; white-space: nowrap; }
 .brand-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--hist); box-shadow: 0 0 0 3px var(--hist-soft); }
-.tabs { display: flex; gap: 4px; margin-left: auto; }
-.tab { border: 0; background: transparent; padding: 6px 10px; border-radius: 999px; color: var(--ink-2); font-weight: 600; }
+.tabs { display: flex; gap: 4px; margin-left: auto; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { flex: 0 0 auto; border: 0; background: transparent; padding: 6px 10px; border-radius: 999px; color: var(--ink-2); font-weight: 600; white-space: nowrap; }
 .tab.is-active { background: var(--ink); color: var(--ground); }
 .status { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 10px; font-size: 0.8rem; color: var(--ink-2); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); }
@@ -259,6 +260,25 @@ td .no { color: var(--ink-3); }
 .bad { color: var(--hist); font-weight: 700; }
 #view-scorecard section { margin-bottom: 18px; }
 #view-scorecard section h3 { font-size: 1rem; margin: 0 0 6px; }
+/* nesine bulletin + notes (Nesine) */
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; margin-bottom: 10px; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg-opt { flex: 0 0 auto; }
+.seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.seg-opt span { display: block; padding: 6px 14px; border-radius: 999px; font-size: 0.88rem; font-weight: 600; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
+.seg-opt input:checked + span { background: var(--ink); color: var(--ground); }
+.seg-opt input:focus-visible + span { outline: 2px solid var(--market); outline-offset: 2px; }
+.nt-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin: 6px 0; }
+.nt-filters input, .nt-filters select, #nt-q { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: var(--radius-s); padding: 6px 8px; font: inherit; min-width: 0; max-width: 100%; }
+.nt-filters input[type="number"] { width: 100px; }
+#nt-q { width: 180px; }
+.nt-grid { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
+.nt-grp { min-width: 0; }
+.nt-os { display: flex; gap: 4px; }
+.nt-o { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; border: 1px solid var(--line); border-radius: var(--radius-s); padding: 2px 7px; background: var(--surface-2); }
+.nt-o small { font-size: 0.68rem; color: var(--ink-3); }
+.nt-o b { font-size: 0.85rem; }
+
 /* notes over nesine odds (Notlar) */
 .nt-rule { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .nt-rule:last-of-type { border-bottom: 0; }

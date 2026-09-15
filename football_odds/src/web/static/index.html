@@ -24,7 +24,7 @@
       <button class="tab is-active" data-view="list" type="button">Maçlar</button>
       <button class="tab" data-view="scorecard" type="button">Özet</button>
       <button class="tab" data-view="paper" type="button">Oyun</button>
-      <button class="tab" data-view="notes" type="button">Notlar</button>
+      <button class="tab" data-view="notes" type="button">Nesine</button>
       <button class="tab" data-view="glossary" type="button">Sözlük</button>
     </nav>
     <button class="status" id="status-btn" type="button" title="Veri durumu">
@@ -177,20 +177,62 @@
   </section>
 
   <section class="view" id="view-notes" hidden>
-    <h2 class="h2">Notlar</h2>
-    <p class="lead">Defterdeki kurallar, nesine.com'un o anki oranlarına uygulanıyor. Bir maç hangi notun şartını sağlıyorsa altında o not, dayandığı oranlar ve notun beklentisi yazar. Kurallar senin gözlemlerin; sistem onları doğrulamaz, yalnızca uygular ve veritabanında ölçülebilenler için "geçmişte ne oldu" sayısını yanına koyar.</p>
+    <h2 class="h2">Nesine</h2>
+    <p class="lead">nesine.com bülteni, oranlarıyla birlikte. İstersen bütün maçları filtreleyerek gez, istersen yalnızca defterdeki notların şartını sağlayanları gör. Notlar senin gözlemlerin; sistem onları doğrulamaz, yalnızca uygular ve ölçülebilenlerin yanına "geçmişte ne oldu" sayısını koyar.</p>
+
+    <div class="seg" role="radiogroup" aria-label="Görünüm">
+      <label class="seg-opt"><input type="radio" name="nt-mode" value="hits" checked><span>Nota uyanlar</span></label>
+      <label class="seg-opt"><input type="radio" name="nt-mode" value="all"><span>Tüm maçlar</span></label>
+      <label class="seg-opt"><input type="radio" name="nt-mode" value="ours"><span>Bizim ligler</span></label>
+    </div>
+
+    <div class="sc-controls">
+      <label class="select"><span class="label">Gün</span><select id="nt-date"></select></label>
+      <label class="select"><span class="label">Takım / lig ara</span><input type="search" id="nt-q" placeholder="ör. Fener, La Liga"></label>
+      <label class="select"><span class="label">Sırala</span><select id="nt-sort">
+        <option value="time">Saate göre</option>
+        <option value="hits">Önce en çok not</option>
+        <option value="ms1">MS 1 oranı (küçükten)</option>
+        <option value="ms2">MS 2 oranı (küçükten)</option>
+        <option value="league">Lige göre</option>
+      </select></label>
+      <button type="button" class="btn ghost" id="nt-refresh">Oranları yenile</button>
+    </div>
+
+    <details class="howto" id="nt-adv">
+      <summary>Oran filtresi</summary>
+      <div class="nt-filters">
+        <label class="select"><span class="label">Piyasa</span><select id="nt-market">
+          <option value="">–</option>
+          <option value="ms.1">MS 1</option>
+          <option value="ms.X">MS X</option>
+          <option value="ms.2">MS 2</option>
+          <option value="fav">Favori (MS 1 veya 2, küçük olan)</option>
+          <option value="o25.ust">2,5 üst</option>
+          <option value="o25.alt">2,5 alt</option>
+          <option value="iy05.ust">İY 0,5 üst</option>
+          <option value="iy_kg.var">İY karşılıklı gol var</option>
+          <option value="iyms.1/2">İY/MS 1/2</option>
+          <option value="iyms.2/1">İY/MS 2/1</option>
+          <option value="iy_skor.diger">İY skor diğer</option>
+          <option value="skor.diger">Maç skoru diğer</option>
+        </select></label>
+        <label class="select"><span class="label">En az</span><input type="number" id="nt-min" step="0.01" min="1" placeholder="1.00"></label>
+        <label class="select"><span class="label">En çok</span><input type="number" id="nt-max" step="0.01" min="1" placeholder="99.00"></label>
+        <button type="button" class="btn ghost" id="nt-clear">Filtreyi temizle</button>
+      </div>
+      <p class="note">Örnek: Piyasa "Favori", en çok 1,20 → 4. notun şartı. Piyasa "İY/MS 2/1", en az 23 en çok 25 → 11. notun oyna dediği aralık.</p>
+    </details>
+
+    <div class="chips-scroll" id="nt-leagues" role="group" aria-label="Lig filtresi"></div>
+    <div class="chips-scroll" id="nt-chips" role="group" aria-label="Not filtresi"></div>
+    <p class="count" id="nt-count"></p>
+    <div id="nt-body"></div>
+
     <details class="howto" id="nt-rules">
       <summary>Notların listesi ve geçmişte ne olduğu</summary>
       <div id="nt-rule-list">Yükleniyor…</div>
     </details>
-    <div class="sc-controls">
-      <label class="select"><span class="label">Gün</span><select id="nt-date"></select></label>
-      <label class="toggle"><input type="checkbox" id="nt-only" checked><span>Sadece bir nota uyanlar</span></label>
-      <button type="button" class="btn ghost" id="nt-refresh">Oranları yenile</button>
-    </div>
-    <div class="chips-scroll" id="nt-chips" role="group" aria-label="Not filtresi"></div>
-    <p class="count" id="nt-count"></p>
-    <div id="nt-body"></div>
   </section>
 
   <section class="view" id="view-glossary" hidden>
