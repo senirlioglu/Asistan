@@ -63,7 +63,23 @@ def test_team_history_hits(history):
     df.loc[sixth, ["htr", "ftr"]] = ["A", "H"]
     idx = TeamIndex(df, recent_days=40000)
     assert idx.resolve("H1") == "H1" and idx.resolve("Zzz United") is None
+    # women's / youth / reserve sides are different clubs, never resolved to the first team
+    for wrong in ("H1 (K)", "H1 Kadın", "H1 U21", "H1 U19", "H1 Women", "H1 II"):
+        assert idx.resolve(wrong) is None, wrong
     hits = team_hits({"date": "2030-01-01", "home": "H1", "away": "Nobody FC"}, idx)
     assert "n14" in hits and "n2" in hits
     bt = backtest(df)
     assert bt["n_matches"] > 0 and "n4" in bt and "n11" in bt and bt["n14"]["n"] >= 1 and bt["n2"]["n"] >= 1
+
+
+def test_nesine_prices_survive_the_high_margin(settings):
+    from src.nesine.analyze import MAX_OVERROUND, priced_row, to_raw_row
+    m = _m(ms={"1": 2.53, "X": 3.01, "2": 2.07}, o25={"alt": 1.83, "ust": 1.51})
+    raw = to_raw_row(m)
+    assert raw["AvgH"] == 2.53 and raw["Avg>2.5"] == 1.51 and raw["Date"] == "20/09/2026"
+    row = priced_row(settings, m)
+    assert row is not None and bool(row["has_1x2"]) and bool(row["has_ou"])
+    # nesine's margin is ~21 %: far above the config ceiling for European averages, still priced here
+    assert 1.15 < float(row["overround_1x2"]) < MAX_OVERROUND
+    assert abs(float(row["p_home"]) + float(row["p_draw"]) + float(row["p_away"]) - 1.0) < 1e-9
+    assert priced_row(settings, _m(ms={"1": 2.53})) is None        # incomplete 1X2 -> not analysable

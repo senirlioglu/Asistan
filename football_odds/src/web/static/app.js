@@ -215,8 +215,22 @@
         <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
         ${hits.map((x) => `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev(x)}</div><p class="nt-expect">${esc(x.expect)}</p></div>`).join("")}
         ${s.mode === "hits" && hits.length ? "" : ntOddsGrid(m)}
-        ${ours}</div>`;
+        ${ours}
+        <div class="nt-actions"><button type="button" class="btn ghost" data-analyse="${m.code}">Bu maçı analiz et</button></div></div>`;
     }).join("") + (ms.length > 250 ? `<p class="note">İlk 250 maç gösteriliyor; daraltmak için filtre kullan.</p>` : "");
+    body.querySelectorAll("[data-analyse]").forEach((b) => (b.onclick = () => openNesineSheet(Number(b.dataset.analyse), b)));
+  }
+
+  async function openNesineSheet(code, btn) {
+    const label = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "Analiz ediliyor…"; }
+    try {
+      const d = await api(`/api/nesine-analiz?code=${code}&k=25`);
+      const m = d.match;
+      m._analogues = d.analogues; m._analogueK = 25; m._teams = d.teams;
+      openSheet(m);
+    } catch (e) { toast("Analiz edilemedi: " + e.message); }
+    if (btn) { btn.disabled = false; btn.textContent = label; }
   }
 
   // ------------------------------------------------------------------ coupons (Oyun)
@@ -862,7 +876,8 @@
   }
 
   async function openSheet(m) {
-    $("#sheet-sub").innerHTML = `${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)} <span id="sheet-live" data-id="${esc(m.id)}">${liveBadge(state.live?.[m.id], m)}</span>`;
+    const src = m.source === "nesine" ? ` · <b>nesine oranıyla</b>` : "";
+    $("#sheet-sub").innerHTML = `${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)}${src} <span id="sheet-live" data-id="${esc(m.id)}">${liveBadge(state.live?.[m.id], m)}</span>`;
     $("#sheet-title").textContent = `${m.home} – ${m.away}`;
     const body = $("#sheet-body");
     const rows = ["home", "draw", "away"].map((oc) => {
@@ -873,7 +888,11 @@
     const scopes = Object.entries(m.scopes || {}).map(([k, v]) => `<tr><td>${scopeTr[k] || k}</td><td class="num">${v.n}</td><td class="num">${v.hist.map((x) => `%${(100 * x).toFixed(0)}`).join(" / ")}</td><td class="num">${v.adj.map((x) => `%${(100 * x).toFixed(0)}`).join(" / ")}</td><td class="num">${pct(v.avg_similarity, 1)}</td></tr>`).join("");
     const tol = m.tolerance?.probs ? Object.entries(m.tolerance.probs).map(([k, v]) => `±${(100 * Number(k)).toFixed(0)} puan: ${v} maç`).join(" · ") : "";
     const top = Object.entries(m.scorelines || {}).filter(([k]) => k !== "other").sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const nesineNote = m.source === "nesine"
+      ? `<p class="note nt-warn">Bu analiz <b>nesine oranlarıyla</b> yapıldı. Nesine'nin marjı yüksektir (bu maçta oranların toplam ihtimali <b>${m.overround != null ? "%" + (100 * m.overround).toFixed(0) : "?"}</b>, Avrupa ortalamasında ~%107), marj çıkarıldıktan sonraki yüzdeler bu yüzden Maçlar sekmesindekilerden biraz farklı çıkabilir. Benzer maçlar yine 38 ligden, 179 bin maçlık havuzdan seçilir; bu maçın ligi havuzda olmayabilir, seçim yalnızca oran profiline bakar.</p>`
+      : "";
     body.innerHTML = `
+      ${nesineNote}
       <section><h3>Yorum</h3><p class="sentence comment full" id="sheet-comment" data-id="${esc(m.id)}">${commentary(m, state.live?.[m.id]).full}</p></section>
       <section><h3>Üç ihtimal, üç bakış</h3><div class="table-wrap"><table>
         <thead><tr><th>Sonuç</th><th class="num">Piyasa</th><th class="num hide-sm">Geçmiş (ham)</th><th class="num">Düzeltilmiş</th><th class="num">Sapma</th><th class="num hide-sm">%95 aralık</th><th class="num hide-sm">Adil oran</th><th>Şansla açıklanır mı?</th></tr></thead>
@@ -915,7 +934,8 @@
   async function loadTeams(m) {
     const box = $("#teams");
     try {
-      const d = await api(`/api/teams/${m.stamp || state.date}/${m.id}`);
+      const d = m._teams !== undefined ? m._teams : await api(`/api/teams/${m.stamp || state.date}/${m.id}`);
+      if (!d) { box.innerHTML = `<p class="note">Bu maçın takımları veritabanımızda bulunamadı (nesine yazımı eşleşmedi ya da lig kapsam dışı).</p>`; return; }
       const h = d.h2h;
       const h2h = h.n
         ? `<div class="teambox"><h4>${esc(m.home)} – ${esc(m.away)} karşılaşmaları</h4>
@@ -929,7 +949,9 @@
   async function loadAnalogues(m, k) {
     const box = $("#analogues");
     try {
-      const data = await api(`/api/analogues/${m.stamp || state.date}/${m.id}?k=${k}`);
+      const data = m._analogues && m._analogueK === k ? m._analogues
+        : m.nesine_code ? (await api(`/api/nesine-analiz?code=${m.nesine_code}&k=${k}`)).analogues
+        : await api(`/api/analogues/${m.stamp || state.date}/${m.id}?k=${k}`);
       if (!data.rows.length) { box.textContent = "Benzer maç listesi bulunamadı."; return; }
       const RES = { H: "Ev", D: "Ber.", A: "Dep." };
       const same = data.same_team_count || 0;

@@ -337,6 +337,14 @@ hand-written betting heuristics applied to nesine.com's live pre-match bulletin.
   prints those two numbers beside every note. The odds there are Football-Data's pre-match consensus,
   not nesine's price, and "exactly 1.67" becomes a narrow band — the comparison is indicative.
 * Each listed match also shows our own analysis of it when the fixture is in our pool.
+* `analyze.py` + `GET /api/nesine-analiz?code=&k=` run the full analogue analysis on ANY nesine match,
+  priced with nesine's own odds: `fixtures.csv` only lists the coming fixtures of our 38 leagues and
+  only after it is published, so the Maçlar tab can hold a handful of matches while nesine quotes
+  300. The analogues are chosen by the market's probability profile, so a league we do not store is
+  no obstacle. Two differences are stated in the sheet: nesine's margin is ~21 % against the ~6.5 % of
+  the European average we store, and the match's own league may be outside the pool. The detail sheet
+  is the same one the Maçlar tab uses; analogues and the teams' own history come back inline, and
+  nesine's women's/youth/reserve suffixes are never resolved to a first team.
 
 **Coupons** (`src/pipeline/coupons.py`, tab "Oyun", `GET/POST /api/coupons`, `DELETE /api/coupons/{id}`): the user
 picks matches from an analysed day and outcomes in seven markets (1X2, over/under 2.5 and 1.5, first- and

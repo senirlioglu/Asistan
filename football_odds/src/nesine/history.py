@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,9 @@ from ..config import Settings
 from ..web.live import name_score, norm
 
 REVERSAL = {("H", "A"), ("A", "H")}
+# nesine marks women's, youth and reserve teams with a suffix; those are different clubs from the ones
+# we store, and "EC Bahia BA (K)" must not resolve to Bahia
+_NOT_THE_SAME_CLUB = re.compile(r"\((k|kad[ıi]n)\)|\b(u\s?1[5-9]|u\s?2[0-3]|kad[ıi]n|women|res\.?|reserve|b\s?tak[ıi]m|ii)\b", re.IGNORECASE)
 COLS = ["league", "date", "home_team", "away_team", "fthg", "ftag", "ftr", "hthg", "htag", "htr", "cons_h", "cons_d", "cons_a", "season"]
 
 
@@ -69,6 +73,9 @@ class TeamIndex:
         teams that share a word with it (a full scan over 700 teams per name is too slow for a page load)."""
         if name in self._cache:
             return self._cache[name]
+        if _NOT_THE_SAME_CLUB.search(name or ""):
+            self._cache[name] = None
+            return None
         n = norm(name)
         out = self._by_norm.get(n)
         if out is None and n:

@@ -545,6 +545,71 @@ def notlar(date: str | None = None, refresh: bool = False) -> dict:
             "matches": out_matches, "n_hits": sum(1 for m in out_matches if m["hits"])}
 
 
+def _analogue_rows(an: pd.DataFrame, teams: set[str], k: int) -> dict:
+    sub = an.sort_values("distance").head(k)
+    rows = []
+    for _, r in sub.iterrows():
+        home, away = _str(r["home_team"]), _str(r["away_team"])
+        rows.append({
+            "date": pd.Timestamp(r["date"]).strftime("%Y-%m-%d"), "league": _str(r["league"]),
+            "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": home, "away": away,
+            "odds": [_num(r["cons_h"]), _num(r["cons_d"]), _num(r["cons_a"])], "sim": _num(r["similarity"]),
+            "result": _str(r["ftr"]), "score": _str(r["score"]), "over25": _str(r["ou25"]) == "Over", "btts": _str(r["btts"]) == "Yes",
+            "years_old": _num(r.get("years_old")), "same_team": bool(teams & {home, away}),
+            "ht_score": _str(r.get("ht_score")), "htft": _str(r.get("htft")),
+        })
+    counts = sub["ftr"].value_counts(normalize=True).reindex(["H", "D", "A"]).fillna(0) * 100
+    return {"rows": rows, "share": {"h": round(float(counts["H"]), 1), "d": round(float(counts["D"]), 1), "a": round(float(counts["A"]), 1)},
+            "same_team_count": int(sum(r["same_team"] for r in rows)), "teams": sorted(teams)}
+
+
+@app.get("/api/nesine-analiz")
+def nesine_analiz(code: int, k: int = Query(25, ge=1, le=500)) -> dict:
+    """Our own analogue analysis of one nesine match, priced with nesine's odds."""
+    from ..nesine.analyze import analyse
+    from ..nesine.bulletin import load_matches
+
+    matches, meta = load_matches(settings)
+    hit = next((m for m in matches if m.get("code") == code), None)
+    if hit is None:
+        raise HTTPException(404, "maç bültende yok (oynanmış ya da kaldırılmış olabilir)")
+    try:
+        res = analyse(settings, hit)
+    except FileNotFoundError:
+        raise HTTPException(503, "veritabanı henüz kurulmadı")
+    if res is None:
+        raise HTTPException(422, "bu maçın maç sonucu oranları eksik, analiz edilemiyor")
+    row = res["summary"].copy()
+    row["stamp"] = ""
+    row["date_tr"], row["time_tr"] = hit["date"], hit["time"]
+    payload = _match_payload(row, res["details"])
+    payload.update({"home": hit["home"], "away": hit["away"], "league": "NES", "league_name": hit["league"],
+                    "live_available": False, "nesine_code": hit["code"], "source": "nesine",
+                    "feature_set": res["feature_set"], "overround": _num(res["overround"]),
+                    "odds": {k2: _num(v) for k2, v in zip(("h", "d", "a"), (hit["ms"].get("1"), hit["ms"].get("X"), hit["ms"].get("2")))},
+                    "odds_ou": {"over": _num((hit.get("o25") or {}).get("ust")), "under": _num((hit.get("o25") or {}).get("alt"))}})
+    # our teams' own history, when nesine's spelling resolves to a team we store
+    teams_payload = None
+    index = _team_index()
+    hist = _history()
+    if index is not None and hist is not None:
+        h, a = index.resolve(hit["home"]), index.resolve(hit["away"])
+        if h and a:
+            as_of = pd.Timestamp(hit["date"]) if hit["date"] else pd.Timestamp(dt.date.today())
+            h2h = hist[(((hist["home_team"] == h) & (hist["away_team"] == a)) | ((hist["home_team"] == a) & (hist["away_team"] == h)))
+                       & (hist["date"] < as_of)].sort_values("date", ascending=False)
+            h2h_rows = [_row_payload(r, h) for _, r in h2h.head(12).iterrows()]
+            teams_payload = {
+                "home": _team_record(hist, h, float(payload["market"]["h"]) / 100, as_of),
+                "away": _team_record(hist, a, float(payload["market"]["a"]) / 100, as_of),
+                "h2h": {"n": int(len(h2h)), "rows": h2h_rows, "home_wins": sum(1 for r in h2h_rows if r["outcome"] == "G"),
+                        "draws": sum(1 for r in h2h_rows if r["outcome"] == "B"), "away_wins": sum(1 for r in h2h_rows if r["outcome"] == "M"),
+                        "shown": len(h2h_rows)},
+                "resolved": {"home": h, "away": a},
+            }
+    return {"match": payload, "analogues": _analogue_rows(res["analogues"], {hit["home"], hit["away"]}, k), "teams": teams_payload, "meta": meta}
+
+
 @app.get("/robots.txt", include_in_schema=False)
 def robots() -> Any:
     from fastapi.responses import PlainTextResponse
