@@ -25,6 +25,9 @@ from ..config import Settings
 from ..web.live import name_score, norm
 
 REVERSAL = {("H", "A"), ("A", "H")}
+# note 2 counts the matches played AFTER the reversal: today is the 7th of them, so the reversal sits
+# seven rows back in the team's list (it is not itself counted)
+NTH_AFTER = 7
 # nesine marks women's, youth and reserve teams with a suffix; those are different clubs from the ones
 # we store, and "EC Bahia BA (K)" must not resolve to Bahia
 _NOT_THE_SAME_CLUB = re.compile(r"\((k|kad[ıi]n)\)|\b(u\s?1[5-9]|u\s?2[0-3]|kad[ıi]n|women|res\.?|reserve|b\s?tak[ıi]m|ii)\b", re.IGNORECASE)
@@ -105,18 +108,20 @@ def team_hits(match: dict, index: TeamIndex) -> dict[str, dict]:
         team = index.resolve(match[side])
         if not team:
             continue
-        rec = index.recent(team, before, 8)
+        rec = index.recent(team, before, 9)
         if not rec:
             continue
         last = rec[-1]
         if (last[1], last[2]) in REVERSAL:
             hits.setdefault("n14", {"evidence": {}, "expect": "İlk yarı berabere (%80–90 diyor not)."})
             hits["n14"]["evidence"][f"{match[side]} son maçı"] = f"{last[0].date()} İY {last[1]} / MS {last[2]}"
-        if len(rec) >= 6:
-            sixth = rec[-6]  # today's match is the 7th after it
-            if (sixth[1], sixth[2]) in REVERSAL:
+        if len(rec) >= NTH_AFTER:
+            # "sonra oynayacağı 7. maç": the reversal is not counted, so 7 matches have been played
+            # since it and today's is the 7th one
+            src = rec[-NTH_AFTER]
+            if (src[1], src[2]) in REVERSAL:
                 hits.setdefault("n2", {"evidence": {}, "expect": "Yine 2/1 veya 1/2; bazen 6+ gol."})
-                hits["n2"]["evidence"][f"{match[side]} 6 maç önce"] = f"{sixth[0].date()} İY {sixth[1]} / MS {sixth[2]}"
+                hits["n2"]["evidence"][f"{match[side]} {NTH_AFTER} maç önce"] = f"{src[0].date()} İY {src[1]} / MS {src[2]}"
     return hits
 
 
@@ -183,7 +188,7 @@ def backtest(df: pd.DataFrame) -> dict:
                 if (hist[-1][0], hist[-1][1]) in REVERSAL:
                     prev_rev_n += 1
                     prev_rev_ht_draw += int(r.htr == "D")
-            if len(hist) >= 6 and (hist[-6][0], hist[-6][1]) in REVERSAL:
+            if len(hist) >= NTH_AFTER and (hist[-NTH_AFTER][0], hist[-NTH_AFTER][1]) in REVERSAL:
                 seventh_n += 1
                 seventh_rev += int((r.htr, r.ftr) in REVERSAL)
                 seventh_six += int((r.fthg + r.ftag) >= 6)

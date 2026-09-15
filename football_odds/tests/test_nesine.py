@@ -56,18 +56,24 @@ def test_rules_fire_and_explain():
 def test_team_history_hits(history):
     df = history.copy()
     df["htr"] = "D"; df["hthg"] = 0.0; df["htag"] = 0.0
-    # make team H1's last match a reversal and its 6th-most-recent one too
+    # note 2 counts the matches played after the reversal: today is the 7th of them, so the reversal is
+    # the 7th row back. The 6th row back must NOT fire it (the bug the owner caught on Espanyol).
     rows = df[(df["home_team"] == "H1") | (df["away_team"] == "H1")].sort_values("date")
-    last, sixth = rows.index[-1], rows.index[-6]
+    last, seventh = rows.index[-1], rows.index[-7]
     df.loc[last, ["htr", "ftr"]] = ["H", "A"]
-    df.loc[sixth, ["htr", "ftr"]] = ["A", "H"]
+    df.loc[seventh, ["htr", "ftr"]] = ["A", "H"]
     idx = TeamIndex(df, recent_days=40000)
     assert idx.resolve("H1") == "H1" and idx.resolve("Zzz United") is None
     # women's / youth / reserve sides are different clubs, never resolved to the first team
     for wrong in ("H1 (K)", "H1 Kadın", "H1 U21", "H1 U19", "H1 Women", "H1 II"):
         assert idx.resolve(wrong) is None, wrong
     hits = team_hits({"date": "2030-01-01", "home": "H1", "away": "Nobody FC"}, idx)
-    assert "n14" in hits and "n2" in hits
+    assert "n14" in hits and "n2" in hits and "7 maç önce" in " ".join(hits["n2"]["evidence"])
+    # the same reversal one row later (6 matches back) is the wrong count and must not fire note 2
+    df2 = df.copy()
+    df2.loc[seventh, ["htr", "ftr"]] = ["D", "D"]
+    df2.loc[rows.index[-6], ["htr", "ftr"]] = ["A", "H"]
+    assert "n2" not in team_hits({"date": "2030-01-01", "home": "H1", "away": "Nobody FC"}, TeamIndex(df2, recent_days=40000))
     bt = backtest(df)
     assert bt["n_matches"] > 0 and "n4" in bt and "n11" in bt and bt["n14"]["n"] >= 1 and bt["n2"]["n"] >= 1
 

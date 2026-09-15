@@ -161,7 +161,9 @@ RULES: list[dict[str, Any]] = [
      "how": "İlk yarı skoru piyasasında 2-1, 1-2 ve 2-2'nin üçü de 38,00'ın altındaysa."},
     {"id": "n2", "no": 2, "title": "Ters çevirenin 7. maçı", "fn": None, "testable": True,
      "note": "Herhangi bir takım sırada bir maçı oynayıp 2/1 veya 1/2 yaptıysa sonra oynayacağı 7. sıradaki maçı yine 2/1 veya 1/2 yapar. Bazen de 6+ gol çıkıyor.",
-     "how": "Veritabanındaki ilk yarı/maç sonu geçmişinden: takımın bugünkü maçı, ters çevirdiği (2/1 ya da 1/2) bir maçtan sonraki 7. maçıysa."},
+     "how": ("Veritabanındaki ilk yarı/maç sonu geçmişinden: ters çevirdiği maç sayılmaz, ondan SONRA oynadığı maçlar sayılır ve "
+             "bugünkü maç bunların 7.'siyse kural çalışır. Dikkat: sayım yalnızca bizim 38 ligimizin maçlarını görür; hazırlık "
+             "maçları ve kupalar veritabanında olmadığı için sürpriz orada olduysa ya da arada kupa maçı oynandıysa sıra kayar.")},
     {"id": "n3", "no": 3, "title": "Başakşehir – Antalya – Alanya döngüsü", "fn": None, "testable": False, "applied": False,
      "note": "Bu takımların kendi aralarında oynadıkları maçlara bak: Başakşehir Alanya ile 2/1 yapıyor, sonra Antalya Alanya ile 1/2 yapıyor, sonra Başakşehir–Antalyaspor 3'lü döngüye giriyor ve sonuç yine 2/1.",
      "how": "Üç kulübe özel bir gözlem; genel bir filtre olarak uygulanmadı."},
