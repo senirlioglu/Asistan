@@ -299,6 +299,7 @@ td .no { color: var(--ink-3); }
 .nt-ev { display: inline-flex; gap: 6px; align-items: baseline; font-size: 0.82rem; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
 .nt-ev b { color: var(--ink); }
 .nt-expect { margin: 0; font-size: 0.88rem; color: var(--ink); }
+.nt-drift { margin: 6px 0 0; font-size: 0.8rem; background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); border-radius: var(--radius-s); padding: 4px 8px; }
 .nt-ours { margin: 6px 0 0; }
 #nt-chips .chip small { opacity: 0.7; margin-left: 4px; }
 

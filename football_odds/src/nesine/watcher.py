@@ -35,13 +35,13 @@ from .bulletin import load_matches
 
 log = get_logger("nesine.watcher")
 
-# the prices the notes actually read; anything else would only bloat the store
+# Every price a note reads, plus the ones the odds grid shows. "group.*" takes the whole market,
+# which is what notes 5 (any corner line at 1.64) and 11 (both HT/FT combos) need. The two correct-score
+# markets are 29 outcomes each and only four of them are ever read, so those are listed one by one.
 TRACKED: tuple[str, ...] = (
-    "ms.1", "ms.X", "ms.2", "o25.alt", "o25.ust", "o35.ust", "o45.ust",
-    "iy.1", "iy.X", "iy.2", "iy05.alt", "iy05.ust", "iy_kg.var", "y2_kg.var",
-    "iyms.1/2", "iyms.2/1", "iy_skor.diger", "skor.diger",
-    "iki_yari_15_ust.evet", "iy_y2_kg.evet/evet", "iy_sonucu_kg.1&var", "iy_sonucu_kg.2&var",
-    "ilk_gol.1", "ilk_gol.2",
+    "ms.*", "iy.*", "iy05.*", "o25.*", "o35.*", "o45.*", "iy_kg.*", "y2_kg.*",
+    "iyms.*", "iy_y2_kg.*", "iy_sonucu_kg.*", "ilk_gol.*", "iki_yari_15_ust.*", "korner.*",
+    "iy_skor.2-1", "iy_skor.1-2", "iy_skor.2-2", "iy_skor.diger", "skor.diger",
 )
 MAX_POINTS = 12          # per price: the opening one plus the last eleven changes
 NEAR_S = 45 * 60
@@ -54,6 +54,18 @@ def value_at(m: dict, path: str) -> float | None:
     g = m.get(group)
     v = g.get(key) if isinstance(g, dict) else None
     return float(v) if isinstance(v, (int, float)) else None
+
+
+def tracked_paths(m: dict) -> list[str]:
+    """TRACKED with the ``group.*`` entries expanded against this match's markets."""
+    out: list[str] = []
+    for spec in TRACKED:
+        group, _, key = spec.partition(".")
+        g = m.get(group)
+        if not isinstance(g, dict):
+            continue
+        out.extend(f"{group}.{k}" for k in g) if key == "*" else out.append(spec)
+    return out
 
 
 def store_path(settings: Settings) -> Path:
@@ -97,7 +109,7 @@ def record(store: dict, matches: list[dict], now: dt.datetime | None = None) -> 
         code = str(m.get("code"))
         seen.add(code)
         entry = out.setdefault(code, {"first_seen": stamp, "odds": {}})
-        for path in TRACKED:
+        for path in tracked_paths(m):
             v = value_at(m, path)
             if v is None:
                 continue

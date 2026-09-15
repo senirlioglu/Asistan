@@ -1,7 +1,9 @@
 """The user's hand-written betting notes as filters over nesine odds ("Notlar").
 
 Each rule is a function over one parsed nesine match (see ``bulletin.parse_event``) returning None or a
-hit ``{"evidence": {label: value}, "expect": "..."}``. The rules are the user's own heuristics, transcribed
+hit ``{"evidence": {label: value}, "paths": {label: "o45.ust"}, "expect": "..."}`` — ``paths`` says which
+odds each piece of evidence came from, so the page can mark the ones that have moved since we first saw them
+(note 5 is explicit about it: "oran değişmişse oynama"). The rules are the user's own heuristics, transcribed
 as faithfully as the notes allow; where a note is ambiguous the interpretation is stated in ``how``.
 Nothing here is validated by the system — ``history.py`` tests the rules that can be tested on the
 Football-Data database and the page shows those numbers next to the note.
@@ -38,6 +40,7 @@ def r1(m: dict) -> dict | None:
     if any(v is None for v in vals.values()) or not all(v < 38.0 for v in vals.values()):
         return None
     return {"evidence": {f"İY skor {k}": v for k, v in vals.items()},
+            "paths": {f"İY skor {k}": f"iy_skor.{k}" for k in vals},
             "expect": "İlk yarı 2-1 / 1-2 / 2-2; ilk yarı KG var; en az 4 gol; 2,5 üst (3,5 üst %30)."}
 
 
@@ -57,23 +60,21 @@ def r4(m: dict) -> dict | None:
     ev: dict[str, Any] = {"Favori": "ev sahibi" if side == "1" else "deplasman",
                           "Favorinin MS oranı": odd if odd is not None else "açılmamış",
                           "Diğer taraf": other if other is not None else "–"}
-    return {"evidence": ev, "expect": "2,5 üst (%99,9), 3,5 üst (%80), 6+ gol (%70); İY 1,5 üst; favoriye İY 2-0 / 3-0 denenebilir."}
+    return {"evidence": ev, "paths": {"Favorinin MS oranı": f"ms.{side}", "Diğer taraf": f"ms.{'2' if side == '1' else '1'}"},
+            "expect": "2,5 üst (%99,9), 3,5 üst (%80), 6+ gol (%70); İY 1,5 üst; favoriye İY 2-0 / 3-0 denenebilir."}
 
 
 def r5(m: dict) -> dict | None:
     ev: dict[str, Any] = {}
-    for k, v in (m.get("iy05") or {}).items():
-        if _eq(v, 1.64):
-            ev[f"İY 0,5 {k}"] = v
-    for k, v in (m.get("ilk_gol") or {}).items():
-        if _eq(v, 1.64):
-            ev[f"İlk golü atar: {k}"] = v
-    for k, v in (m.get("korner") or {}).items():
-        if _eq(v, 1.64):
-            ev[k] = v
+    paths: dict[str, str] = {}
+    for group, label in (("iy05", "İY 0,5 {}"), ("ilk_gol", "İlk golü atar: {}"), ("korner", "{}")):
+        for k, v in (m.get(group) or {}).items():
+            if _eq(v, 1.64):
+                ev[label.format(k)] = v
+                paths[label.format(k)] = f"{group}.{k}"
     if not ev:
         return None
-    return {"evidence": ev, "expect": "2/1 veya 1/2. Maça 3–5 dk kala oyna; oran değişmişse oynama."}
+    return {"evidence": ev, "paths": paths, "expect": "2/1 veya 1/2. Maça 3–5 dk kala oyna; oran değişmişse oynama."}
 
 
 def r6(m: dict) -> dict | None:
@@ -81,14 +82,17 @@ def r6(m: dict) -> dict | None:
     ev = {f"İY/MS {k}": iyms[k] for k in ("1/2", "2/1") if iyms.get(k) is not None and iyms[k] < 18.0}
     if not ev:
         return None
-    return {"evidence": ev, "expect": "Bu maça mutlaka oynanır (1/2 ya da 2/1)."}
+    return {"evidence": ev, "paths": {k: f"iyms.{k.removeprefix('İY/MS ')}" for k in ev},
+            "expect": "Bu maça mutlaka oynanır (1/2 ya da 2/1)."}
 
 
 def r7(m: dict) -> dict | None:
     iy, ft = (m.get("iy_skor") or {}).get("diger"), (m.get("skor") or {}).get("diger")
     if iy is None or ft is None or not (iy < 5.0 and ft < 8.0):
         return None
-    return {"evidence": {"İY skor diğer": iy, "Maç skoru diğer": ft}, "expect": "6+ gol; en az 3,5 üst; İY KG var / 2. yarı KG var."}
+    return {"evidence": {"İY skor diğer": iy, "Maç skoru diğer": ft},
+            "paths": {"İY skor diğer": "iy_skor.diger", "Maç skoru diğer": "skor.diger"},
+            "expect": "6+ gol; en az 3,5 üst; İY KG var / 2. yarı KG var."}
 
 
 def r10(m: dict) -> dict | None:
@@ -97,7 +101,7 @@ def r10(m: dict) -> dict | None:
     if not hits:
         return None
     side = next(iter(hits))
-    return {"evidence": {f"MS {side}": hits[side]},
+    return {"evidence": {f"MS {side}": hits[side]}, "paths": {f"MS {side}": f"ms.{side}"},
             "expect": f"İlk yarı {side} ve ilk yarı skoru {'1-0' if side == '1' else '0-1'} (not: %85 çalışır)."}
 
 
@@ -115,27 +119,31 @@ def r11(m: dict) -> dict | None:
         combos = ["2/1"] if h < a else ["1/2"]
         direction = combos[0]
     ev: dict[str, Any] = {"MS 1": h, "MS 2": a}
+    paths = {"MS 1": "ms.1", "MS 2": "ms.2"}
     ok_window = []
     for c in combos:
         v = iyms.get(c)
         ev[f"İY/MS {c}"] = v if v is not None else "yok"
+        paths[f"İY/MS {c}"] = f"iyms.{c}"
         ok_window.append(v is not None and 23.0 < v < 25.0)
     verdict = "OYNA: oran 23–25 aralığında." if any(ok_window) else "OYNAMA: İY/MS oranı 23–25 aralığının dışında."
-    return {"evidence": ev, "expect": f"{direction}. {verdict}"}
+    return {"evidence": ev, "paths": paths, "expect": f"{direction}. {verdict}"}
 
 
 def r12(m: dict) -> dict | None:
     a, b = (m.get("o45") or {}).get("ust"), (m.get("iki_yari_15_ust") or {}).get("evet")
     if a is None or b is None or abs(a - b) > 0.20 + 1e-9:
         return None
-    return {"evidence": {"4,5 üst": a, "Her iki yarı 1,5 üst": b}, "expect": "6+ gol (4,5 üst); iki yarıda da 1,5 üst; 3,5 üst ve 2,5 üst rahat."}
+    return {"evidence": {"4,5 üst": a, "Her iki yarı 1,5 üst": b},
+            "paths": {"4,5 üst": "o45.ust", "Her iki yarı 1,5 üst": "iki_yari_15_ust.evet"},
+            "expect": "6+ gol (4,5 üst); iki yarıda da 1,5 üst; 3,5 üst ve 2,5 üst rahat."}
 
 
 def r13(m: dict) -> dict | None:
     v = (m.get("iy_y2_kg") or {}).get("evet/evet")
     if v is None or v >= 8.0:
         return None
-    return {"evidence": {"1.Y / 2.Y KG var": v}, "expect": "En az 2,5 üst, hatta 3,5 üst; ilk yarıdan en az 2 gol; iki yarıda da 1,5 üst; İY 2-2 denenebilir."}
+    return {"evidence": {"1.Y / 2.Y KG var": v}, "paths": {"1.Y / 2.Y KG var": "iy_y2_kg.evet/evet"}, "expect": "En az 2,5 üst, hatta 3,5 üst; ilk yarıdan en az 2 gol; iki yarıda da 1,5 üst; İY 2-2 denenebilir."}
 
 
 def r15(m: dict) -> dict | None:
@@ -143,7 +151,8 @@ def r15(m: dict) -> dict | None:
     ev = {("İY 1 & KG var" if k == "1&var" else "İY 2 & KG var"): d[k] for k in ("1&var", "2&var") if d.get(k) is not None and d[k] < 8.0}
     if not ev:
         return None
-    return {"evidence": ev, "expect": "İki yarıda da 1,5 üst; 2-1 / 1-2; MS 4-2 veya 2-2 skorları."}
+    return {"evidence": ev, "paths": {"İY 1 & KG var": "iy_sonucu_kg.1&var", "İY 2 & KG var": "iy_sonucu_kg.2&var"},
+            "expect": "İki yarıda da 1,5 üst; 2-1 / 1-2; MS 4-2 veya 2-2 skorları."}
 
 
 def r16(m: dict) -> dict | None:
@@ -152,6 +161,7 @@ def r16(m: dict) -> dict | None:
         return None
     other = "2" if side == "1" else "1"
     return {"evidence": {f"MS {side} (favori)": odd, f"MS {other}": m["ms"].get(other)},
+            "paths": {f"MS {side} (favori)": f"ms.{side}", f"MS {other}": f"ms.{other}"},
             "expect": f"İlk yarı {side} gönül rahatlığıyla; açılan takım ({'deplasman' if side == '1' else 'ev sahibi'}) ilk yarı mutlaka 1 gol atar (0,5 üst)."}
 
 

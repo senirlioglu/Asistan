@@ -243,12 +243,23 @@
     if (!ms.length) { body.innerHTML = `<div class="day-empty">Bu filtrelere uyan maç yok. Üstteki seçimi "Tüm maçlar" yapmayı ya da oran filtresini temizlemeyi dene.</div>`; return; }
     body.innerHTML = ms.slice(0, 250).map((m) => {
       const hits = m.hits.filter((x) => !s.rules.size || s.rules.has(x.id));
-      const ev = (x) => Object.entries(x.evidence || {}).map(([k, v]) => `<span class="nt-ev"><span>${esc(k)}</span><b class="num">${fmtOdd(v)}</b></span>`).join("");
+      const ev = (x) => Object.entries(x.evidence || {}).map(([k, v]) =>
+        `<span class="nt-ev"><span>${esc(k)}</span><b class="num">${fmtOdd(v)}${ntArrow(m, (x.paths || {})[k])}</b></span>`).join("");
+      // note 5 says it outright ("oran değişmişse oynama"): if the price the note read has moved
+      // since we first saw it, the note was written about a price that is no longer on the board.
+      const drift = (x) => {
+        const ch = Object.entries(x.paths || {})
+          .map(([k, p]) => [k, (m.moves || {})[p]])
+          .filter(([, mv]) => mv && mv.open !== mv.now);
+        if (!ch.length) return "";
+        const txt = ch.map(([k, mv]) => `${esc(k)} ${mv.open.toFixed(2)} → ${mv.now.toFixed(2)}`).join(" · ");
+        return `<p class="nt-drift">Notun baktığı oran açılıştan beri değişti: ${txt}</p>`;
+      };
       const ours = m.ours ? `<p class="note nt-ours">Bizim analiz (${esc(m.ours.league_name)}): piyasa ${pct(m.ours.market.h)} / ${pct(m.ours.market.d)} / ${pct(m.ours.market.a)} · geçmiş ${pct(m.ours.adj.h)} / ${pct(m.ours.adj.d)} / ${pct(m.ours.adj.a)} · 2,5 üst ${pct(m.ours.over25)} · ${m.ours.n} benzer maç</p>` : "";
       const msLine = ["1", "X", "2"].map((k) => `${fmtOdd(m.ms[k] ?? "–")}${ntArrow(m, "ms." + k)}`).join(" / ");
       return `<div class="nt-card"><div class="card-top"><span>${esc(m.league)} · ${esc(m.time)}</span><span class="num">MS ${msLine}</span></div>
         <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
-        ${hits.map((x) => `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev(x)}</div><p class="nt-expect">${esc(x.expect)}</p></div>`).join("")}
+        ${hits.map((x) => `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev(x)}</div><p class="nt-expect">${esc(x.expect)}</p>${drift(x)}</div>`).join("")}
         ${s.mode === "hits" && hits.length ? "" : ntOddsGrid(m)}
         ${ours}
         <div class="nt-actions"><button type="button" class="btn ghost" data-analyse="${m.code}">Bu maçı analiz et</button></div></div>`;

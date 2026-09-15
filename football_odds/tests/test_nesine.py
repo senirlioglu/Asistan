@@ -78,6 +78,30 @@ def test_team_history_hits(history):
     assert bt["n_matches"] > 0 and "n4" in bt and "n11" in bt and bt["n14"]["n"] >= 1 and bt["n2"]["n"] >= 1
 
 
+def test_every_rule_says_where_its_evidence_came_from():
+    """The page marks a note whose own price has moved, so each hit must name its odds paths."""
+    from src.nesine import watcher
+
+    seen = set()
+    for m in (_m(ms={"1": 1.67, "X": 3.6, "2": 4.5}, iy05={"alt": 1.64, "ust": 2.2}, ilk_gol={"1": 1.64},
+                 korner={"9,5 Korner Alt/Üst · Üst": 1.64}, o25={"alt": 1.83, "ust": 1.51}),
+              _m(ms={"1": 1.15, "X": 6.0, "2": 12.0}),                     # note 4: a favourite at 1.15
+              _m()):                                                        # notes 1, 5, 7, 11, 12, 13, 15
+        tracked = set(watcher.tracked_paths(m))
+        for hit in rules.evaluate(m):
+            paths = hit.get("paths") or {}
+            assert paths, hit["id"]                                # every odds-based note names its prices
+            for label, value in hit["evidence"].items():
+                if not isinstance(value, (int, float)):            # "Favori: ev sahibi" is a word, not a price
+                    continue
+                assert label in paths, (hit["id"], label)
+                assert watcher.value_at(m, paths[label]) == value, (hit["id"], label)
+                assert paths[label] in tracked, paths[label]       # ... and the watcher follows every one of them
+                seen.add(paths[label])
+    assert {"ms.1", "iy05.alt", "ilk_gol.1", "korner.9,5 Korner Alt/Üst · Üst", "iy_skor.2-2",
+            "iyms.1/2", "o45.ust", "iy_y2_kg.evet/evet", "iy_sonucu_kg.1&var", "skor.diger"} <= seen
+
+
 def test_watcher_records_only_the_moves(settings):
     import datetime as dt
 
