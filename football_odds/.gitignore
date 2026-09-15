@@ -12,3 +12,5 @@ __pycache__/
 results/results_cache.json
 results/scorecard/
 results/coupons.json
+results/nesine_bulten.json
+results/notes_history.json

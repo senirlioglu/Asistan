@@ -104,6 +104,12 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
         df, _ = build_processed(settings)
         _write(settings, "running", "analysing upcoming fixtures", started_at=started.isoformat())
         table = run_today(settings, date=dt.date.today(), days=days, refresh=True)
+        try:  # the last week: any day without a prediction file gets analysed after the fact (results come from the database)
+            _write(settings, "running", "analysing last week's matches", started_at=started.isoformat())
+            from .today import run_backfill
+            run_backfill(settings, days=7)
+        except Exception as exc:  # noqa: BLE001 - derived data; never fails the daily job
+            log.warning("backfill skipped: %s", exc)
         secs = (dt.datetime.now(dt.timezone.utc) - started).total_seconds()
         _write(settings, "ok", f"{len(table)} fixtures analysed, {len(df)} historical matches", started_at=started.isoformat(),
                finished_at=dt.datetime.now(dt.timezone.utc).isoformat(), duration_s=round(secs), n_fixtures=int(len(table)),

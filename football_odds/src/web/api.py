@@ -475,6 +475,76 @@ def coupons_delete(coupon_id: str) -> dict:
     return {"ok": True}
 
 
+# --------------------------------------------------------------------------- notes over nesine odds (Notlar)
+_NOTES_INDEX: dict[str, Any] = {"mtime": None, "index": None}
+
+
+def _team_index():
+    from ..nesine.history import TeamIndex, load_history
+
+    p = settings.processed_dir / "matches.parquet"
+    if not p.exists():
+        return None
+    mtime = p.stat().st_mtime
+    if _NOTES_INDEX["index"] is None or _NOTES_INDEX["mtime"] != mtime:
+        df = load_history(settings)
+        _NOTES_INDEX.update(mtime=mtime, index=TeamIndex(df) if df is not None else None)
+    return _NOTES_INDEX["index"]
+
+
+def _ours_lookup(matches: list[dict]) -> dict[int, dict]:
+    """nesine match code -> our analysed fixture (same Turkey date, closest team names)."""
+    from ..web.live import name_score
+
+    df = _all_matches()
+    if df.empty:
+        return {}
+    by_date: dict[str, list] = {}
+    for _, r in df.iterrows():
+        by_date.setdefault(str(r["date_tr"]), []).append(r)
+    out: dict[int, dict] = {}
+    for m in matches:
+        best, best_s = None, 0.0
+        for r in by_date.get(m["date"], []):
+            s = (name_score(m["home"], str(r["home"])) + name_score(m["away"], str(r["away"]))) / 2
+            if s > best_s:
+                best, best_s = r, s
+        if best is not None and best_s >= 0.6:
+            out[m["code"]] = {"id": _str(best["match_id"]), "stamp": _str(best.get("stamp")), "league_name": LEAGUE_TR.get(_str(best["league"]), _str(best["league"])),
+                              "market": {k: _num(best.get(f"market_{k}")) for k in ("h", "d", "a")}, "adj": {k: _num(best.get(f"adj_{k}")) for k in ("h", "d", "a")},
+                              "over25": _num(best.get("over25")), "n": int(best["n"]), "signal": _str(best["signal"])}
+    return out
+
+
+@app.get("/api/notlar")
+def notlar(date: str | None = None, refresh: bool = False) -> dict:
+    """nesine.com bulletin filtered by the user's notes: every football match with the notes it satisfies."""
+    from ..nesine.bulletin import load_matches
+    from ..nesine.history import cached_backtest, team_hits
+    from ..nesine.rules import RULES, evaluate
+
+    try:
+        matches, meta = load_matches(settings, force=refresh)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(502, f"nesine bülteni alınamadı: {exc}")
+    dates = sorted({m["date"] for m in matches if m["date"]})
+    today = dt.date.today().isoformat()
+    date = date or (today if today in dates else (dates[0] if dates else None))
+    if date:
+        matches = [m for m in matches if m["date"] == date]
+    index = _team_index()
+    ours = _ours_lookup(matches)
+    out_matches = []
+    for m in matches:
+        hh = team_hits(m, index) if index is not None else {}
+        hits = evaluate(m, hh)
+        out_matches.append({**{k: v for k, v in m.items() if k != "korner"}, "korner_n": len(m.get("korner") or {}),
+                            "hits": hits, "ours": ours.get(m["code"])})
+    rules = [{k: v for k, v in r.items() if k != "fn"} | {"applied": r.get("applied", True) and (r.get("fn") is not None or r["id"] in ("n2", "n14"))} for r in RULES]
+    return {"meta": meta, "dates": dates, "date": date, "rules": rules, "history": cached_backtest(settings),
+            "matches": out_matches, "n_hits": sum(1 for m in out_matches if m["hits"])}
+
+
 @app.get("/robots.txt", include_in_schema=False)
 def robots() -> Any:
     from fastapi.responses import PlainTextResponse
