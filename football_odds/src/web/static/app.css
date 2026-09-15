@@ -255,6 +255,24 @@ td .no { color: var(--ink-3); }
 .bad { color: var(--hist); font-weight: 700; }
 #view-scorecard section { margin-bottom: 18px; }
 #view-scorecard section h3 { font-size: 1rem; margin: 0 0 6px; }
+/* paper trading (Sanal oyun) */
+.pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin: 12px 0 18px; }
+.pp-card { text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; min-width: 0; cursor: pointer; }
+.pp-card.is-on { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink) inset; }
+.pp-card.is-empty { opacity: 0.7; }
+.pp-card h3 { margin: 0 0 2px; font-size: 1rem; }
+.pp-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 6px; }
+.pp-big { font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; line-height: 1.1; }
+.pp-stats { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.82rem; color: var(--ink-2); }
+.pos { color: var(--good); }
+.neg { color: var(--hist); }
+.spark { flex: 0 0 auto; max-width: 45%; height: auto; }
+.spark .zero { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+.spark polyline { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.spark polyline.pos { stroke: var(--good); }
+.spark polyline.neg { stroke: var(--hist); }
+#view-paper section { margin-bottom: 18px; }
+#view-paper section h3 { font-size: 1rem; margin: 0 0 6px; }
 .kseg { display: flex; gap: 4px; margin-bottom: 8px; }
 .kseg button { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px; padding: 4px 10px; font-size: 0.8rem; color: var(--ink-2); }
 .kseg button.is-on { background: var(--ink); color: var(--ground); border-color: var(--ink); }

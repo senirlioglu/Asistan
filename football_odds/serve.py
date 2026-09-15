@@ -58,9 +58,33 @@ def scheduler_loop(settings, hhmm: str, days: int, scorecard_hhmm: str) -> None:
         time.sleep(60)  # never fire twice inside the same minute
 
 
+def seed_state_dir(settings) -> None:
+    """FO_STATE_DIR (a mounted volume) starts empty: copy the repository's shipped results into it once."""
+    state = os.environ.get("FO_STATE_DIR", "").strip()
+    if not state:
+        return
+    import shutil
+
+    src_results = ROOT / "results"
+    dst = settings.results_dir
+    dst.mkdir(parents=True, exist_ok=True)
+    for name in ("backtest", "audit", "league_groups.json", "data_quality_report.json", "data_quality_report.md"):
+        s, d = src_results / name, dst / name
+        if s.exists() and not d.exists():
+            shutil.copytree(s, d) if s.is_dir() else shutil.copy2(s, d)
+    # prediction files shipped with the repo count as history too (only when the volume has none yet)
+    if not list(dst.glob("*_predictions.csv")):
+        for p in src_results.glob("*_predictions.*"):
+            shutil.copy2(p, dst / p.name)
+        for p in src_results.glob("*_details.json"):
+            shutil.copy2(p, dst / p.name)
+    log.info("state dir %s seeded (results in %s)", state, dst)
+
+
 def main() -> int:
     setup_logging()
     settings = load_settings()
+    seed_state_dir(settings)
     hhmm = os.environ.get("FO_DAILY_UTC", "06:30")
     scorecard_hhmm = os.environ.get("FO_SCORECARD_UTC", "05:00")  # 08:00 Turkey time: yesterday's scorecard
     days = int(os.environ.get("FO_DAYS_AHEAD", "7"))

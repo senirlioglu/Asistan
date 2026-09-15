@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow, noarchive">
 <title>Oran Karşılaştırma</title>
 <meta name="description" content="Bugünkü maçların bahis oranlarını 15 sezonluk geçmişle karşılaştırır: piyasa ne bekliyor, benzer maçlarda ne oldu?">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -22,6 +23,7 @@
     <nav class="tabs" aria-label="Bölümler">
       <button class="tab is-active" data-view="list" type="button">Maçlar</button>
       <button class="tab" data-view="scorecard" type="button">Özet</button>
+      <button class="tab" data-view="paper" type="button">Sanal oyun</button>
       <button class="tab" data-view="glossary" type="button">Sözlük</button>
     </nav>
     <button class="status" id="status-btn" type="button" title="Veri durumu">
@@ -114,6 +116,37 @@
     <div class="chips-scroll" id="sc-leagues" role="group" aria-label="Lig filtresi"></div>
     <p class="count" id="sc-count"></p>
     <div id="sc-body"></div>
+  </section>
+
+  <section class="view" id="view-paper" hidden>
+    <h2 class="h2">Sanal oyun</h2>
+    <p class="lead">Sabit bir kuralla her maça 1 birim koysaydın kasan ne olurdu? Sistem her gün kendi kendine "oynar", sonuçlar gelince yazar. Gerçek para yok; ileriye dönük, hilesiz bir test.</p>
+    <details class="howto" id="pp-howto">
+      <summary>Kurallar ve sınırlar</summary>
+      <ol class="intro-steps">
+        <li><b>Her strateji her uygun maça 1 birim</b> koyar, tekli oynar, kombine yapmaz. Kazanırsa oran − 1 kazanır, kaybederse 1 kaybeder. "Yatırım getirisi" = toplam kâr ÷ toplam yatırılan.</li>
+        <li><b>Oranlar İddaa oranı değil.</b> Football-Data'nın Avrupa şirketleri ortalaması (cuma/salı öğleden sonra toplanan, maç öncesi fiyat). "En yüksek oran" sütunu o gün piyasadaki en iyi fiyat: iyimser üst sınır. İddaa'nın marjı daha yüksek; oradaki gerçek getiri ikisinin de altında kalır.</li>
+        <li><b>Sapma stratejisi</b> sistemin "sapma" uyarısına göre oynamak demektir: geçmişin piyasadan en az E puan yüksek verdiği sonuç. E'yi aşağıdan seçersin. <b>Tersine</b> onun aynasıdır; ikisi birden zarar ediyorsa marj yiyor demektir, biri kazanıp diğeri kaybediyorsa yön bilgisi var demektir.</li>
+        <li><b>Beklenti zarar.</b> Körleme testte (38 bin maç) sapma stratejisi ortalama oranla yaklaşık −%2,6 getirdi, geçmiş favorisi de piyasadan kötüydü. Buradaki sayılar o sonucun canlı devamı; birkaç günün artısı eksisi tesadüftür, ay ölçeğinde bakılır.</li>
+        <li><b>Maksimum düşüş</b> = kasanın zirvesinden en fazla ne kadar geri geldiği; bir stratejinin ne kadar can yaktığını gösterir.</li>
+        <li>2,5 gol stratejileri üst/alt oranı bulunan maçlarda çalışır (16 ek ülkede bu oran yok). Sonucu gelmemiş maçlar "bekliyor" sayılır, kasaya girmez.</li>
+      </ol>
+    </details>
+    <div class="sc-controls">
+      <div class="sc-quick" role="group" aria-label="Hazır aralıklar">
+        <button type="button" class="chip" data-prange="1">Dün</button>
+        <button type="button" class="chip" data-prange="7">Son 7 gün</button>
+        <button type="button" class="chip is-on" data-prange="30">Son 30 gün</button>
+      </div>
+      <div class="sc-dates">
+        <label class="select"><span class="label">Başlangıç</span><input type="date" id="pp-from"></label>
+        <label class="select"><span class="label">Bitiş</span><input type="date" id="pp-to"></label>
+        <label class="select"><span class="label">Sapma eşiği (E)</span><select id="pp-edge"><option value="2">2 puan</option><option value="3" selected>3 puan</option><option value="5">5 puan</option><option value="7.5">7,5 puan</option></select></label>
+      </div>
+    </div>
+    <div class="chips-scroll" id="pp-leagues" role="group" aria-label="Lig filtresi"></div>
+    <p class="count" id="pp-count"></p>
+    <div id="pp-body"></div>
   </section>
 
   <section class="view" id="view-glossary" hidden>

@@ -143,6 +143,10 @@ def analyze_match(index: SimilarityIndex, row: pd.Series, as_of, params: Analysi
         "time": row.get("time") if isinstance(row.get("time"), str) else "",
         "league": league, "home": row["home_team"], "away": row["away_team"],
         "odds_h": row["cons_h"], "odds_d": row["cons_d"], "odds_a": row["cons_a"],
+        # best available price + O/U 2.5 prices, kept for the paper-trading simulation
+        "odds_max_h": row.get("max_h", np.nan), "odds_max_d": row.get("max_d", np.nan), "odds_max_a": row.get("max_a", np.nan),
+        "odds_o25": row.get("cons_o25", np.nan), "odds_u25": row.get("cons_u25", np.nan),
+        "odds_max_o25": row.get("max_o25", np.nan), "odds_max_u25": row.get("max_u25", np.nan),
         "market_h": market[0] * 100, "market_d": market[1] * 100, "market_a": market[2] * 100,
         "n": st.n, "n_eff": st.n_eff, "n_candidates": primary.n_candidates,
         "hist_h": hist[0] * 100, "hist_d": hist[1] * 100, "hist_a": hist[2] * 100,

@@ -118,7 +118,17 @@ def load_settings(path: str | os.PathLike[str] | None = None) -> Settings:
     with open(cfg_path, "r", encoding="utf-8") as fh:
         raw = yaml.safe_load(fh) or {}
     root = cfg_path.resolve().parent.parent if cfg_path.parent.name == "config" else PROJECT_ROOT
-    return Settings(raw=raw, root=root)
+    settings = Settings(raw=raw, root=root)
+    state_dir = os.environ.get("FO_STATE_DIR", "").strip()
+    if state_dir:
+        # Hosted deploys have an ephemeral filesystem; FO_STATE_DIR points at a mounted volume that keeps
+        # the raw cache, the processed database and every generated result across redeploys. The
+        # repository's shipped results (backtest, league groups) are seeded into it by serve.py.
+        base = Path(state_dir)
+        settings = settings.with_overrides(**{
+            "data.raw_dir": str(base / "raw"), "data.processed_dir": str(base / "processed"), "data.results_dir": str(base / "results"),
+        })
+    return settings
 
 
 def season_label(code: str) -> str:
