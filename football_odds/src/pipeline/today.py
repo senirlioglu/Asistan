@@ -78,7 +78,20 @@ def run_today(settings: Settings, date: dt.date | None = None, days: int = 1, pr
     if fixtures.empty:
         log.warning("no fixtures with odds between %s and %s", date, date_to)
         return pd.DataFrame(columns=TABLE_COLUMNS)
+    return analyse_fixtures(settings, history, fixtures, date, date.isoformat(), out_dir, params, backtest_ok, selected, groups)
 
+
+def analyse_fixtures(settings: Settings, history: pd.DataFrame, fixtures: pd.DataFrame, as_of: dt.date, stamp: str, out_dir: Path,
+                     params: AnalysisParams | None = None, backtest_ok: bool | None = None, selected: dict | None = None,
+                     groups: dict | None = None, report: bool = True) -> pd.DataFrame:
+    """Analyse `fixtures` against the pool `history` (must already be restricted to dates before `as_of`) and
+    write results/<stamp>_predictions.{csv,xlsx}, _details.json and analogues/<stamp>_analogues.parquet."""
+    if params is None:
+        params, backtest_ok, selected = load_selected_params(settings)
+    if groups is None:
+        groups = load_league_groups(settings.results_dir / "league_groups.json")
+    date = as_of
+    out_dir.mkdir(parents=True, exist_ok=True)
     indexes = {params.feature_set: SimilarityIndex(history, params.feature_set)}
     if params.feature_set != "1x2":
         indexes["1x2"] = SimilarityIndex(history, "1x2")
@@ -118,7 +131,6 @@ def run_today(settings: Settings, date: dt.date | None = None, days: int = 1, pr
     ordered = [c for c in TABLE_COLUMNS if c in table.columns] + [c for c in table.columns if c not in TABLE_COLUMNS]
     table = table[ordered].sort_values(["date", "time", "league"]).reset_index(drop=True)
 
-    stamp = date.isoformat()
     csv_path = out_dir / f"{stamp}_predictions.csv"
     table.round(3).to_csv(csv_path, index=False)
     try:
@@ -133,8 +145,36 @@ def run_today(settings: Settings, date: dt.date | None = None, days: int = 1, pr
         ("brier_market", "brier_adj", "brier_adj_p_value", "significant_improvement", "test_seasons")}, "matches": details,
     }, indent=1, default=str))
     log.info("wrote %s (%d matches)", csv_path, len(table))
-    print_report(table, backtest_ok)
+    if report:
+        print_report(table, backtest_ok)
     return table
+
+
+def run_backfill(settings: Settings, days: int = 7, today: dt.date | None = None, out_dir: Path | None = None,
+                 force: bool = False) -> dict[str, int]:
+    """Analyse the matches of the last `days` days that have no prediction file yet, exactly as they would
+    have been analysed before kick-off: the pre-match consensus odds come from the processed database and
+    the pool is every match played BEFORE that day. Lets the site show "what the statistics said and what
+    happened" for the week before the system started (or after a missed daily run)."""
+    today = today or dt.date.today()
+    out_dir = out_dir or settings.results_dir
+    full = ParquetHistoricalProvider(settings).load()
+    params, backtest_ok, selected = load_selected_params(settings)
+    groups = load_league_groups(settings.results_dir / "league_groups.json")
+    done: dict[str, int] = {}
+    for k in range(days, 0, -1):
+        d = today - dt.timedelta(days=k)
+        stamp = d.isoformat()
+        if not force and (out_dir / f"{stamp}_predictions.csv").exists():
+            continue
+        day = full[(full["date"] == pd.Timestamp(d)) & full["has_1x2"]]
+        if day.empty:
+            continue
+        pool = full[full["date"] < pd.Timestamp(d)]
+        table = analyse_fixtures(settings, pool, day, d, stamp, out_dir, params, backtest_ok, selected, groups, report=False)
+        done[stamp] = int(len(table))
+        log.info("backfilled %s: %d matches", stamp, len(table))
+    return done
 
 
 def print_report(table: pd.DataFrame, backtest_ok: bool, top: int = 10) -> None:

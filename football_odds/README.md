@@ -304,6 +304,12 @@ ESPN has no scoreboard for Poland, Romania, Finland, Ireland, Switzerland and Sc
 its league list, 218 entries); those cards show "canlı skor yok" and get their result from Football-Data with the next
 daily job. `/api/live-debug/{date}` and `/api/espn-raw?path=…` are read-only diagnostics for this pipeline.
 
+**Backfill** (`run_backfill` in `src/pipeline/today.py`, `python -m src.cli backfill --days 7`, also run at the end of
+every daily job): any day of the last week without a prediction file is analysed after the fact, exactly as it would
+have been before kick-off — the pre-match consensus odds come from the processed database and the pool is every match
+played strictly before that day. The date picker always offers the last 7 days, so the site shows what the statistics
+said and what happened for the week before the system started (or after a missed run).
+
 **Daily scorecard** (`src/pipeline/scorecard.py`, tab "Özet", `GET /api/scorecard?from=&to=&leagues=`): for the
 played matches of a date range (Turkey dates, default yesterday, up to 92 days), per market — 1X2, over/under 2.5,
 over/under 1.5, first- and second-half 0.5/1.5 — how often each side's pick (the outcome it gave the highest

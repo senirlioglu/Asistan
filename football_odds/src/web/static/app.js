@@ -412,15 +412,16 @@
       return;
     }
     const today = meta.today || new Date().toISOString().slice(0, 10);
-    // always offer today + the next 6 days, plus any earlier day that has data
-    const next7 = [];
-    for (let i = 0; i < 7; i++) { const d = new Date(today + "T12:00:00"); d.setDate(d.getDate() + i); next7.push(d.toISOString().slice(0, 10)); }
+    // always offer the last 7 days (played: what the statistics said, what happened), today and the next 6 days,
+    // plus any other day that has data
+    const window = [];
+    for (let i = -7; i < 7; i++) { const d = new Date(today + "T12:00:00"); d.setDate(d.getDate() + i); window.push(d.toISOString().slice(0, 10)); }
     const has = new Set(meta.dates);
-    const all = [...new Set([...meta.dates.filter((d) => d < today), ...next7, ...meta.dates.filter((d) => d > next7[6])])].sort();
+    const all = [...new Set([...meta.dates.filter((d) => d < window[0]), ...window, ...meta.dates.filter((d) => d > window[window.length - 1])])].sort();
     all.forEach((d) => {
       const o = el("option"); o.value = d;
       const tag = d === today ? " · bugün" : d < today ? " · oynandı" : "";
-      o.textContent = fmtDate(d) + tag + (has.has(d) ? "" : " · henüz maç yok");
+      o.textContent = fmtDate(d) + tag + (has.has(d) ? "" : d < today ? " · analiz yok" : " · henüz maç yok");
       sel.appendChild(o);
     });
     const want = keepDate && state.date && all.includes(state.date) ? state.date : today;

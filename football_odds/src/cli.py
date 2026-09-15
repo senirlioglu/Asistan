@@ -55,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--refresh", action="store_true", help="force re-download of fixtures")
     p.add_argument("--update", action="store_true", help="refresh the current season's results and rebuild the database first")
 
+    p = sub.add_parser("backfill", help="analyse last week's played matches that have no prediction file (as of their own day)")
+    p.add_argument("--days", type=int, default=7)
+    p.add_argument("--force", action="store_true", help="re-analyse even when a file exists")
+
     sub.add_parser("dashboard", help="run the legacy Streamlit dashboard")
     p = sub.add_parser("web", help="run the web app (FastAPI + HTML frontend) with the daily scheduler")
     p.add_argument("--port", type=int, default=8000)
@@ -96,6 +100,12 @@ def main(argv: list[str] | None = None) -> int:
         from .pipeline.today import run_today
         date = dt.date.fromisoformat(args.date) if args.date else dt.date.today()
         run_today(settings, date=date, days=args.days, provider_name=args.provider, refresh=args.refresh, update=args.update)
+        return 0
+
+    if args.command == "backfill":
+        from .pipeline.today import run_backfill
+        done = run_backfill(settings, days=args.days, force=args.force)
+        log.info("backfill: %s", done or "nothing to do")
         return 0
 
     if args.command == "dashboard":
