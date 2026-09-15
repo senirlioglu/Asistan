@@ -191,7 +191,11 @@ button { cursor: pointer; }
   left: 0; right: 0; bottom: 0; max-height: 92vh; border-radius: 18px 18px 0 0; padding: 8px 16px 32px; }
 @media (min-width: 900px) { .sheet { top: 0; bottom: 0; left: auto; right: 0; width: 560px; max-height: none; border-radius: 0; padding: 16px 22px 40px; } .sheet-handle { display: none; } }
 .sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 4px auto 10px; }
-.sheet-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+/* the head (title + close button) stays visible while the sheet scrolls, so the ✕ is always reachable on a phone */
+.sheet-head { position: sticky; top: -8px; z-index: 2; background: var(--surface); display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  margin: 0 -16px 12px; padding: 6px 16px 8px; border-bottom: 1px solid var(--line); }
+@media (min-width: 900px) { .sheet-head { top: -16px; margin: 0 -22px 12px; padding: 8px 22px 8px; } }
+.sheet-head .iconbtn { flex: 0 0 auto; width: 40px; height: 40px; font-size: 1.1rem; color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
 .sheet-sub { margin: 0; font-size: 0.8rem; color: var(--ink-3); }
 .sheet-title { font-size: 1.3rem; }
 .sheet-body { display: grid; gap: 18px; }

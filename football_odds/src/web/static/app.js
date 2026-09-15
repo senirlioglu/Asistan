@@ -437,7 +437,9 @@
       if (!String(e.message).startsWith("404")) throw e;
       state.day = { date: stamp, matches: [] };
     }
-    if (state.leagues.size === 0) state.day.matches.forEach((m) => state.leagues.add(m.league));
+    // the league filter is per day: every day starts with all of its leagues selected (a filter kept from
+    // another day would hide everything when the leagues differ)
+    state.leagues = new Set(state.day.matches.map((m) => m.league));
     state.live = {};
     renderSummary(); renderFlagged(); renderLeagueChips(); renderCards(); renderTally();
     loadLive();
