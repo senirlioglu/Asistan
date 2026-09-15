@@ -99,6 +99,18 @@
         <label class="select"><span class="label">Bitiş</span><input type="date" id="sc-to"></label>
       </div>
     </div>
+    <details class="howto" id="sc-howto">
+      <summary>Bu sayılar nasıl hesaplanıyor?</summary>
+      <ol class="intro-steps">
+        <li><b>İki taraf var.</b> <span class="c-market">Piyasa</span>: bahis oranlarından hesaplanan ihtimal. <span class="c-hist">Geçmiş</span>: bu maça en çok benzeyen geçmiş maçlarda gerçekleşen oran, piyasaya doğru biraz çekilmiş (düzeltilmiş) hali. Kartlarda gördüğün rakamların aynısı.</li>
+        <li><b>"Favori tuttu"</b> = tarafın en yüksek ihtimal verdiği sonuç geldi mi? Maç sonucunda 1 / X / 2, gol başlıklarında üst / alt (ihtimal %50 ve üzeriyse "üst" seçilmiş sayılır). İki taraf çoğu maçta aynı favoriyi seçer; bu yüzden isabet sayıları birbirine yakın çıkar.</li>
+        <li><b>"Gerçeğe daha yakın"</b> = gelen sonuca hangi taraf daha yüksek ihtimal vermiş? Örnek: maç 2-1 ev sahibi bitti; piyasa ev sahibine %79,6, geçmiş %82,3 demişse geçmiş daha yakındır. Aynı favoriyi seçmiş olsalar da aradaki derece farkını ölçer. Fark <b>1 puandan azsa "eşit"</b> sayılır. Geçmiş piyasaya doğru çekildiği için farklar genelde 1–4 puandır; "eşit" sayısının yüksek çıkması bundandır.</li>
+        <li><b>"Beklenen üst" ile "gerçekleşen üst"</b>: tarafın verdiği üst ihtimallerinin ortalaması ile gerçekten üst biten maçların oranı. İkisi yakınsa taraf iyi ayarlı (kalibre) demektir; tek tek isabetten daha sağlam bir ölçüdür.</li>
+        <li><b>Kalibrasyon (Brier)</b>: üç sonucun ihtimalleri ile gerçekleşen arasındaki kare fark; düşük olan daha iyi. Körleme testte kullanılan ölçünün aynısı.</li>
+        <li><b>Neden "tuttu / yanıldı" yetmez:</b> %60 dediğin sonuç gelmezse tahmin yanlış olmuş sayılmaz; olasılık böyle çalışır. Bu yüzden ana ölçü "daha yakın" ve kalibrasyondur, isabet sayısı yalnızca kaba fikir verir.</li>
+        <li><b>Sınırlar:</b> piyasada 1,5 gol ve yarı oranları yok, o başlıklar yalnızca geçmişi ölçer. Yarı başlıkları ilk yarı skorunu ister; bu skor ertesi sabah Football-Data verisiyle gelir. Bir günün sayısı küçüktür ve tesadüfe açıktır; sistemin genel notu 38 bin maçlık körleme testten gelir ve o test "piyasadan biraz daha kötü" diyor.</li>
+      </ol>
+    </details>
     <div class="chips-scroll" id="sc-leagues" role="group" aria-label="Lig filtresi"></div>
     <p class="count" id="sc-count"></p>
     <div id="sc-body"></div>

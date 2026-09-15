@@ -225,6 +225,13 @@ td .no { color: var(--ink-3); }
 .vbar small { color: var(--ink-3); }
 
 /* scorecard (Özet) */
+.howto { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 12px; margin: 0 0 12px; color: var(--ink-2); font-size: 0.9rem; }
+.howto summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.howto ol { margin: 8px 0 2px; padding-left: 20px; }
+.howto li { margin-bottom: 6px; }
+.howto b { color: var(--ink); }
+.c-market { color: var(--market); font-weight: 600; }
+.c-hist { color: var(--hist); font-weight: 600; }
 .sc-controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-end; margin-bottom: 10px; }
 .sc-quick { display: flex; gap: 6px; flex-wrap: wrap; }
 .sc-dates { display: flex; gap: 10px; flex-wrap: wrap; }

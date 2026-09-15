@@ -622,7 +622,10 @@
     ["İY/MS (ilk yarı / maç sonu)", "Benzer maçlarda ilk yarı ve maç sonu sonuçlarının birlikte dağılımı. 1 = ev sahibi, X = beraberlik, 2 = deplasman; 1/1 ilk yarıyı da maçı da ev sahibi önde bitirdi, X/2 ilk yarı berabere, maçı deplasman kazandı demektir. Listedeki her benzer maçın ilk yarı skoru ve maç sonu skoru ayrı sütunlarda yazar."],
     ["Yarı yarı gol", "Benzer maçlarda ilk yarı ve ikinci yarı ayrı ayrı: ortalama gol, en az 1 gol (0,5 üst) ve en az 2 gol (1,5 üst) oranı, hangi yarıda daha çok gol atıldığı. Maç sonu 2,5 üstü ile aynı mantık, yalnızca yarıya bölünmüş. Yarılar için piyasa oranı kaynakta olmadığından karşılaştırma yapılmaz."],
     ["Aynı takımlar", "Detay panelindeki bu bölüm oran benzerliğinden bağımsızdır: iki takımın birbirine karşı geçmiş maçları ve her takımın bugünkü gibi fiyatlandığı (±5 puan) kendi maçlarında ne yaptığı. Az maça dayandığı için yüzdeler kaba fikir verir; güven aralığı yanında yazar."],
-    ["Körleme test", "Sistem 2017–2021 sezonlarında ayarlandı, 2021–2026 sezonlarında hiç görmediği maçlarda denendi; bir maçı analiz ederken yalnızca ondan önce oynanmış maçları görebilir. Sonuç: piyasadan daha iyi tahmin edemedi."],
+    ["Özet: favori tuttu", "Oynanan maçlarda tarafın (piyasa ya da geçmiş) en yüksek ihtimal verdiği sonuç geldi mi? Gol başlıklarında %50 ve üzeri 'üst' seçimi sayılır. İki taraf çoğu maçta aynı favoriyi seçtiği için isabet sayıları birbirine yakındır."],
+    ["Özet: gerçeğe daha yakın", "Gelen sonuca hangi taraf daha yüksek ihtimal vermişti? Aynı favoriyi seçmiş olsalar bile derece farkını ölçer. Fark 1 puandan azsa 'eşit'. Geçmiş, piyasaya doğru çekilmiş (düzeltilmiş) ihtimali kullandığı için farklar çoğunlukla 1–4 puandır."],
+    ["Özet: beklenen / gerçekleşen üst", "Tarafın verdiği üst ihtimallerinin ortalaması ile gerçekten üst biten maçların oranı. Yakınsa taraf iyi ayarlıdır; tek tek isabetten daha sağlam bir ölçüdür."],
+    ["Körleme test","Sistem 2017–2021 sezonlarında ayarlandı, 2021–2026 sezonlarında hiç görmediği maçlarda denendi; bir maçı analiz ederken yalnızca ondan önce oynanmış maçları görebilir. Sonuç: piyasadan daha iyi tahmin edemedi."],
     ["Kalibrasyon skoru (Brier)", "Tahmin kalitesi ölçüsü; düşük daha iyi. Piyasa 0.5899, sistem 0.5897: fark yok denecek kadar küçük ve istatistiksel olarak anlamsız."],
   ];
 
