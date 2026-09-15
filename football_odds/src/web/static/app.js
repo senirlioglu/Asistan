@@ -93,7 +93,144 @@
     $("#view-paper").hidden = name !== "paper";
     $("#view-empty").hidden = true;
     if (name === "scorecard" && !state.sc.data) loadScorecard();
-    if (name === "paper" && !state.pp.data) loadPaper();
+    if (name === "paper") { if (!state.pp.data) loadPaper(); if (!state.cp.loaded) { initCouponBuilder(); loadCoupons(); } }
+  }
+
+  // ------------------------------------------------------------------ coupons (Oyun)
+  state.cp = { loaded: false, date: null, day: null, picks: new Map(), saving: false };
+  const CP_MARKETS = [
+    ["ms", "Maç sonucu", ["h", "d", "a"]], ["o25", "2,5 gol", ["over", "under"]], ["o15", "1,5 gol", ["over", "under"]],
+    ["fh05", "İY 0,5", ["over", "under"]], ["fh15", "İY 1,5", ["over", "under"]], ["sh05", "2Y 0,5", ["over", "under"]], ["sh15", "2Y 1,5", ["over", "under"]],
+  ];
+  const CP_PICK = { h: "1", d: "X", a: "2", over: "Üst", under: "Alt" };
+
+  function cpProbs(m, market) {
+    // {pick: {hist: %, market: %}} for the builder; null where a side has no view
+    const yn = (p) => (p == null ? null : { over: p, under: 100 - p });
+    const gd = m.goals_dist || {};
+    const o15 = gd["0"] != null && gd["1"] != null ? 100 * (1 - gd["0"] - gd["1"]) : null;
+    const hv = m.halves || {};
+    const f = (v) => (v == null ? null : 100 * v);
+    switch (market) {
+      case "ms": return { hist: m.adj, market: m.market };
+      case "o25": return { hist: yn(m.over25), market: yn(m.market_over25) };
+      case "o15": return { hist: yn(o15), market: null };
+      case "fh05": return { hist: yn(f(hv.fh_over05)), market: null };
+      case "fh15": return { hist: yn(f(hv.fh_over15)), market: null };
+      case "sh05": return { hist: yn(f(hv.sh_over05)), market: null };
+      case "sh15": return { hist: yn(f(hv.sh_over15)), market: null };
+      default: return { hist: null, market: null };
+    }
+  }
+  const cpArgmax = (o) => (o ? Object.keys(o).filter((k) => o[k] != null).sort((a, b) => o[b] - o[a])[0] || null : null);
+
+  function initCouponBuilder() {
+    const sel = $("#cp-date"); sel.innerHTML = "";
+    const today = state.meta?.today || isoDay(new Date());
+    const has = new Set(state.meta?.dates || []);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today + "T12:00:00"); d.setDate(d.getDate() + i); const s = isoDay(d);
+      const o = el("option"); o.value = s; o.textContent = fmtDate(s) + (i === 0 ? " · bugün" : "") + (has.has(s) ? "" : " · henüz maç yok"); sel.appendChild(o);
+    }
+    sel.value = state.date && state.date >= today ? state.date : today;
+    sel.onchange = () => loadCouponDay(sel.value);
+    $("#cp-save").onclick = saveCoupon;
+    $("#cp-clear").onclick = () => { state.cp.picks.clear(); renderCouponDay(); };
+    $("#cp-copy").onclick = () => {
+      (state.cp.day?.matches || []).forEach((m) => CP_MARKETS.forEach(([mk]) => { const h = cpArgmax(cpProbs(m, mk).hist); if (h) state.cp.picks.set(`${m.id}|${mk}`, h); }));
+      renderCouponDay();
+    };
+    state.cp.loaded = true;
+    loadCouponDay(sel.value);
+  }
+
+  async function loadCouponDay(stamp) {
+    state.cp.date = stamp; state.cp.picks.clear();
+    $("#cp-matches").innerHTML = `<p class="note">Yükleniyor…</p>`;
+    try { state.cp.day = await api(`/api/day/${stamp}`); }
+    catch (e) { state.cp.day = { matches: [] }; }
+    renderCouponDay();
+  }
+
+  function cpRow(m) {
+    const cells = CP_MARKETS.map(([mk, label, opts]) => {
+      const pr = cpProbs(m, mk);
+      const hPick = cpArgmax(pr.hist), mPick = cpArgmax(pr.market);
+      if (!hPick && !mPick) return `<div class="cp-mk is-na"><span class="cp-mk-label">${label}</span><span class="note">veri yok</span></div>`;
+      const btns = opts.map((o) => {
+        const key = `${m.id}|${mk}`, on = state.cp.picks.get(key) === o;
+        const marks = `${hPick === o ? '<i class="mk-h" title="geçmişin seçimi">G</i>' : ""}${mPick === o ? '<i class="mk-m" title="piyasanın seçimi">P</i>' : ""}`;
+        const ph = pr.hist && pr.hist[o] != null ? pct(pr.hist[o]) : "–";
+        return `<button type="button" class="cp-btn${on ? " is-on" : ""}" data-key="${key}" data-pick="${o}"><b>${CP_PICK[o]}</b><small>${ph}</small>${marks}</button>`;
+      }).join("");
+      return `<div class="cp-mk"><span class="cp-mk-label">${label}</span><div class="cp-btns">${btns}</div></div>`;
+    }).join("");
+    return `<div class="cp-row"><div class="cp-head"><b>${esc(m.home)} – ${esc(m.away)}</b><span class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · oran ${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}</span></div><div class="cp-mks">${cells}</div></div>`;
+  }
+
+  function renderCouponDay() {
+    const box = $("#cp-matches");
+    const ms = (state.cp.day?.matches || []).slice().sort((a, b) => (a.time || "").localeCompare(b.time || "") || a.league_name.localeCompare(b.league_name, "tr"));
+    if (!ms.length) { box.innerHTML = `<div class="day-empty">Bu gün için analiz edilmiş maç yok. Football-Data yeni haftanın maçlarını genellikle Salı–Çarşamba yükler.</div>`; }
+    else box.innerHTML = ms.map(cpRow).join("");
+    box.querySelectorAll(".cp-btn").forEach((b) => (b.onclick = () => {
+      const key = b.dataset.key, pick = b.dataset.pick;
+      if (state.cp.picks.get(key) === pick) state.cp.picks.delete(key); else state.cp.picks.set(key, pick);
+      renderCouponDay();
+    }));
+    const n = state.cp.picks.size;
+    $("#cp-summary").textContent = n ? `${n} seçim` : "Henüz seçim yok";
+    $("#cp-save").disabled = n === 0 || state.cp.saving;
+  }
+
+  async function saveCoupon() {
+    if (!state.cp.picks.size) return;
+    state.cp.saving = true; $("#cp-save").disabled = true;
+    const picks = [...state.cp.picks.entries()].map(([key, pick]) => { const [match_id, market] = key.split("|"); return { match_id, market, pick }; });
+    try {
+      await api("/api/coupons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ picks, label: $("#cp-label").value }) });
+      toast("Kupon kaydedildi."); state.cp.picks.clear(); $("#cp-label").value = ""; renderCouponDay(); await loadCoupons();
+    } catch (e) { toast("Kaydedilemedi: " + e.message); }
+    state.cp.saving = false; renderCouponDay();
+  }
+
+  async function loadCoupons() {
+    const box = $("#cp-list");
+    try {
+      const d = await api("/api/coupons");
+      renderCoupons(d.coupons || []);
+    } catch (e) { box.textContent = "Kuponlar yüklenemedi: " + e.message; }
+  }
+
+  const tallyTxt = (t) => `${t.ok} tuttu · ${t.wrong} tutmadı${t.pending ? ` · ${t.pending} bekliyor` : ""}${t.n_odds ? ` · kâr ${signed(t.pnl)} (${t.n_odds} oranlı seçim)` : ""}`;
+  const statusTr = { pending: ["Bekliyor", ""], won: ["Hepsi tuttu", "won"], lost: ["Tutmadı", "lost"] };
+
+  function renderCoupons(list) {
+    const box = $("#cp-list");
+    if (!list.length) { box.innerHTML = `<p class="note">Henüz kupon yok. Yukarıdan maç seçip kaydet.</p>`; return; }
+    const agg = { user: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 }, hist: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 }, market: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 } };
+    list.forEach((c) => Object.keys(agg).forEach((s) => Object.keys(agg[s]).forEach((k) => (agg[s][k] += c.tally[s][k] || 0))));
+    const settledAll = agg.user.ok + agg.user.wrong;
+    const head = settledAll ? `<div class="cp-total"><span class="label">Tüm kuponlarda</span>
+      <div class="cp-total-row"><b>Sen</b><span>${tallyTxt(agg.user)}</span></div>
+      <div class="cp-total-row"><b class="c-hist">Geçmiş</b><span>${tallyTxt(agg.hist)}</span></div>
+      <div class="cp-total-row"><b class="c-market">Piyasa</b><span>${tallyTxt(agg.market)}</span></div>
+      <p class="note">Piyasa yalnızca maç sonucu ve 2,5 golde görüş bildirir; 1,5 gol ve yarı başlıklarında sadece sen ve geçmiş sayılır. Kâr: seçim başına 1 birim, o tarafın kendi seçiminin oranıyla.</p></div>` : "";
+    box.innerHTML = head + list.map((c) => {
+      const [st, cls] = statusTr[c.status] || [c.status, ""];
+      const rows = c.picks.map((p) => `<tr><td class="wrap">${esc(p.home)} – ${esc(p.away)}<small class="muted"> · ${fmtShort(p.date)}${p.time ? " " + esc(p.time) : ""}${p.score ? ` · <b>${esc(p.score)}</b>${p.ht_score ? ` (${esc(p.ht_score)})` : ""}` : ""}</small></td><td class="wrap">${esc(p.market_label)}</td>
+        <td class="num">${esc(p.pick_label)} ${okMark(p.user_ok)}${p.odds ? `<small class="muted"> @${num(p.odds)}</small>` : ""}</td>
+        <td class="num">${p.hist_pick ? `${CP_PICK[p.hist_pick]} ${okMark(p.hist_ok)}` : "–"}</td>
+        <td class="num hide-sm">${p.market_pick ? `${CP_PICK[p.market_pick]} ${okMark(p.market_ok)}` : "–"}</td>
+        <td class="num hide-sm">${esc(p.score || "–")}${p.ht_score ? `<small class="muted"> (${esc(p.ht_score)})</small>` : ""}</td></tr>`).join("");
+      return `<div class="cp-card"><div class="cp-card-head"><div><b>${esc(c.label || "Kupon")}</b> <span class="tag ${cls}">${st}</span><br><small class="muted">${c.n_picks} seçim · ${c.created_at.slice(0, 16).replace("T", " ")} UTC</small></div><button type="button" class="linkbtn" data-del="${c.id}">Sil</button></div>
+        <div class="cp-tally"><span><b>Sen</b> ${tallyTxt(c.tally.user)}</span><span><b class="c-hist">Geçmiş</b> ${tallyTxt(c.tally.hist)}</span><span><b class="c-market">Piyasa</b> ${tallyTxt(c.tally.market)}</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Maç</th><th>Başlık</th><th class="num">Sen</th><th class="num">Geçmiş</th><th class="num hide-sm">Piyasa</th><th class="num hide-sm">Skor (İY)</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    }).join("");
+    box.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+      if (!window.confirm("Bu kupon silinsin mi?")) return;
+      try { await api(`/api/coupons/${b.dataset.del}`, { method: "DELETE" }); await loadCoupons(); } catch (e) { toast("Silinemedi: " + e.message); }
+    }));
   }
 
   // ------------------------------------------------------------------ paper trading (Sanal oyun)

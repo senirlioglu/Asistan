@@ -23,7 +23,7 @@
     <nav class="tabs" aria-label="Bölümler">
       <button class="tab is-active" data-view="list" type="button">Maçlar</button>
       <button class="tab" data-view="scorecard" type="button">Özet</button>
-      <button class="tab" data-view="paper" type="button">Sanal oyun</button>
+      <button class="tab" data-view="paper" type="button">Oyun</button>
       <button class="tab" data-view="glossary" type="button">Sözlük</button>
     </nav>
     <button class="status" id="status-btn" type="button" title="Veri durumu">
@@ -119,8 +119,33 @@
   </section>
 
   <section class="view" id="view-paper" hidden>
-    <h2 class="h2">Sanal oyun</h2>
-    <p class="lead">Sabit bir kuralla her maça 1 birim koysaydın kasan ne olurdu? Sistem her gün kendi kendine "oynar", sonuçlar gelince yazar. Gerçek para yok; ileriye dönük, hilesiz bir test.</p>
+    <h2 class="h2">Oyun</h2>
+    <p class="lead">Maçları sen seç, tahminini yap; sistem aynı maçlarda kendi seçimini koyar. Sonuçlar geldikçe her seçim tuttu / tutmadı olur ve üçü yan yana gelir: sen, benzer maçların geçmişi, piyasa. Gerçek para yok.</p>
+
+    <section id="cp-build">
+      <h3>Kupon yap</h3>
+      <div class="sc-controls">
+        <label class="select"><span class="label">Maç günü</span><select id="cp-date" aria-label="Kupon günü"></select></label>
+        <label class="select"><span class="label">Kupon adı (isteğe bağlı)</span><input type="text" id="cp-label" maxlength="60" placeholder="ör. Cumartesi kuponu"></label>
+      </div>
+      <p class="note">Her satırda tahmin etmek istediğin başlığa dokun: maç sonucu (1 / X / 2), 2,5 ve 1,5 gol, ilk ve ikinci yarı gol. Küçük <b class="c-hist">G</b> işareti geçmişin, <b class="c-market">P</b> işareti piyasanın seçimidir; yüzdeler o tarafın ihtimali. Seçmediğin başlık kupona girmez.</p>
+      <div id="cp-matches"></div>
+      <div class="cp-actions">
+        <span id="cp-summary" class="count"></span>
+        <button type="button" class="btn ghost" id="cp-copy">Geçmişin seçimlerini kopyala</button>
+        <button type="button" class="btn ghost" id="cp-clear">Temizle</button>
+        <button type="button" class="btn" id="cp-save">Kuponu kaydet</button>
+      </div>
+    </section>
+
+    <section id="cp-mine">
+      <h3>Kuponlarım</h3>
+      <div id="cp-list">Yükleniyor…</div>
+    </section>
+
+    <section id="pp-system">
+    <h3>Sistemin kendi oyunu</h3>
+    <p class="note">Sabit bir kuralla her uygun maça 1 birim koysaydın kasan ne olurdu? Sistem her gün kendi kendine "oynar", sonuçlar gelince yazar. İleriye dönük, hilesiz bir test.</p>
     <details class="howto" id="pp-howto">
       <summary>Kurallar ve sınırlar</summary>
       <ol class="intro-steps">
@@ -147,6 +172,7 @@
     <div class="chips-scroll" id="pp-leagues" role="group" aria-label="Lig filtresi"></div>
     <p class="count" id="pp-count"></p>
     <div id="pp-body"></div>
+    </section>
   </section>
 
   <section class="view" id="view-glossary" hidden>
