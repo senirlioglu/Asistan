@@ -25,7 +25,8 @@
   };
   const CONF = { HIGH: "Yüksek", MEDIUM: "Orta", LOW: "Düşük", "VERY LOW": "Çok düşük" };
 
-  const state = { meta: null, date: null, day: null, leagues: new Set(), sort: "time", onlyDev: false, view: "list", pollTimer: null };
+  const state = { meta: null, date: null, day: null, leagues: new Set(), status: new Set(["post", "in", "pre"]), sort: "time",
+                onlyDev: false, view: "list", pollTimer: null };
 
   // ------------------------------------------------------------------ api
   async function api(path, opts) {
@@ -624,7 +625,8 @@
     // another day would hide everything when the leagues differ)
     state.leagues = new Set(state.day.matches.map((m) => m.league));
     state.live = {};
-    renderSummary(); renderFlagged(); renderLeagueChips(); renderCards(); renderTally();
+    state.status = new Set(STATUS.map((s) => s[0]));   // a status filter kept from another day would hide everything
+    renderSummary(); renderFlagged(); renderLeagueChips(); renderStatusChips(); renderCards(); renderTally();
     loadLive();
   }
 
@@ -664,6 +666,8 @@
     if (open && open.dataset.id) open.innerHTML = liveBadge(state.live[open.dataset.id], byId.get(open.dataset.id));
     const sc = $("#sheet-comment");
     if (sc && byId.has(sc.dataset.id)) sc.innerHTML = commentary(byId.get(sc.dataset.id), state.live[sc.dataset.id]).full;
+    renderStatusChips();   // the live scores just told us which matches are over and which are running
+    if (state.status.size !== STATUS.length) renderCards();   // ... which can move a match out of the current filter
     renderTally();
   }
 
@@ -714,6 +718,51 @@
         : "<b>piyasadan daha iyi tahmin edemedi</b>; bu yüzden hiçbir maçta \"belirgin sapma\" verilmez";
       v.innerHTML = `Körleme test (${(bt.test_seasons || []).length} sezon, ${bt.n_test_matches} maç): sistem ${verdict}. Kalibrasyon skoru (düşük iyi): piyasa ${num(bt.brier_market, 4)}, sistem ${num(bt.brier_adj, 4)}.`;
     } else { v.hidden = true; }
+  }
+
+  // ------------------------------------------------------------------ played / in play / to come
+  const STATUS = [["post", "Oynanmış"], ["in", "Devam eden"], ["pre", "Oynanacak"]];
+  const IN_PLAY_MIN = 130;   // 90 + half time + stoppage: after this a match without a live source is over
+
+  /** "now" as {date, minutes} in Turkey, the frame the page shows every kick-off in. */
+  function nowTR() {
+    const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Istanbul", year: "numeric", month: "2-digit",
+      day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date());
+    const g = (t) => p.find((x) => x.type === t).value;
+    return { date: `${g("year")}-${g("month")}-${g("day")}`, min: Number(g("hour")) * 60 + Number(g("minute")) };
+  }
+
+  /** "post" | "in" | "pre" — the live score when we have one, otherwise the clock. */
+  function matchStatus(m) {
+    const live = state.live?.[m.id];
+    if (live && live.state) return live.state;
+    const now = nowTR();
+    if (!m.date) return "pre";
+    if (m.date !== now.date) return m.date < now.date ? "post" : "pre";
+    const [h, mi] = String(m.time || "00:00").split(":").map(Number);
+    const diff = now.min - (h * 60 + (mi || 0));
+    return diff < 0 ? "pre" : diff < IN_PLAY_MIN ? "in" : "post";
+  }
+
+  function renderStatusChips() {
+    const wrap = $("#status-chips"); if (!wrap) return;
+    wrap.innerHTML = "";
+    const counts = {};
+    state.day.matches.forEach((m) => { const s = matchStatus(m); counts[s] = (counts[s] || 0) + 1; });
+    const all = el("button", "chip" + (state.status.size === STATUS.length ? " is-on" : ""), "Tüm durumlar"); all.type = "button";
+    all.onclick = () => { state.status = new Set(STATUS.map((s) => s[0])); renderStatusChips(); renderCards(); };
+    wrap.appendChild(all);
+    STATUS.forEach(([key, label]) => {
+      const on = state.status.has(key) && state.status.size !== STATUS.length;
+      const b = el("button", "chip" + (on ? " is-on" : ""), `${label} <small>${counts[key] || 0}</small>`); b.type = "button";
+      b.onclick = () => {
+        if (state.status.size === STATUS.length) state.status = new Set([key]);           // first click: only this one
+        else if (state.status.has(key)) { state.status.delete(key); if (!state.status.size) state.status = new Set(STATUS.map((s) => s[0])); }
+        else state.status.add(key);                                                        // several can stay on at once
+        renderStatusChips(); renderCards();
+      };
+      wrap.appendChild(b);
+    });
   }
 
   function renderLeagueChips() {
@@ -866,7 +915,7 @@
 
   function renderCards() {
     const wrap = $("#cards"); wrap.innerHTML = "";
-    let ms = state.day.matches.filter((m) => state.leagues.has(m.league));
+    let ms = state.day.matches.filter((m) => state.leagues.has(m.league) && state.status.has(matchStatus(m)));
     if (state.onlyDev) ms = ms.filter((m) => m.signal.includes("DEVIATION"));
     if (state.sort === "edge") ms.sort((a, b) => maxEdge(b) - maxEdge(a));
     else if (state.sort === "time") ms.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
@@ -1072,6 +1121,12 @@
     $("#nt-date").onchange = (e) => { state.nt.date = e.target.value; state.nt.leagues = new Set(); loadNotes(); };
     $("#nt-refresh").onclick = () => loadNotes(true);
     ntAutoPoll();
+    // kick-offs pass while the page sits open: keep the played/in-play/to-come counts honest
+    setInterval(() => {
+      if (state.view !== "list" || !state.day || document.hidden) return;
+      renderStatusChips();
+      if (state.status.size !== STATUS.length) renderCards();
+    }, 60000);
     const ntRe = () => { if (state.nt.data) renderNotes(); };
     document.querySelectorAll('input[name="nt-mode"]').forEach((r) => (r.onchange = () => { state.nt.mode = r.value; state.nt.leagues = new Set(); ntRe(); }));
     $("#nt-q").oninput = (e) => { state.nt.q = e.target.value; ntRe(); };
