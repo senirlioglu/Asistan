@@ -29,11 +29,14 @@ log = get_logger("web.live")
 ESPN_LEAGUES = {
     "E0": "eng.1", "E1": "eng.2", "SP1": "esp.1", "SP2": "esp.2", "I1": "ita.1", "I2": "ita.2", "D1": "ger.1", "D2": "ger.2",
     "F1": "fra.1", "F2": "fra.2", "N1": "ned.1", "P1": "por.1", "B1": "bel.1", "T1": "tur.1", "G1": "gre.1", "SC0": "sco.1",
-    "E2": "eng.3", "E3": "eng.4", "EC": "eng.5", "SC1": "sco.2", "SC2": "sco.3", "SC3": "sco.4",
-    "ARG": "arg.1", "AUT": "aut.1", "BRA": "bra.1", "CHN": "chn.1", "DNK": "den.1", "FIN": "fin.1", "IRL": "irl.1", "JPN": "jpn.1",
-    "MEX": "mex.1", "NOR": "nor.1", "POL": "pol.1", "ROU": "rou.1", "RUS": "rus.1", "SWE": "swe.1", "SWZ": "sui.1",
-    "USA": "usa.1",
+    "E2": "eng.3", "E3": "eng.4", "EC": "eng.5", "SC1": "sco.2",
+    "ARG": "arg.1", "AUT": "aut.1", "BRA": "bra.1", "CHN": "chn.1", "DNK": "den.1", "JPN": "jpn.1",
+    "MEX": "mex.1", "NOR": "nor.1", "RUS": "rus.1", "SWE": "swe.1", "USA": "usa.1",
 }
+# Not on ESPN at all (checked against sports.core.api.espn.com/v2/sports/soccer/leagues, 218 leagues, 2026-09-14):
+# Poland, Romania, Finland, Ireland, Switzerland, Scottish League One/Two. Their final results still arrive from
+# Football-Data with the next daily job; there is simply no in-play score for them.
+NO_LIVE_LEAGUES = {"POL", "ROU", "FIN", "IRL", "SWZ", "SC2", "SC3"}
 ESPN_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard"
 CACHE_TTL_S = 45
 USER_AGENTS = ["curl/8.5.0", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36", "football-odds/0.1"]
@@ -157,7 +160,9 @@ def live_for_fixture(league: str, date_uk: str, home: str, away: str) -> dict | 
     days = []
     try:
         d = dt.date.fromisoformat(date_uk[:10])
-        days = [d.strftime("%Y%m%d"), (d + dt.timedelta(days=1)).strftime("%Y%m%d")]
+        # ESPN groups its scoreboard by US date: a 01:30 UK kick-off (Argentina, MLS, Mexico) sits on
+        # the previous day there, a late one may sit on the next
+        days = [(d + dt.timedelta(days=k)).strftime("%Y%m%d") for k in (0, -1, 1)]
     except ValueError:
         return None
     for yyyymmdd in days:
@@ -165,6 +170,27 @@ def live_for_fixture(league: str, date_uk: str, home: str, away: str) -> dict | 
         if ev:
             return {k: ev[k] for k in ("home_score", "away_score", "ht_home", "ht_away", "state", "detail", "clock", "period")} | {"source": "espn"}
     return None
+
+
+def debug_day(fixtures: list[dict]) -> dict:
+    """Diagnostics for /api/live-debug: per league, what ESPN returned and which fixtures matched.
+    `fixtures` = [{league, date_uk, home, away}]."""
+    out: dict[str, Any] = {}
+    for f in fixtures:
+        lg = f["league"]
+        entry = out.setdefault(lg, {"slug": ESPN_LEAGUES.get(lg), "events": {}, "fixtures": []})
+        try:
+            d = dt.date.fromisoformat(f["date_uk"][:10])
+        except ValueError:
+            continue
+        for k in (0, -1, 1):
+            key = (d + dt.timedelta(days=k)).strftime("%Y%m%d")
+            if key not in entry["events"]:
+                entry["events"][key] = [f"{e['home']} ({e.get('home_short', '')}) - {e['away']} ({e.get('away_short', '')}) {e['home_score']}-{e['away_score']} {e['state']}"
+                                        for e in _fetch_scoreboard(lg, key)]
+        info = live_for_fixture(lg, f["date_uk"], f["home"], f["away"])
+        entry["fixtures"].append({"home": f["home"], "away": f["away"], "matched": bool(info), "info": info})
+    return out
 
 
 def status_label_tr(info: dict[str, Any]) -> str:

@@ -144,6 +144,33 @@ below the ~6.5 % margin. It is also smaller than the Pinnacle-vs-average gap, i.
 Conclusion: the recalibrated probability is a better *estimate* than the average market, the similarity analogues are not,
 and neither is a betting edge.
 
+### Rerun on the 38-league pool (2026-09-14)
+
+Every league Football-Data carries was added (22 main divisions + 16 "extra" countries, see README): 179 545 matches.
+The extra files publish closing odds only and no O/U market, so they enter the pool as analogues but not the O/U-based
+test set. Full walk-forward rerun (48 min):
+
+| | 16 leagues (2026-09-13) | 38 leagues (2026-09-14) |
+|---|---|---|
+| selected (validation, 1-SE) | 1x2 / cosine / global / K=500 / prior 200 / min sim 97 | 1x2_ou / mahalanobis / global / K=100 / prior 200 |
+| test matches | 27 812 | 38 732 |
+| Brier market | 0.58988 | 0.59715 |
+| Brier adjusted | 0.58974 (p=0.50) | 0.59747 (**p=0.044, worse**) |
+| ECE market / adjusted | 0.010 / 0.008 | 0.011 / 0.008 |
+| ROI at +2 pp, average odds | negative | −2.6 % (12 711 bets) |
+
+Verdict unchanged, and now slightly firmer: with more leagues the analogue model is a *little worse* than the market
+out-of-sample, and the difference is no longer within noise (four of five test seasons against it, 2024/25 at p=0.017).
+Per league, only Portugal (−0.0020, p=0.008) favours the model; with 27 leagues in the table one hit at p<0.01 is what
+chance produces. The 1x2-only feature set scores the same way (+0.00026, p=0.09). The +18 % ROI row at the 5 pp
+threshold is 188 bets over five seasons and is reported, not believed. The site states the verdict as "slightly worse
+than the market" whenever the adjusted Brier is above the market's at p<0.05.
+
+New leagues in the calibration tables show the same favourite-longshot shape as the old ones (home favourites at 50–75 %
+win 3–10 pp more often than priced in Denmark, Romania, Finland, Switzerland, Russia, Japan; away outsiders at 30–40 %
+win less often in Sweden, China, Argentina). Bucket sizes are a few hundred matches, so these are directions, not
+numbers to bet on.
+
 ## PHASE 8 — Current matches pipeline
 
 `python -m src.cli today --date 2026-09-13 --days 2` on the live `fixtures.csv`: 54 matches with 1X2 odds in 15 leagues.

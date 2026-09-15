@@ -165,6 +165,7 @@ button { cursor: pointer; }
 .live { display: inline-flex; align-items: center; gap: 5px; margin-left: 6px; padding: 2px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; font-variant-numeric: tabular-nums; vertical-align: 1px; }
 .live.in { background: #dcefe2; color: var(--good); }
 .live.post { background: var(--surface-2); color: var(--ink); }
+.live.na { background: transparent; color: var(--ink-3); font-weight: 500; border: 1px dashed var(--line-strong); }
 .live small { font-weight: 500; opacity: 0.8; }
 .live.in i { width: 7px; height: 7px; border-radius: 50%; background: var(--good); animation: pulse 1.2s infinite; }
 @media (prefers-reduced-motion: reduce) { .live.in i { animation: none; } }

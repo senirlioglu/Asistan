@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..config import load_settings
 from ..pipeline.jobs import is_running, read_status, start_background
+from .live import ESPN_LEAGUES
 
 STATIC = Path(__file__).resolve().parent / "static"
 settings = load_settings()
@@ -145,6 +146,7 @@ def _match_payload(row: pd.Series, det: dict) -> dict:
         "avg_sim": _num(row.get("avg_similarity")), "median_sim": _num(row.get("median_similarity")), "min_sim": _num(row.get("min_similarity")),
         "over25": _num(row.get("over25")), "under25": _num(row.get("under25")), "btts": _num(row.get("btts")),
         "avg_goals": _num(row.get("avg_goals")), "market_over25": _num(row.get("market_over25")),
+        "live_available": _str(row["league"]) in ESPN_LEAGUES,  # False => no in-play score source; result comes next morning
     }
     for grp, cols in (("odds", "odds"), ("market", "market"), ("hist", "hist"), ("adj", "adj"), ("edge", "edge"), ("fair", "fair")):
         out[grp] = {k: _num(row.get(f"{cols}_{k}")) for k in ("h", "d", "a")}
@@ -355,6 +357,41 @@ def live(date: str) -> dict:
             any_live = any_live or info.get("state") == "in"
             out[mid] = info
     return {"date": date, "live": out, "any_live": any_live, "fetched_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+
+
+@app.get("/api/live-debug/{date}")
+def live_debug(date: str) -> dict:
+    """What ESPN answers for each league of the day and which fixtures matched (for diagnosing missing badges)."""
+    from .live import debug_day
+
+    df = _all_matches()
+    table = df[df["date_tr"].astype(str) == date] if not df.empty else df
+    if table.empty:
+        raise HTTPException(404, f"no analysed matches on {date}")
+    fixtures = [{"league": _str(r["league"]), "date_uk": _str(r["date"])[:10], "home": _str(r["home"]), "away": _str(r["away"])} for _, r in table.iterrows()]
+    return {"date": date, "leagues": debug_day(fixtures)}
+
+
+@app.get("/api/espn-raw")
+def espn_raw(path: str = Query(..., description="path under site.api.espn.com/apis/site/v2/sports/soccer/ or, with host=core, sports.core.api.espn.com/v2/sports/soccer/"),
+             host: str = "site", dates: str | None = None, limit: int | None = None) -> dict:
+    """Read-only pass-through to ESPN's public JSON (diagnostics: which league slugs exist, what a scoreboard returns)."""
+    import requests as _rq
+    from .live import USER_AGENTS
+
+    base = "https://sports.core.api.espn.com/v2/sports/soccer/" if host == "core" else "https://site.api.espn.com/apis/site/v2/sports/soccer/"
+    params = {k: v for k, v in (("dates", dates), ("limit", limit)) if v is not None}
+    last = None
+    for ua in USER_AGENTS:
+        try:
+            r = _rq.get(base + path.lstrip("/"), params=params, timeout=15, headers={"User-Agent": ua})
+            if r.status_code == 403:
+                last = "403"
+                continue
+            return {"status": r.status_code, "url": r.url, "json": r.json() if r.ok else r.text[:500]}
+        except Exception as exc:  # noqa: BLE001
+            last = str(exc)
+    raise HTTPException(502, f"espn: {last}")
 
 
 @app.post("/api/refresh")
