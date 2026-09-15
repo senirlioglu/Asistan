@@ -5,6 +5,10 @@ analyse the upcoming fixtures. It is triggered by the daily scheduler in `serve.
 "Refresh now" button in the dashboard, and once at boot when the container has no data yet
 (hosted filesystems are ephemeral). Status is written to results/job_status.json so the
 dashboard can show it; a process-wide lock prevents overlapping runs.
+
+`run_fixture_refresh` is the lighter intraday version: fixtures only, no download or rebuild,
+merged into the day's file — Football-Data publishes a fixture when its odds arrive, so the list
+grows all day and a single morning run misses most of an evening's matches.
 """
 
 from __future__ import annotations
@@ -103,7 +107,7 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
         _write(settings, "running", "building processed database", started_at=started.isoformat())
         df, _ = build_processed(settings)
         _write(settings, "running", "analysing upcoming fixtures", started_at=started.isoformat())
-        table = run_today(settings, date=dt.date.today(), days=days, refresh=True)
+        table = run_today(settings, date=dt.date.today(), days=days, refresh=True, merge=True)
         try:  # the last week: any day without a prediction file gets analysed after the fact (results come from the database)
             _write(settings, "running", "analysing last week's matches", started_at=started.isoformat())
             from .today import run_backfill
@@ -120,6 +124,38 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
         log.error("daily job failed: %s\n%s", exc, traceback.format_exc())
         _write(settings, "error", f"{type(exc).__name__}: {exc}", started_at=started.isoformat())
         return True
+    finally:
+        _release_file_lock(settings)
+        _LOCK.release()
+
+
+def run_fixture_refresh(settings: Settings, days: int = 7) -> int:
+    """Re-read the fixture list and analyse whatever is new, without touching the historical database.
+
+    Football-Data fills fixtures.csv in through the day as the bookmakers' odds arrive: on 15 Sep 2026 the
+    06:30 run found 2 fixtures and by 17:00 the same file held 20 for that evening (Alaves - Valencia,
+    Elche - Real Madrid, the whole National League round). A once-a-day job simply cannot see them, so the
+    site showed four South-American matches while the evening was full. The new matches are merged into the
+    day's file; the ones already analysed keep the analysis they were shown with.
+    """
+    if not _LOCK.acquire(blocking=False):
+        log.info("job running, skipping fixture refresh")
+        return 0
+    if not _acquire_file_lock(settings):
+        _LOCK.release()
+        log.info("job running in another process, skipping fixture refresh")
+        return 0
+    try:
+        before = read_status(settings)
+        table = run_today(settings, date=dt.date.today(), days=days, refresh=True, merge=True)
+        _write(settings, "ok", f"{len(table)} fixtures analysed (fixture refresh), {before.get('n_history', '?')} historical matches",
+               started_at=before.get("started_at"), finished_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+               n_fixtures=int(len(table)), n_history=before.get("n_history"), intraday=True)
+        log.info("fixture refresh: %d fixtures in today's file", len(table))
+        return int(len(table))
+    except Exception as exc:  # noqa: BLE001 - an intraday extra; the daily job is the one that must hold
+        log.error("fixture refresh failed: %s\n%s", exc, traceback.format_exc())
+        return 0
     finally:
         _release_file_lock(settings)
         _LOCK.release()

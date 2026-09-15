@@ -53,6 +53,15 @@ def load_selected_params(settings: Settings) -> tuple[AnalysisParams, bool, dict
     return AnalysisParams.from_settings(settings), False, {}
 
 
+def _read_details(path: Path) -> dict:
+    """The per-match details already written for this stamp ({} when the file is missing or broken)."""
+    try:
+        return json.loads(path.read_text()).get("matches", {}) if path.exists() else {}
+    except (json.JSONDecodeError, OSError) as exc:
+        log.warning("details file %s unreadable (%s) — starting a fresh one", path, exc)
+        return {}
+
+
 def update_history(settings: Settings) -> None:
     """Refresh the current season's raw files and rebuild the processed database."""
     download_all(settings, seasons=[current_season_code()])
@@ -60,7 +69,7 @@ def update_history(settings: Settings) -> None:
 
 
 def run_today(settings: Settings, date: dt.date | None = None, days: int = 1, provider_name: str | None = None,
-              refresh: bool = False, update: bool = False, out_dir: Path | None = None) -> pd.DataFrame:
+              refresh: bool = False, update: bool = False, out_dir: Path | None = None, merge: bool = False) -> pd.DataFrame:
     date = date or dt.date.today()
     date_to = date + dt.timedelta(days=max(days, 1) - 1)
     out_dir = out_dir or settings.results_dir
@@ -78,14 +87,20 @@ def run_today(settings: Settings, date: dt.date | None = None, days: int = 1, pr
     if fixtures.empty:
         log.warning("no fixtures with odds between %s and %s", date, date_to)
         return pd.DataFrame(columns=TABLE_COLUMNS)
-    return analyse_fixtures(settings, history, fixtures, date, date.isoformat(), out_dir, params, backtest_ok, selected, groups)
+    return analyse_fixtures(settings, history, fixtures, date, date.isoformat(), out_dir, params, backtest_ok, selected, groups,
+                            merge=merge)
 
 
 def analyse_fixtures(settings: Settings, history: pd.DataFrame, fixtures: pd.DataFrame, as_of: dt.date, stamp: str, out_dir: Path,
                      params: AnalysisParams | None = None, backtest_ok: bool | None = None, selected: dict | None = None,
-                     groups: dict | None = None, report: bool = True) -> pd.DataFrame:
+                     groups: dict | None = None, report: bool = True, merge: bool = False) -> pd.DataFrame:
     """Analyse `fixtures` against the pool `history` (must already be restricted to dates before `as_of`) and
-    write results/<stamp>_predictions.{csv,xlsx}, _details.json and analogues/<stamp>_analogues.parquet."""
+    write results/<stamp>_predictions.{csv,xlsx}, _details.json and analogues/<stamp>_analogues.parquet.
+
+    With `merge` the files are extended instead of replaced: a match already in the file keeps the analysis it
+    got then. Football-Data fills fixtures.csv in through the day, so the intraday runs mostly add matches the
+    morning run could not see — and a prediction already shown (and possibly played on) must not change later,
+    nor may it disappear when the fixture leaves the file after kick-off."""
     if params is None:
         params, backtest_ok, selected = load_selected_params(settings)
     if groups is None:
@@ -125,13 +140,24 @@ def analyse_fixtures(settings: Settings, history: pd.DataFrame, fixtures: pd.Dat
         }
 
     table = summaries_to_frame(analyses)
-    if table.empty:
+    csv_path = out_dir / f"{stamp}_predictions.csv"
+    if table.empty and not (merge and csv_path.exists()):
         log.warning("no analysable fixtures")
         return table
+    if merge and csv_path.exists():
+        old = pd.read_csv(csv_path)
+        keep = set(old["match_id"]) if "match_id" in old.columns else set()
+        fresh = table[~table["match_id"].isin(keep)] if not table.empty else table
+        log.info("%s: %d matches already analysed, %d added", stamp, len(old), len(fresh))
+        table = pd.concat([old, fresh], ignore_index=True) if len(fresh) else old
+        details = {**{mid: d for mid, d in details.items() if mid not in keep}, **_read_details(out_dir / f"{stamp}_details.json")}
+        analogues = [f for f in analogues if len(f) and f["fixture_id"].iloc[0] not in keep]
+        old_an = out_dir / "analogues" / f"{stamp}_analogues.parquet"
+        if old_an.exists():
+            analogues.insert(0, pd.read_parquet(old_an))
     ordered = [c for c in TABLE_COLUMNS if c in table.columns] + [c for c in table.columns if c not in TABLE_COLUMNS]
     table = table[ordered].sort_values(["date", "time", "league"]).reset_index(drop=True)
 
-    csv_path = out_dir / f"{stamp}_predictions.csv"
     table.round(3).to_csv(csv_path, index=False)
     try:
         table.round(3).to_excel(out_dir / f"{stamp}_predictions.xlsx", index=False)
