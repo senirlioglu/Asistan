@@ -224,6 +224,37 @@ td .no { color: var(--ink-3); }
 .vbar i { display: block; width: 100%; max-width: 40px; background: var(--market); border-radius: 4px 4px 3px 3px; min-height: 2px; }
 .vbar small { color: var(--ink-3); }
 
+/* scorecard (Özet) */
+.howto { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 12px; margin: 0 0 12px; color: var(--ink-2); font-size: 0.9rem; }
+.howto summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.howto ol { margin: 8px 0 2px; padding-left: 20px; }
+.howto li { margin-bottom: 6px; }
+.howto b { color: var(--ink); }
+.c-market { color: var(--market); font-weight: 600; }
+.c-hist { color: var(--hist); font-weight: 600; }
+.sc-controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-end; margin-bottom: 10px; }
+.sc-quick { display: flex; gap: 6px; flex-wrap: wrap; }
+.sc-dates { display: flex; gap: 10px; flex-wrap: wrap; }
+.sc-dates input[type="date"] { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: var(--radius-s); padding: 6px 8px; font: inherit; min-width: 0; }
+.sc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin: 12px 0 18px; }
+.sc-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; min-width: 0; }
+.sc-card h3 { margin: 0 0 2px; font-size: 1rem; }
+.sc-card.is-empty { opacity: 0.7; }
+.sc-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 4px; }
+.sc-sides > div > .label { color: var(--market); }
+.sc-sides > div > .label.hist { color: var(--hist); }
+.sc-side .sc-big { font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; line-height: 1.1; }
+.sc-side .sc-big small { font-size: 0.9rem; color: var(--ink-3); font-weight: 500; }
+.sc-side .sc-pct { color: var(--ink-2); font-size: 0.85rem; }
+.sc-split { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--surface-2); margin: 6px 0 4px; }
+.sc-split i { display: block; height: 100%; }
+.sc-split .m { background: var(--market); }
+.sc-split .e { background: var(--line-strong); }
+.sc-split .h { background: var(--hist); }
+.ok { color: var(--good); font-weight: 700; }
+.bad { color: var(--hist); font-weight: 700; }
+#view-scorecard section { margin-bottom: 18px; }
+#view-scorecard section h3 { font-size: 1rem; margin: 0 0 6px; }
 .kseg { display: flex; gap: 4px; margin-bottom: 8px; }
 .kseg button { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 999px; padding: 4px 10px; font-size: 0.8rem; color: var(--ink-2); }
 .kseg button.is-on { background: var(--ink); color: var(--ground); border-color: var(--ink); }

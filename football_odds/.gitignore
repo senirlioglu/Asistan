@@ -9,3 +9,5 @@ notebooks/.ipynb_checkpoints/
 __pycache__/
 *.pyc
 .pytest_cache/
+results/results_cache.json
+results/scorecard/

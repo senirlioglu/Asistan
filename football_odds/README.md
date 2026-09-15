@@ -304,6 +304,16 @@ ESPN has no scoreboard for Poland, Romania, Finland, Ireland, Switzerland and Sc
 its league list, 218 entries); those cards show "canlı skor yok" and get their result from Football-Data with the next
 daily job. `/api/live-debug/{date}` and `/api/espn-raw?path=…` are read-only diagnostics for this pipeline.
 
+**Daily scorecard** (`src/pipeline/scorecard.py`, tab "Özet", `GET /api/scorecard?from=&to=&leagues=`): for the
+played matches of a date range (Turkey dates, default yesterday, up to 92 days), per market — 1X2, over/under 2.5,
+over/under 1.5, first- and second-half 0.5/1.5 — how often each side's pick (the outcome it gave the highest
+probability) was right, its average expected rate against the realised rate, and who sat closer to what happened
+(higher probability on the realised outcome; within 1 point counts as equal). Per-league table and a match-by-match
+list. Football-Data has no 1.5-goal or half markets, so those are history-only; half markets need the half-time
+score, which comes from the database (main divisions) rather than ESPN. Results: database first, then ESPN finished
+scores cached in `results/results_cache.json`. `serve.py` writes `results/scorecard/<yesterday>.json` every day at
+`FO_SCORECARD_UTC` (default 05:00 = 08:00 Turkey); the API computes on demand for any range.
+
 **Commentary** (`commentary()` in `src/web/static/app.js`) is generated in the browser from the numbers already on the
 card, so it is rule-based text, not a model: before kick-off it states the market favourite, the analogue frequency and
 whether the two agree (within 2 points = agree), the 2.5-goal view of both, and the first-half shares; in play it
