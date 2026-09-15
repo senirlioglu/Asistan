@@ -234,13 +234,19 @@ def analogues(stamp: str, match_id: str, k: int = Query(50, ge=1, le=500)) -> di
 
 
 HISTORY_COLS = ["date", "league", "season", "home_team", "away_team", "cons_h", "cons_d", "cons_a", "p_home", "p_draw", "p_away",
-                "ftr", "fthg", "ftag", "result_code", "total_goals"]
+                "ftr", "fthg", "ftag", "hthg", "htag", "result_code", "total_goals"]
 
 
 @lru_cache(maxsize=2)
 def _history_cached(mtime: float) -> pd.DataFrame:
+    import pyarrow.parquet as pq
+
     p = settings.processed_dir / "matches.parquet"
-    df = pd.read_parquet(p, columns=HISTORY_COLS)
+    present = set(pq.read_schema(p).names)
+    df = pd.read_parquet(p, columns=[c for c in HISTORY_COLS if c in present])
+    for c in ("hthg", "htag"):
+        if c not in df.columns:
+            df[c] = pd.NA
     df["date"] = pd.to_datetime(df["date"])
     return df
 
@@ -357,6 +363,28 @@ def live(date: str) -> dict:
             any_live = any_live or info.get("state") == "in"
             out[mid] = info
     return {"date": date, "live": out, "any_live": any_live, "fetched_at": dt.datetime.now(dt.timezone.utc).isoformat()}
+
+
+@app.get("/api/scorecard")
+def scorecard(from_: str | None = Query(default=None, alias="from"), to: str | None = None, leagues: str | None = None) -> dict:
+    """Who sat closer to what happened, market or history, for the played matches of a date range (Turkey dates)."""
+    from ..pipeline.scorecard import MAX_RANGE_DAYS, TR, build_scorecard, load_prediction_rows, realised_results
+
+    yesterday = (dt.datetime.now(TR).date() - dt.timedelta(days=1)).isoformat()
+    date_from, date_to = from_ or yesterday, to or from_ or yesterday
+    try:
+        d0, d1 = dt.date.fromisoformat(date_from), dt.date.fromisoformat(date_to)
+    except ValueError:
+        raise HTTPException(400, "tarih biçimi YYYY-AA-GG olmalı")
+    if d1 < d0:
+        d0, d1 = d1, d0
+    if (d1 - d0).days > MAX_RANGE_DAYS:
+        raise HTTPException(400, f"en fazla {MAX_RANGE_DAYS} günlük aralık")
+    wanted = {x.strip() for x in leagues.split(",") if x.strip()} if leagues else None
+    rows = load_prediction_rows(RESULTS)
+    rows = [r for r in rows if d0.isoformat() <= r["date"] <= d1.isoformat()]
+    results = realised_results(settings, rows, _history())
+    return build_scorecard(rows, results, d0.isoformat(), d1.isoformat(), wanted, LEAGUE_TR)
 
 
 @app.get("/api/live-debug/{date}")

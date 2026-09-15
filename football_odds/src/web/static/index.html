@@ -21,6 +21,7 @@
     </a>
     <nav class="tabs" aria-label="Bölümler">
       <button class="tab is-active" data-view="list" type="button">Maçlar</button>
+      <button class="tab" data-view="scorecard" type="button">Özet</button>
       <button class="tab" data-view="glossary" type="button">Sözlük</button>
     </nav>
     <button class="status" id="status-btn" type="button" title="Veri durumu">
@@ -82,6 +83,25 @@
     <p class="count" id="count"></p>
     <div class="cards" id="cards"></div>
     <p class="foot">Veri: Football-Data.co.uk. Oranlar cuma/salı öğleden sonra toplanır; kapanış oranı değildir. Bu sayfa bir araştırma aracıdır, bahis tavsiyesi değildir.</p>
+  </section>
+
+  <section class="view" id="view-scorecard" hidden>
+    <h2 class="h2">Günlük özet</h2>
+    <p class="lead">Oynanan maçlarda kim gerçeğe daha yakındı: piyasa mı, benzer maçların geçmişi mi? Her sabah 08:00'de bir önceki gün için hazırlanır; aralığı sen de seçebilirsin.</p>
+    <div class="sc-controls">
+      <div class="sc-quick" role="group" aria-label="Hazır aralıklar">
+        <button type="button" class="chip is-on" data-range="1">Dün</button>
+        <button type="button" class="chip" data-range="7">Son 7 gün</button>
+        <button type="button" class="chip" data-range="30">Son 30 gün</button>
+      </div>
+      <div class="sc-dates">
+        <label class="select"><span class="label">Başlangıç</span><input type="date" id="sc-from"></label>
+        <label class="select"><span class="label">Bitiş</span><input type="date" id="sc-to"></label>
+      </div>
+    </div>
+    <div class="chips-scroll" id="sc-leagues" role="group" aria-label="Lig filtresi"></div>
+    <p class="count" id="sc-count"></p>
+    <div id="sc-body"></div>
   </section>
 
   <section class="view" id="view-glossary" hidden>

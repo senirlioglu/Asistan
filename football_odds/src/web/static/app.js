@@ -89,7 +89,100 @@
     document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("is-active", b.dataset.view === name));
     $("#view-list").hidden = name !== "list";
     $("#view-glossary").hidden = name !== "glossary";
+    $("#view-scorecard").hidden = name !== "scorecard";
     $("#view-empty").hidden = true;
+    if (name === "scorecard" && !state.sc.data) loadScorecard();
+  }
+
+  // ------------------------------------------------------------------ scorecard (Özet)
+  state.sc = { from: null, to: null, leagues: new Set(), data: null, loading: false };
+  const PICK = { h: "1", d: "X", a: "2", yes: "Üst", no: "Alt" };
+  const isoDay = (d) => d.toISOString().slice(0, 10);
+
+  function setRange(days) {
+    const today = new Date((state.meta?.today || isoDay(new Date())) + "T12:00:00");
+    const to = new Date(today); to.setDate(to.getDate() - 1);
+    const from = new Date(to); from.setDate(from.getDate() - (days - 1));
+    state.sc.from = isoDay(from); state.sc.to = isoDay(to);
+    $("#sc-from").value = state.sc.from; $("#sc-to").value = state.sc.to;
+    document.querySelectorAll("#view-scorecard [data-range]").forEach((b) => b.classList.toggle("is-on", Number(b.dataset.range) === days));
+  }
+
+  async function loadScorecard() {
+    if (!state.sc.from) setRange(1);
+    state.sc.loading = true;
+    $("#sc-count").textContent = "Yükleniyor…";
+    try {
+      const q = new URLSearchParams({ from: state.sc.from, to: state.sc.to });
+      if (state.sc.leagues.size) q.set("leagues", [...state.sc.leagues].join(","));
+      state.sc.data = await api(`/api/scorecard?${q}`);
+      renderScorecard();
+    } catch (e) { $("#sc-count").textContent = "Özet yüklenemedi: " + e.message; }
+    state.sc.loading = false;
+  }
+
+  function scLeagueChips(d) {
+    const wrap = $("#sc-leagues"); wrap.innerHTML = "";
+    const all = el("button", "chip" + (state.sc.leagues.size === 0 ? " is-on" : ""), "Tümü"); all.type = "button";
+    all.onclick = () => { state.sc.leagues = new Set(); loadScorecard(); };
+    wrap.appendChild(all);
+    d.leagues.forEach((l) => {
+      const b = el("button", "chip" + (state.sc.leagues.has(l.code) ? " is-on" : ""), esc(l.name)); b.type = "button";
+      b.onclick = () => { if (state.sc.leagues.has(l.code)) state.sc.leagues.delete(l.code); else state.sc.leagues.add(l.code); loadScorecard(); };
+      wrap.appendChild(b);
+    });
+  }
+
+  const okMark = (ok) => (ok == null ? "–" : ok ? '<span class="ok">✓</span>' : '<span class="bad">✗</span>');
+  const closerWord = { market: "piyasa", hist: "geçmiş", equal: "eşit" };
+
+  function scSide(s, binary) {
+    if (!s) return `<div class="sc-side"><span class="label">–</span><p class="note">Bu piyasa için veri yok.</p></div>`;
+    let extra = binary
+      ? `beklenen üst ${pct(s.expected_pct)}`
+      : `kalibrasyon ${num(s.brier, 3)} · gerçekleşene verilen ihtimal ort. ${pct(s.p_realised_avg)}`;
+    return `<div class="sc-side"><div class="sc-big num">${s.ok}<small>/${s.n}</small></div><div class="sc-pct num">${pct(s.ok_pct)} isabet</div><p class="note">${extra}</p></div>`;
+  }
+
+  function scCard(b) {
+    const binary = b.key !== "ms";
+    if (!b.n) return `<div class="sc-card is-empty"><h3>${b.label}</h3><p class="note">Bu aralıkta sayılabilecek maç yok.</p></div>`;
+    const c = b.closer;
+    const total = c ? c.market + c.hist + c.equal : 0;
+    const bar = c && total ? `<div class="sc-split" aria-hidden="true"><i class="m" style="width:${(100 * c.market) / total}%"></i><i class="e" style="width:${(100 * c.equal) / total}%"></i><i class="h" style="width:${(100 * c.hist) / total}%"></i></div>
+      <p class="note">Gerçeğe daha yakın: <b>piyasa ${c.market}</b> · eşit ${c.equal} · <b>geçmiş ${c.hist}</b></p>` : "";
+    const actual = binary && b.actual_pct != null ? `<p class="note">Gerçekleşen üst oranı: <b>${pct(b.actual_pct)}</b> (${b.n} maç)</p>` : `<p class="note">${b.n} maç</p>`;
+    return `<div class="sc-card"><h3>${b.label}</h3><p class="note">${b.desc}</p>
+      <div class="sc-sides"><div><span class="label">Piyasa</span>${scSide(b.market, binary)}</div><div><span class="label hist">Geçmiş</span>${scSide(b.hist, binary)}</div></div>
+      ${actual}${bar}</div>`;
+  }
+
+  function renderScorecard() {
+    const d = state.sc.data;
+    scLeagueChips(d);
+    const same = d.from === d.to;
+    $("#sc-count").textContent = `${same ? fmtDate(d.from) : fmtShort(d.from) + " – " + fmtShort(d.to)} · ${d.n_matches} maç, ${d.n_finished} sonuçlandı${d.n_pending ? `, ${d.n_pending} sonuç bekliyor` : ""}`;
+    const body = $("#sc-body");
+    if (!d.n_matches) { body.innerHTML = `<div class="day-empty">Bu aralıkta analiz edilmiş maç yok.</div>`; return; }
+    if (!d.n_finished) { body.innerHTML = `<div class="day-empty">Sonuçlar henüz gelmedi. Skorlar maç bitince (canlı kaynak olan liglerde) ya da ertesi sabahki güncellemeyle gelir.</div>`; return; }
+    const ms = d.markets.find((b) => b.key === "ms");
+    const lead = ms && ms.closer ? (ms.closer.hist > ms.closer.market ? "geçmiş sayımları" : ms.closer.market > ms.closer.hist ? "piyasa" : "ikisi eşit") : null;
+    const headline = lead ? `<p class="verdict">Maç sonucunda gerçeğe daha yakın olan: <b>${lead}</b> (piyasa ${ms.closer.market}, geçmiş ${ms.closer.hist}, eşit ${ms.closer.equal}). Piyasa favorisi ${ms.market.ok}/${ms.market.n}, geçmiş favorisi ${ms.hist.ok}/${ms.hist.n} tuttu. Küçük sayılar tesadüf olabilir; körleme testin sonucu (${d.n_finished} maçla değil, 38 bin maçla) değişmez.</p>` : "";
+    const league = d.by_league.length > 1 ? `<section><h3>Lige göre maç sonucu</h3><div class="table-wrap"><table><thead><tr><th>Lig</th><th class="num">Maç</th><th class="num">Piyasa tuttu</th><th class="num">Geçmiş tuttu</th><th class="num hide-sm">Daha yakın (P / E / G)</th><th class="num hide-sm">2,5 geçmiş</th></tr></thead><tbody>
+      ${d.by_league.map((l) => `<tr><td class="wrap">${esc(l.league_name)}</td><td class="num">${l.n}</td><td class="num">${l.market_ok}</td><td class="num">${l.hist_ok}</td><td class="num hide-sm">${l.closer.market} / ${l.closer.equal} / ${l.closer.hist}</td><td class="num hide-sm">${l.o25_n ? `${l.o25_hist_ok}/${l.o25_n}` : "–"}</td></tr>`).join("")}
+      </tbody></table></div><p class="table-hint">P = piyasa, E = eşit, G = geçmiş. Telefonda son iki sütun gizli; ekranı döndürünce görünür.</p></section>` : "";
+    const rows = d.matches.map((m) => `<tr><td class="num hide-sm">${fmtShort(m.date)}</td><td class="wrap">${esc(m.home)} – ${esc(m.away)}<small class="muted"> · ${esc((d.leagues.find((l) => l.code === m.league) || {}).name || m.league)}</small></td>
+      <td class="num res-${m.result}">${esc(m.score)}${m.ht_score ? `<small> (${esc(m.ht_score)})</small>` : ""}</td>
+      <td class="num">${PICK[m.ms.market.pick] || "–"} ${okMark(m.ms.market.ok)}</td><td class="num">${PICK[m.ms.hist.pick] || "–"} ${okMark(m.ms.hist.ok)}</td>
+      <td class="hide-sm">${closerWord[m.ms.closer] || "–"}</td>
+      <td class="num">${m.o25.hist ? `${PICK[m.o25.hist.pick]} ${okMark(m.o25.hist.ok)}` : "–"}${m.o25.market ? `<small class="muted"> · piyasa ${PICK[m.o25.market.pick]} ${okMark(m.o25.market.ok)}</small>` : ""}</td>
+      <td class="num hide-sm">${m.o15.hist ? `${PICK[m.o15.hist.pick]} ${okMark(m.o15.hist.ok)}` : "–"}</td></tr>`).join("");
+    const pending = d.pending.length ? `<p class="note">Sonucu bekleyen: ${d.pending.map((p) => `${esc(p.home)} – ${esc(p.away)}`).join(", ")}.</p>` : "";
+    const filled = d.markets.filter((b) => b.n), empty = d.markets.filter((b) => !b.n);
+    const emptyCard = empty.length ? `<div class="sc-card is-empty"><h3>Henüz sayılamayan piyasalar</h3><p class="note">${empty.map((b) => b.label).join(" · ")}. ${empty.some((b) => b.key.startsWith("fh") || b.key.startsWith("sh")) ? "Yarı ölçümleri ilk yarı skorunu ister; canlı kaynak bunu her zaman vermez, Football-Data verisi ertesi sabah gelince dolar." : ""}</p></div>` : "";
+    body.innerHTML = `${headline}<div class="sc-grid">${filled.map(scCard).join("")}${emptyCard}</div>${league}
+      <section><h3>Maç maç</h3><div class="table-wrap"><table><thead><tr><th class="hide-sm">Tarih</th><th>Maç</th><th class="num">Skor (İY)</th><th class="num">Piyasa MS</th><th class="num">Geçmiş MS</th><th class="hide-sm">Yakın</th><th class="num">2,5 geçmiş</th><th class="num hide-sm">1,5 geçmiş</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="table-hint">MS sütunları: tarafın en yüksek ihtimal verdiği sonuç (1 = ev sahibi, X = beraberlik, 2 = deplasman) ve tuttu mu. 2,5 / 1,5: geçmişin üst/alt seçimi. Telefonda bazı sütunlar gizli.</p>${pending}</section>`;
   }
 
   // ------------------------------------------------------------------ list
@@ -547,6 +640,14 @@
     $("#date-select").onchange = (e) => loadDay(e.target.value);
     $("#sort-select").onchange = (e) => { state.sort = e.target.value; renderCards(); };
     $("#only-dev").onchange = (e) => { state.onlyDev = e.target.checked; renderCards(); };
+    document.querySelectorAll("#view-scorecard [data-range]").forEach((b) => (b.onclick = () => { setRange(Number(b.dataset.range)); loadScorecard(); }));
+    const onDates = () => {
+      const f = $("#sc-from").value, t = $("#sc-to").value; if (!f || !t) return;
+      state.sc.from = f <= t ? f : t; state.sc.to = f <= t ? t : f;
+      document.querySelectorAll("#view-scorecard [data-range]").forEach((x) => x.classList.remove("is-on"));
+      loadScorecard();
+    };
+    $("#sc-from").onchange = onDates; $("#sc-to").onchange = onDates;
     try { if (!localStorage.getItem("fo.introClosed")) $("#intro").hidden = false; } catch (_) { $("#intro").hidden = false; }
     $("#intro-close").onclick = () => { $("#intro").hidden = true; try { localStorage.setItem("fo.introClosed", "1"); } catch (_) {} };
     try {
