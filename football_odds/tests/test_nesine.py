@@ -78,6 +78,51 @@ def test_team_history_hits(history):
     assert bt["n_matches"] > 0 and "n4" in bt and "n11" in bt and bt["n14"]["n"] >= 1 and bt["n2"]["n"] >= 1
 
 
+def test_watcher_records_only_the_moves(settings):
+    import datetime as dt
+
+    from src.nesine import watcher
+
+    t0 = dt.datetime(2026, 9, 20, 10, 0, tzinfo=dt.timezone.utc)
+    store = watcher.record({}, [_m()], now=t0)
+    store = watcher.record(store, [_m()], now=t0 + dt.timedelta(minutes=5))          # nothing changed
+    assert store["matches"]["1"]["odds"]["ms.1"] == [["2026-09-20T10:00:00+00:00", 2.30]]
+    store = watcher.record(store, [_m(ms={"1": 2.45, "X": 3.40, "2": 2.30})], now=t0 + dt.timedelta(minutes=10))
+    mv = watcher.movement(store, 1)
+    assert mv["ms.1"] == {"open": 2.30, "now": 2.45, "prev": 2.30, "dir": 1, "changed_at": "2026-09-20T10:10:00+00:00", "n": 2}
+    assert mv["ms.2"]["dir"] == 0 and mv["ms.2"]["now"] == 2.30
+    # only the prices that actually moved reach the frontend
+    assert set(watcher.movement(store, 1, changed_only=True)) == {"ms.1"}
+    assert watcher.movement(store, 999) == {}
+    # the store survives a round trip through the results directory
+    watcher.save_store(settings, store)
+    assert watcher.load_store(settings)["matches"]["1"]["odds"]["ms.1"][-1][1] == 2.45
+    # a match the bulletin stopped carrying (played or pulled) is forgotten
+    assert watcher.record(store, [], now=t0 + dt.timedelta(minutes=20))["matches"] == {}
+    # the point list stays bounded no matter how often a price moves
+    many = {}
+    for i in range(watcher.MAX_POINTS + 8):
+        many = watcher.record(many, [_m(ms={"1": 2.00 + i / 100, "X": 3.4, "2": 2.3})], now=t0 + dt.timedelta(minutes=i))
+    assert len(many["matches"]["1"]["odds"]["ms.1"]) == watcher.MAX_POINTS
+
+    # the refresh interval tightens as kick-off approaches (nesine times are Turkey local = UTC+3)
+    near, soon, far = _m(date="2026-09-20", time="13:20"), _m(date="2026-09-20", time="15:00"), _m(date="2026-09-21", time="20:00")
+    assert watcher.interval_for([near, far], now=t0) == watcher.INTERVALS["near"]
+    assert watcher.interval_for([soon, far], now=t0) == watcher.INTERVALS["soon"]
+    assert watcher.interval_for([far], now=t0) == watcher.INTERVALS["far"]
+    assert watcher.interval_for([], now=t0) == watcher.INTERVALS["idle"]
+    assert watcher.interval_for([_m(date="2026-09-20", time="09:00")], now=t0) == watcher.INTERVALS["idle"]   # kicked off long ago
+
+
+def test_watcher_switch(monkeypatch):
+    from src.nesine import watcher
+
+    monkeypatch.setenv("FO_NESINE_WATCH", "0")
+    assert watcher.enabled() is False
+    monkeypatch.delenv("FO_NESINE_WATCH")
+    assert watcher.enabled() is True
+
+
 def test_nesine_prices_survive_the_high_margin(settings):
     from src.nesine.analyze import MAX_OVERROUND, priced_row, to_raw_row
     m = _m(ms={"1": 2.53, "X": 3.01, "2": 2.07}, o25={"alt": 1.83, "ust": 1.51})

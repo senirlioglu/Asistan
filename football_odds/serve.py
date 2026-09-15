@@ -11,6 +11,7 @@ Environment:
     FO_SCORECARD_UTC HH:MM, when yesterday's scorecard (market vs history on played matches) is written (default 05:00 = 08:00 TR)
     FO_DAYS_AHEAD   how many days of fixtures to analyse (default 7)
     FO_ADMIN_KEY    optional; when set the dashboard's "Refresh now" button asks for it
+    FO_NESINE_WATCH 0/false stops the nesine odds refresher (default on; see src/nesine/watcher.py)
     LOG_LEVEL       default INFO
 """
 
@@ -91,6 +92,10 @@ def main() -> int:
     port = os.environ.get("PORT", "8501")
 
     threading.Thread(target=scheduler_loop, args=(settings, hhmm, days, scorecard_hhmm), name="fo-scheduler", daemon=True).start()
+
+    from src.nesine import watcher  # noqa: PLC0415 - optional feature, imported once the process is up
+
+    watcher.start_if_enabled(settings)  # nesine odds move towards kick-off; refresh them continuously
 
     if os.environ.get("FO_UI", "web") == "streamlit":  # legacy dashboard, kept for local use
         cmd = [sys.executable, "-m", "streamlit", "run", str(ROOT / "src" / "dashboard" / "app.py"),

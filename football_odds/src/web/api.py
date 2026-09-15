@@ -519,14 +519,17 @@ def _ours_lookup(matches: list[dict]) -> dict[int, dict]:
 @app.get("/api/notlar")
 def notlar(date: str | None = None, refresh: bool = False) -> dict:
     """nesine.com bulletin filtered by the user's notes: every football match with the notes it satisfies."""
+    from ..nesine import watcher
     from ..nesine.bulletin import load_matches
     from ..nesine.history import cached_backtest, team_hits
     from ..nesine.rules import RULES, evaluate
 
+    watcher.start_if_enabled(settings)     # odds drift towards kick-off: keep a refresher running
     try:
-        matches, meta = load_matches(settings, force=refresh)
+        matches, meta = watcher.refresh_once(settings) if refresh else load_matches(settings)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"nesine bülteni alınamadı: {exc}")
+    meta = {**meta, "watch": watcher.status()}
     dates = sorted({m["date"] for m in matches if m["date"]})
     today = dt.date.today().isoformat()
     date = date or (today if today in dates else (dates[0] if dates else None))
@@ -534,12 +537,14 @@ def notlar(date: str | None = None, refresh: bool = False) -> dict:
         matches = [m for m in matches if m["date"] == date]
     index = _team_index()
     ours = _ours_lookup(matches)
+    store = watcher.load_store(settings)
     out_matches = []
     for m in matches:
         hh = team_hits(m, index) if index is not None else {}
         hits = evaluate(m, hh)
         out_matches.append({**{k: v for k, v in m.items() if k != "korner"}, "korner_n": len(m.get("korner") or {}),
-                            "hits": hits, "ours": ours.get(m["code"])})
+                            "hits": hits, "ours": ours.get(m["code"]),
+                            "moves": watcher.movement(store, m["code"], changed_only=True)})
     rules = [{k: v for k, v in r.items() if k != "fn"} | {"applied": r.get("applied", True) and (r.get("fn") is not None or r["id"] in ("n2", "n14"))} for r in RULES]
     return {"meta": meta, "dates": dates, "date": date, "rules": rules, "history": cached_backtest(settings),
             "matches": out_matches, "n_hits": sum(1 for m in out_matches if m["hits"])}

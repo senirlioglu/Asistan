@@ -102,10 +102,10 @@
   state.nt = { data: null, date: null, rules: new Set(), leagues: new Set(), mode: "hits", q: "", sort: "time",
                market: "", min: null, max: null, loading: false };
 
-  async function loadNotes(refresh) {
+  async function loadNotes(refresh, silent) {
     if (state.nt.loading) return;
     state.nt.loading = true;
-    $("#nt-count").textContent = refresh ? "Oranlar yenileniyor…" : "Nesine bülteni okunuyor…";
+    if (!silent) $("#nt-count").textContent = refresh ? "Oranlar yenileniyor…" : "Nesine bülteni okunuyor…";
     try {
       const q = new URLSearchParams();
       if (state.nt.date) q.set("date", state.nt.date);
@@ -113,8 +113,20 @@
       state.nt.data = await api(`/api/notlar?${q}`);
       state.nt.date = state.nt.data.date;
       renderNotes();
-    } catch (e) { $("#nt-count").textContent = "Notlar yüklenemedi: " + e.message; }
+    } catch (e) { if (!silent) $("#nt-count").textContent = "Notlar yüklenemedi: " + e.message; }
     state.nt.loading = false;
+  }
+
+  // Odds move as kick-off approaches and several notes depend on the exact price, so the page
+  // re-reads the bulletin while the Nesine tab is open (and never while it is hidden).
+  function ntAutoPoll() {
+    setInterval(() => {
+      if (state.view !== "notes" || document.hidden || !state.nt.data) return;
+      loadNotes(false, true);
+    }, 30000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && state.view === "notes" && state.nt.data) loadNotes(false, true);
+    });
   }
 
   const fmtOdd = (v) => (typeof v === "number" ? v.toFixed(2) : esc(String(v)));
@@ -140,6 +152,24 @@
     return typeof v === "number" ? v : null;
   }
 
+  function ntAgo(iso) {
+    if (!iso) return "bilinmiyor";
+    const s = (Date.now() - Date.parse(iso)) / 1000;
+    if (!isFinite(s)) return "bilinmiyor";
+    if (s < 90) return "az önce alındı";
+    if (s < 5400) return `${Math.round(s / 60)} dk önce alındı`;
+    return `${Math.round(s / 3600)} saat önce alındı`;
+  }
+
+  // how that price moved since the watcher first saw it: ▲/▼ plus the opening price on hover
+  function ntArrow(m, path) {
+    const mv = (m.moves || {})[path];
+    if (!mv || !mv.dir) return "";
+    const when = mv.changed_at ? ` · ${mv.changed_at.slice(11, 16)} UTC'de değişti` : "";
+    const t = `açılış ${mv.open.toFixed(2)} → şimdi ${mv.now.toFixed(2)}${when}`;
+    return `<i class="mv ${mv.dir > 0 ? "up" : "down"}" title="${esc(t)}">${mv.dir > 0 ? "▲" : "▼"}</i>`;
+  }
+
   const NT_GRID = [
     ["MS", ["ms.1", "ms.X", "ms.2"], ["1", "X", "2"]],
     ["İlk yarı", ["iy.1", "iy.X", "iy.2"], ["1", "X", "2"]],
@@ -153,7 +183,7 @@
 
   function ntOddsGrid(m) {
     const cells = NT_GRID.map(([label, paths, names]) => {
-      const vs = paths.map((p, i) => { const v = ntValue(m, p); return v == null ? "" : `<span class="nt-o"><small>${names[i]}</small><b class="num">${v.toFixed(2)}</b></span>`; }).join("");
+      const vs = paths.map((p, i) => { const v = ntValue(m, p); return v == null ? "" : `<span class="nt-o"><small>${names[i]}</small><b class="num">${v.toFixed(2)}${ntArrow(m, p)}</b></span>`; }).join("");
       return vs ? `<div class="nt-grp"><span class="label">${label}</span><div class="nt-os">${vs}</div></div>` : "";
     }).join("");
     return cells ? `<div class="nt-grid">${cells}</div>` : "";
@@ -203,7 +233,11 @@
     else ms.sort((a, b) => (a.time || "").localeCompare(b.time || ""));
 
     const meta = d.meta || {};
-    $("#nt-count").textContent = `${fmtDate(d.date)} · nesine'de ${d.matches.length} maç, ${d.n_hits} tanesi bir nota uyuyor · gösterilen ${ms.length} · oranlar ${meta.fetched_at ? meta.fetched_at.slice(11, 16) + " UTC" : "?"}${meta.from_cache ? " (önbellek)" : ""}${meta.error ? " · yenileme başarısız, eski oranlar" : ""}`;
+    const moved = ms.filter((m) => Object.keys(m.moves || {}).length).length;
+    $("#nt-count").textContent = `${fmtDate(d.date)} · nesine'de ${d.matches.length} maç, ${d.n_hits} tanesi bir nota uyuyor · gösterilen ${ms.length}`
+      + ` · oranlar ${ntAgo(meta.fetched_at)}${meta.error ? " · yenileme başarısız, eski oranlar" : ""}`
+      + (meta.watch?.running ? (meta.watch.interval ? ` · her ${Math.round(meta.watch.interval / 60)} dk'da bir canlı yenileniyor` : " · canlı yenileme açık") : "")
+      + (moved ? ` · ${moved} maçta oran oynadı` : "");
 
     const body = $("#nt-body");
     if (!ms.length) { body.innerHTML = `<div class="day-empty">Bu filtrelere uyan maç yok. Üstteki seçimi "Tüm maçlar" yapmayı ya da oran filtresini temizlemeyi dene.</div>`; return; }
@@ -211,7 +245,8 @@
       const hits = m.hits.filter((x) => !s.rules.size || s.rules.has(x.id));
       const ev = (x) => Object.entries(x.evidence || {}).map(([k, v]) => `<span class="nt-ev"><span>${esc(k)}</span><b class="num">${fmtOdd(v)}</b></span>`).join("");
       const ours = m.ours ? `<p class="note nt-ours">Bizim analiz (${esc(m.ours.league_name)}): piyasa ${pct(m.ours.market.h)} / ${pct(m.ours.market.d)} / ${pct(m.ours.market.a)} · geçmiş ${pct(m.ours.adj.h)} / ${pct(m.ours.adj.d)} / ${pct(m.ours.adj.a)} · 2,5 üst ${pct(m.ours.over25)} · ${m.ours.n} benzer maç</p>` : "";
-      return `<div class="nt-card"><div class="card-top"><span>${esc(m.league)} · ${esc(m.time)}</span><span class="num">MS ${fmtOdd(m.ms["1"] ?? "–")} / ${fmtOdd(m.ms["X"] ?? "–")} / ${fmtOdd(m.ms["2"] ?? "–")}</span></div>
+      const msLine = ["1", "X", "2"].map((k) => `${fmtOdd(m.ms[k] ?? "–")}${ntArrow(m, "ms." + k)}`).join(" / ");
+      return `<div class="nt-card"><div class="card-top"><span>${esc(m.league)} · ${esc(m.time)}</span><span class="num">MS ${msLine}</span></div>
         <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
         ${hits.map((x) => `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev(x)}</div><p class="nt-expect">${esc(x.expect)}</p></div>`).join("")}
         ${s.mode === "hits" && hits.length ? "" : ntOddsGrid(m)}
@@ -1025,6 +1060,7 @@
     $("#pp-edge").onchange = (e) => { state.pp.edge = Number(e.target.value); loadPaper(); };
     $("#nt-date").onchange = (e) => { state.nt.date = e.target.value; state.nt.leagues = new Set(); loadNotes(); };
     $("#nt-refresh").onclick = () => loadNotes(true);
+    ntAutoPoll();
     const ntRe = () => { if (state.nt.data) renderNotes(); };
     document.querySelectorAll('input[name="nt-mode"]').forEach((r) => (r.onchange = () => { state.nt.mode = r.value; state.nt.leagues = new Set(); ntRe(); }));
     $("#nt-q").oninput = (e) => { state.nt.q = e.target.value; ntRe(); };

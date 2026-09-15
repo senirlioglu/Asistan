@@ -278,6 +278,10 @@ td .no { color: var(--ink-3); }
 .nt-o { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.15; border: 1px solid var(--line); border-radius: var(--radius-s); padding: 2px 7px; background: var(--surface-2); }
 .nt-o small { font-size: 0.68rem; color: var(--ink-3); }
 .nt-o b { font-size: 0.85rem; }
+/* an odd that moved since it was first seen: ▲ price went up (chance went down), ▼ the other way */
+.mv { font-style: normal; font-size: 0.62rem; margin-left: 2px; vertical-align: 1px; cursor: help; }
+.mv.up { color: var(--hist); }
+.mv.down { color: var(--market); }
 .nt-actions { margin-top: 8px; }
 .nt-actions .btn { padding: 6px 12px; font-size: 0.85rem; }
 
