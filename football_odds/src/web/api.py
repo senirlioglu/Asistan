@@ -147,6 +147,7 @@ def _match_payload(row: pd.Series, det: dict) -> dict:
         "over25": _num(row.get("over25")), "under25": _num(row.get("under25")), "btts": _num(row.get("btts")),
         "avg_goals": _num(row.get("avg_goals")), "market_over25": _num(row.get("market_over25")),
         "live_available": _str(row["league"]) in ESPN_LEAGUES,  # False => no in-play score source; result comes next morning
+        "odds_ou": {"over": _num(row.get("odds_o25")), "under": _num(row.get("odds_u25"))},
     }
     for grp, cols in (("odds", "odds"), ("market", "market"), ("hist", "hist"), ("adj", "adj"), ("edge", "edge"), ("fair", "fair")):
         out[grp] = {k: _num(row.get(f"{cols}_{k}")) for k in ("h", "d", "a")}
@@ -385,6 +386,108 @@ def scorecard(from_: str | None = Query(default=None, alias="from"), to: str | N
     rows = [r for r in rows if d0.isoformat() <= r["date"] <= d1.isoformat()]
     results = realised_results(settings, rows, _history())
     return build_scorecard(rows, results, d0.isoformat(), d1.isoformat(), wanted, LEAGUE_TR)
+
+
+@app.get("/api/paper")
+def paper(from_: str | None = Query(default=None, alias="from"), to: str | None = None, leagues: str | None = None,
+          edge: float = Query(default=3.0, ge=0.5, le=15.0)) -> dict:
+    """Paper trading: flat-stake results of fixed strategies over a date range (Turkey dates)."""
+    from ..pipeline.paper import simulate
+    from ..pipeline.scorecard import MAX_RANGE_DAYS, TR, load_prediction_rows, realised_results
+
+    yesterday = (dt.datetime.now(TR).date() - dt.timedelta(days=1)).isoformat()
+    date_from, date_to = from_ or yesterday, to or from_ or yesterday
+    try:
+        d0, d1 = dt.date.fromisoformat(date_from), dt.date.fromisoformat(date_to)
+    except ValueError:
+        raise HTTPException(400, "tarih biçimi YYYY-AA-GG olmalı")
+    if d1 < d0:
+        d0, d1 = d1, d0
+    if (d1 - d0).days > MAX_RANGE_DAYS:
+        raise HTTPException(400, f"en fazla {MAX_RANGE_DAYS} günlük aralık")
+    wanted = {x.strip() for x in leagues.split(",") if x.strip()} if leagues else None
+    rows = [r for r in load_prediction_rows(RESULTS) if d0.isoformat() <= r["date"] <= d1.isoformat()]
+    all_leagues = sorted({r["league"] for r in rows})
+    if wanted:
+        rows = [r for r in rows if r["league"] in wanted]
+    results = realised_results(settings, rows, _history())
+    out = simulate(rows, results, edge, LEAGUE_TR)
+    out.update({"from": d0.isoformat(), "to": d1.isoformat(), "n_matches": len(rows), "n_finished": sum(1 for r in rows if r["id"] in results),
+                "leagues": [{"code": lg, "name": LEAGUE_TR.get(lg, lg)} for lg in all_leagues]})
+    return out
+
+
+# --------------------------------------------------------------------------- coupons (Oyun)
+def _rows_by_id(date_from: str | None = None, date_to: str | None = None) -> dict[str, dict]:
+    from ..pipeline.scorecard import load_prediction_rows
+
+    rows = load_prediction_rows(RESULTS)
+    if date_from:
+        rows = [r for r in rows if r["date"] >= date_from]
+    if date_to:
+        rows = [r for r in rows if r["date"] <= date_to]
+    return {r["id"]: r for r in rows}
+
+
+@app.get("/api/coupons")
+def coupons_list() -> dict:
+    from ..pipeline import coupons as cp
+    from ..pipeline.scorecard import realised_results
+
+    items = cp.load(settings)
+    if not items:
+        return {"coupons": []}
+    by_id = _rows_by_id()
+    needed = {p["match_id"] for c in items for p in c["picks"]}
+    rows = [by_id[m] for m in needed if m in by_id]
+    results = realised_results(settings, rows, _history())
+    out = [cp.evaluate(c, results) for c in items]
+    out.sort(key=lambda c: c["created_at"], reverse=True)
+    return {"coupons": out}
+
+
+@app.post("/api/coupons")
+def coupons_create(payload: dict) -> dict:
+    from ..pipeline import coupons as cp
+
+    picks = payload.get("picks") or []
+    by_id = _rows_by_id()
+    try:
+        coupon = cp.build_coupon(picks, by_id, str(payload.get("label") or ""))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    cp.attach_prices(coupon, by_id)
+    items = cp.load(settings)
+    items.append(coupon)
+    cp.save(settings, items)
+    return {"ok": True, "coupon": cp.evaluate(coupon, {})}
+
+
+@app.delete("/api/coupons/{coupon_id}")
+def coupons_delete(coupon_id: str) -> dict:
+    from ..pipeline import coupons as cp
+
+    items = cp.load(settings)
+    keep = [c for c in items if c["id"] != coupon_id]
+    if len(keep) == len(items):
+        raise HTTPException(404, "kupon bulunamadı")
+    cp.save(settings, keep)
+    return {"ok": True}
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots() -> Any:
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse("User-agent: *\nDisallow: /\n")
+
+
+@app.middleware("http")
+async def no_index(request, call_next):
+    """Private research tool: tell every crawler to stay away (the page also carries a robots meta tag)."""
+    response = await call_next(request)
+    response.headers["X-Robots-Tag"] = "noindex, nofollow, noarchive"
+    return response
 
 
 @app.get("/api/live-debug/{date}")

@@ -90,8 +90,223 @@
     $("#view-list").hidden = name !== "list";
     $("#view-glossary").hidden = name !== "glossary";
     $("#view-scorecard").hidden = name !== "scorecard";
+    $("#view-paper").hidden = name !== "paper";
     $("#view-empty").hidden = true;
     if (name === "scorecard" && !state.sc.data) loadScorecard();
+    if (name === "paper") { if (!state.pp.data) loadPaper(); if (!state.cp.loaded) { initCouponBuilder(); loadCoupons(); } }
+  }
+
+  // ------------------------------------------------------------------ coupons (Oyun)
+  state.cp = { loaded: false, date: null, day: null, picks: new Map(), saving: false };
+  const CP_MARKETS = [
+    ["ms", "Maç sonucu", ["h", "d", "a"]], ["o25", "2,5 gol", ["over", "under"]], ["o15", "1,5 gol", ["over", "under"]],
+    ["fh05", "İY 0,5", ["over", "under"]], ["fh15", "İY 1,5", ["over", "under"]], ["sh05", "2Y 0,5", ["over", "under"]], ["sh15", "2Y 1,5", ["over", "under"]],
+  ];
+  const CP_PICK = { h: "1", d: "X", a: "2", over: "Üst", under: "Alt" };
+
+  function cpProbs(m, market) {
+    // {pick: {hist: %, market: %}} for the builder; null where a side has no view
+    const yn = (p) => (p == null ? null : { over: p, under: 100 - p });
+    const gd = m.goals_dist || {};
+    const o15 = gd["0"] != null && gd["1"] != null ? 100 * (1 - gd["0"] - gd["1"]) : null;
+    const hv = m.halves || {};
+    const f = (v) => (v == null ? null : 100 * v);
+    switch (market) {
+      case "ms": return { hist: m.adj, market: m.market };
+      case "o25": return { hist: yn(m.over25), market: yn(m.market_over25) };
+      case "o15": return { hist: yn(o15), market: null };
+      case "fh05": return { hist: yn(f(hv.fh_over05)), market: null };
+      case "fh15": return { hist: yn(f(hv.fh_over15)), market: null };
+      case "sh05": return { hist: yn(f(hv.sh_over05)), market: null };
+      case "sh15": return { hist: yn(f(hv.sh_over15)), market: null };
+      default: return { hist: null, market: null };
+    }
+  }
+  const cpArgmax = (o) => (o ? Object.keys(o).filter((k) => o[k] != null).sort((a, b) => o[b] - o[a])[0] || null : null);
+
+  function initCouponBuilder() {
+    const sel = $("#cp-date"); sel.innerHTML = "";
+    const today = state.meta?.today || isoDay(new Date());
+    const has = new Set(state.meta?.dates || []);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today + "T12:00:00"); d.setDate(d.getDate() + i); const s = isoDay(d);
+      const o = el("option"); o.value = s; o.textContent = fmtDate(s) + (i === 0 ? " · bugün" : "") + (has.has(s) ? "" : " · henüz maç yok"); sel.appendChild(o);
+    }
+    sel.value = state.date && state.date >= today ? state.date : today;
+    sel.onchange = () => loadCouponDay(sel.value);
+    $("#cp-save").onclick = saveCoupon;
+    $("#cp-clear").onclick = () => { state.cp.picks.clear(); renderCouponDay(); };
+    $("#cp-copy").onclick = () => {
+      (state.cp.day?.matches || []).forEach((m) => CP_MARKETS.forEach(([mk]) => { const h = cpArgmax(cpProbs(m, mk).hist); if (h) state.cp.picks.set(`${m.id}|${mk}`, h); }));
+      renderCouponDay();
+    };
+    state.cp.loaded = true;
+    loadCouponDay(sel.value);
+  }
+
+  async function loadCouponDay(stamp) {
+    state.cp.date = stamp; state.cp.picks.clear();
+    $("#cp-matches").innerHTML = `<p class="note">Yükleniyor…</p>`;
+    try { state.cp.day = await api(`/api/day/${stamp}`); }
+    catch (e) { state.cp.day = { matches: [] }; }
+    renderCouponDay();
+  }
+
+  function cpRow(m) {
+    const cells = CP_MARKETS.map(([mk, label, opts]) => {
+      const pr = cpProbs(m, mk);
+      const hPick = cpArgmax(pr.hist), mPick = cpArgmax(pr.market);
+      if (!hPick && !mPick) return `<div class="cp-mk is-na"><span class="cp-mk-label">${label}</span><span class="note">veri yok</span></div>`;
+      const btns = opts.map((o) => {
+        const key = `${m.id}|${mk}`, on = state.cp.picks.get(key) === o;
+        const marks = `${hPick === o ? '<i class="mk-h" title="geçmişin seçimi">G</i>' : ""}${mPick === o ? '<i class="mk-m" title="piyasanın seçimi">P</i>' : ""}`;
+        const ph = pr.hist && pr.hist[o] != null ? pct(pr.hist[o]) : "–";
+        return `<button type="button" class="cp-btn${on ? " is-on" : ""}" data-key="${key}" data-pick="${o}"><b>${CP_PICK[o]}</b><small>${ph}</small>${marks}</button>`;
+      }).join("");
+      return `<div class="cp-mk"><span class="cp-mk-label">${label}</span><div class="cp-btns">${btns}</div></div>`;
+    }).join("");
+    return `<div class="cp-row"><div class="cp-head"><b>${esc(m.home)} – ${esc(m.away)}</b><span class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · oran ${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}</span></div><div class="cp-mks">${cells}</div></div>`;
+  }
+
+  function renderCouponDay() {
+    const box = $("#cp-matches");
+    const ms = (state.cp.day?.matches || []).slice().sort((a, b) => (a.time || "").localeCompare(b.time || "") || a.league_name.localeCompare(b.league_name, "tr"));
+    if (!ms.length) { box.innerHTML = `<div class="day-empty">Bu gün için analiz edilmiş maç yok. Football-Data yeni haftanın maçlarını genellikle Salı–Çarşamba yükler.</div>`; }
+    else box.innerHTML = ms.map(cpRow).join("");
+    box.querySelectorAll(".cp-btn").forEach((b) => (b.onclick = () => {
+      const key = b.dataset.key, pick = b.dataset.pick;
+      if (state.cp.picks.get(key) === pick) state.cp.picks.delete(key); else state.cp.picks.set(key, pick);
+      renderCouponDay();
+    }));
+    const n = state.cp.picks.size;
+    $("#cp-summary").textContent = n ? `${n} seçim` : "Henüz seçim yok";
+    $("#cp-save").disabled = n === 0 || state.cp.saving;
+  }
+
+  async function saveCoupon() {
+    if (!state.cp.picks.size) return;
+    state.cp.saving = true; $("#cp-save").disabled = true;
+    const picks = [...state.cp.picks.entries()].map(([key, pick]) => { const [match_id, market] = key.split("|"); return { match_id, market, pick }; });
+    try {
+      await api("/api/coupons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ picks, label: $("#cp-label").value }) });
+      toast("Kupon kaydedildi."); state.cp.picks.clear(); $("#cp-label").value = ""; renderCouponDay(); await loadCoupons();
+    } catch (e) { toast("Kaydedilemedi: " + e.message); }
+    state.cp.saving = false; renderCouponDay();
+  }
+
+  async function loadCoupons() {
+    const box = $("#cp-list");
+    try {
+      const d = await api("/api/coupons");
+      renderCoupons(d.coupons || []);
+    } catch (e) { box.textContent = "Kuponlar yüklenemedi: " + e.message; }
+  }
+
+  const tallyTxt = (t) => `${t.ok} tuttu · ${t.wrong} tutmadı${t.pending ? ` · ${t.pending} bekliyor` : ""}${t.n_odds ? ` · kâr ${signed(t.pnl)} (${t.n_odds} oranlı seçim)` : ""}`;
+  const statusTr = { pending: ["Bekliyor", ""], won: ["Hepsi tuttu", "won"], lost: ["Tutmadı", "lost"] };
+
+  function renderCoupons(list) {
+    const box = $("#cp-list");
+    if (!list.length) { box.innerHTML = `<p class="note">Henüz kupon yok. Yukarıdan maç seçip kaydet.</p>`; return; }
+    const agg = { user: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 }, hist: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 }, market: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 } };
+    list.forEach((c) => Object.keys(agg).forEach((s) => Object.keys(agg[s]).forEach((k) => (agg[s][k] += c.tally[s][k] || 0))));
+    const settledAll = agg.user.ok + agg.user.wrong;
+    const head = settledAll ? `<div class="cp-total"><span class="label">Tüm kuponlarda</span>
+      <div class="cp-total-row"><b>Sen</b><span>${tallyTxt(agg.user)}</span></div>
+      <div class="cp-total-row"><b class="c-hist">Geçmiş</b><span>${tallyTxt(agg.hist)}</span></div>
+      <div class="cp-total-row"><b class="c-market">Piyasa</b><span>${tallyTxt(agg.market)}</span></div>
+      <p class="note">Piyasa yalnızca maç sonucu ve 2,5 golde görüş bildirir; 1,5 gol ve yarı başlıklarında sadece sen ve geçmiş sayılır. Kâr: seçim başına 1 birim, o tarafın kendi seçiminin oranıyla.</p></div>` : "";
+    box.innerHTML = head + list.map((c) => {
+      const [st, cls] = statusTr[c.status] || [c.status, ""];
+      const rows = c.picks.map((p) => `<tr><td class="wrap">${esc(p.home)} – ${esc(p.away)}<small class="muted"> · ${fmtShort(p.date)}${p.time ? " " + esc(p.time) : ""}${p.score ? ` · <b>${esc(p.score)}</b>${p.ht_score ? ` (${esc(p.ht_score)})` : ""}` : ""}</small></td><td class="wrap">${esc(p.market_label)}</td>
+        <td class="num">${esc(p.pick_label)} ${okMark(p.user_ok)}${p.odds ? `<small class="muted"> @${num(p.odds)}</small>` : ""}</td>
+        <td class="num">${p.hist_pick ? `${CP_PICK[p.hist_pick]} ${okMark(p.hist_ok)}` : "–"}</td>
+        <td class="num hide-sm">${p.market_pick ? `${CP_PICK[p.market_pick]} ${okMark(p.market_ok)}` : "–"}</td>
+        <td class="num hide-sm">${esc(p.score || "–")}${p.ht_score ? `<small class="muted"> (${esc(p.ht_score)})</small>` : ""}</td></tr>`).join("");
+      return `<div class="cp-card"><div class="cp-card-head"><div><b>${esc(c.label || "Kupon")}</b> <span class="tag ${cls}">${st}</span><br><small class="muted">${c.n_picks} seçim · ${c.created_at.slice(0, 16).replace("T", " ")} UTC</small></div><button type="button" class="linkbtn" data-del="${c.id}">Sil</button></div>
+        <div class="cp-tally"><span><b>Sen</b> ${tallyTxt(c.tally.user)}</span><span><b class="c-hist">Geçmiş</b> ${tallyTxt(c.tally.hist)}</span><span><b class="c-market">Piyasa</b> ${tallyTxt(c.tally.market)}</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Maç</th><th>Başlık</th><th class="num">Sen</th><th class="num">Geçmiş</th><th class="num hide-sm">Piyasa</th><th class="num hide-sm">Skor (İY)</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+    }).join("");
+    box.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+      if (!window.confirm("Bu kupon silinsin mi?")) return;
+      try { await api(`/api/coupons/${b.dataset.del}`, { method: "DELETE" }); await loadCoupons(); } catch (e) { toast("Silinemedi: " + e.message); }
+    }));
+  }
+
+  // ------------------------------------------------------------------ paper trading (Sanal oyun)
+  state.pp = { from: null, to: null, leagues: new Set(), edge: 3, data: null, strategy: "deviation" };
+
+  function setPRange(days) {
+    const today = new Date((state.meta?.today || isoDay(new Date())) + "T12:00:00");
+    const to = new Date(today); to.setDate(to.getDate() - 1);
+    const from = new Date(to); from.setDate(from.getDate() - (days - 1));
+    state.pp.from = isoDay(from); state.pp.to = isoDay(to);
+    $("#pp-from").value = state.pp.from; $("#pp-to").value = state.pp.to;
+    document.querySelectorAll("#view-paper [data-prange]").forEach((b) => b.classList.toggle("is-on", Number(b.dataset.prange) === days));
+  }
+
+  async function loadPaper() {
+    if (!state.pp.from) setPRange(30);
+    $("#pp-count").textContent = "Yükleniyor…";
+    try {
+      const q = new URLSearchParams({ from: state.pp.from, to: state.pp.to, edge: String(state.pp.edge) });
+      if (state.pp.leagues.size) q.set("leagues", [...state.pp.leagues].join(","));
+      state.pp.data = await api(`/api/paper?${q}`);
+      renderPaper();
+    } catch (e) { $("#pp-count").textContent = "Sanal oyun yüklenemedi: " + e.message; }
+  }
+
+  const signed = (v, d = 2) => (v == null ? "–" : `${v > 0 ? "+" : ""}${Number(v).toFixed(d)}`);
+  const signedPct = (v) => (v == null ? "–" : `${v > 0 ? "+" : ""}%${Number(v).toFixed(1)}`);
+  const pnlCls = (v) => (v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "");
+
+  function sparkline(curve) {
+    if (!curve || curve.length < 2) return "";
+    const w = 160, h = 40, vals = curve.map((c) => c.pnl);
+    const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = hi - lo || 1;
+    const x = (i) => (i / (curve.length - 1)) * w, y = (v) => h - ((v - lo) / span) * h;
+    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+    const last = vals[vals.length - 1];
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true"><line x1="0" x2="${w}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" class="zero"/><polyline points="${pts}" class="${last >= 0 ? "pos" : "neg"}"/></svg>`;
+  }
+
+  function stratCard(s) {
+    const on = s.key === state.pp.strategy;
+    if (!s.n_bets) return `<button type="button" class="pp-card is-empty${on ? " is-on" : ""}" data-strategy="${s.key}"><h3>${s.label}</h3><p class="note">${s.desc}</p><p class="note">Bu aralıkta oynayacağı maç yok.</p></button>`;
+    return `<button type="button" class="pp-card${on ? " is-on" : ""}" data-strategy="${s.key}"><h3>${s.label}</h3><p class="note">${s.desc}</p>
+      <div class="pp-main"><div><div class="pp-big num ${pnlCls(s.profit)}">${signed(s.profit)}</div><div class="label">birim kâr/zarar</div></div>${sparkline(s.curve)}</div>
+      <div class="pp-stats">
+        <span><b class="num">${s.wins}/${s.n_settled}</b> tuttu${s.n_pending ? ` · ${s.n_pending} bekliyor` : ""}</span>
+        <span>getiri <b class="num ${pnlCls(s.roi_pct)}">${signedPct(s.roi_pct)}</b></span>
+        <span>ort. oran <b class="num">${num(s.avg_odds)}</b></span>
+        <span>en yüksek oranla <b class="num ${pnlCls(s.profit_max)}">${s.n_max ? signed(s.profit_max) + " (" + signedPct(s.roi_max_pct) + ")" : "–"}</b></span>
+        <span>maks. düşüş <b class="num">${num(s.max_drawdown)}</b></span>
+      </div></button>`;
+  }
+
+  function renderPaper() {
+    const d = state.pp.data;
+    const wrap = $("#pp-leagues"); wrap.innerHTML = "";
+    const all = el("button", "chip" + (state.pp.leagues.size === 0 ? " is-on" : ""), "Tümü"); all.type = "button";
+    all.onclick = () => { state.pp.leagues = new Set(); loadPaper(); }; wrap.appendChild(all);
+    d.leagues.forEach((l) => {
+      const b = el("button", "chip" + (state.pp.leagues.has(l.code) ? " is-on" : ""), esc(l.name)); b.type = "button";
+      b.onclick = () => { if (state.pp.leagues.has(l.code)) state.pp.leagues.delete(l.code); else state.pp.leagues.add(l.code); loadPaper(); };
+      wrap.appendChild(b);
+    });
+    $("#pp-count").textContent = `${fmtShort(d.from)} – ${fmtShort(d.to)} · ${d.n_matches} maç, ${d.n_finished} sonuçlandı · sapma eşiği ${d.edge} puan`;
+    const body = $("#pp-body");
+    if (!d.n_matches) { body.innerHTML = `<div class="day-empty">Bu aralıkta analiz edilmiş maç yok.</div>`; return; }
+    const s = d.strategies.find((x) => x.key === state.pp.strategy) || d.strategies[0];
+    const settled = s.bets.filter((b) => b.settled), pending = s.bets.filter((b) => !b.settled);
+    const rows = settled.map((b) => `<tr><td class="num hide-sm">${fmtShort(b.date)}</td><td class="wrap">${esc(b.home)} – ${esc(b.away)}<small class="muted"> · ${esc(b.league_name)}</small></td><td class="num">${esc(b.pick_label)}</td><td class="num">${num(b.odds)}<small class="muted hide-sm">${b.odds_max ? " / " + num(b.odds_max) : ""}</small></td><td class="num">${esc(b.score)}</td><td class="num ${b.won ? "ok" : "bad"}">${b.won ? "✓" : "✗"}</td><td class="num ${pnlCls(b.pnl)}">${signed(b.pnl)}</td></tr>`).join("");
+    const league = s.by_league.length > 1 ? `<section><h3>Lige göre · ${s.label}</h3><div class="table-wrap"><table><thead><tr><th>Lig</th><th class="num">Bahis</th><th class="num">Tuttu</th><th class="num">Kâr/zarar</th></tr></thead><tbody>${s.by_league.map((l) => `<tr><td class="wrap">${esc(l.league_name)}</td><td class="num">${l.n}</td><td class="num">${l.wins}</td><td class="num ${pnlCls(l.pnl)}">${signed(l.pnl)}</td></tr>`).join("")}</tbody></table></div></section>` : "";
+    body.innerHTML = `<div class="pp-grid">${d.strategies.map(stratCard).join("")}</div>
+      <section><h3>Bahis bahis · ${s.label}</h3>
+      ${settled.length ? `<div class="table-wrap"><table><thead><tr><th class="hide-sm">Tarih</th><th>Maç</th><th class="num">Seçim</th><th class="num">Oran</th><th class="num">Skor</th><th class="num"></th><th class="num">Kâr</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="note">Bu stratejinin sonuçlanmış bahsi yok.</p>`}
+      ${pending.length ? `<p class="note">Sonucu bekleyen ${pending.length} bahis: ${pending.map((b) => `${esc(b.home)} – ${esc(b.away)} (${esc(b.pick_label)} @ ${num(b.odds)})`).join(", ")}.</p>` : ""}
+      <p class="table-hint">Bir stratejinin kartına dokununca listesi ve lig tablosu gelir. Oran sütununda ortalama / en yüksek oran; kâr ortalama oranla hesaplanır.</p></section>${league}`;
+    body.querySelectorAll("[data-strategy]").forEach((b) => (b.onclick = () => { state.pp.strategy = b.dataset.strategy; renderPaper(); }));
   }
 
   // ------------------------------------------------------------------ scorecard (Özet)
@@ -651,6 +866,15 @@
       loadScorecard();
     };
     $("#sc-from").onchange = onDates; $("#sc-to").onchange = onDates;
+    document.querySelectorAll("#view-paper [data-prange]").forEach((b) => (b.onclick = () => { setPRange(Number(b.dataset.prange)); loadPaper(); }));
+    const onPDates = () => {
+      const f = $("#pp-from").value, t = $("#pp-to").value; if (!f || !t) return;
+      state.pp.from = f <= t ? f : t; state.pp.to = f <= t ? t : f;
+      document.querySelectorAll("#view-paper [data-prange]").forEach((x) => x.classList.remove("is-on"));
+      loadPaper();
+    };
+    $("#pp-from").onchange = onPDates; $("#pp-to").onchange = onPDates;
+    $("#pp-edge").onchange = (e) => { state.pp.edge = Number(e.target.value); loadPaper(); };
     try { if (!localStorage.getItem("fo.introClosed")) $("#intro").hidden = false; } catch (_) { $("#intro").hidden = false; }
     $("#intro-close").onclick = () => { $("#intro").hidden = true; try { localStorage.setItem("fo.introClosed", "1"); } catch (_) {} };
     try {

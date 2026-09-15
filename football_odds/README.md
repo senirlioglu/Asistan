@@ -314,6 +314,30 @@ score, which comes from the database (main divisions) rather than ESPN. Results:
 scores cached in `results/results_cache.json`. `serve.py` writes `results/scorecard/<yesterday>.json` every day at
 `FO_SCORECARD_UTC` (default 05:00 = 08:00 Turkey); the API computes on demand for any range.
 
+**Coupons** (`src/pipeline/coupons.py`, tab "Oyun", `GET/POST /api/coupons`, `DELETE /api/coupons/{id}`): the user
+picks matches from an analysed day and outcomes in seven markets (1X2, over/under 2.5 and 1.5, first- and
+second-half 0.5/1.5); the system's picks on the same matches — history (adjusted analogue probability) and market —
+are frozen next to each pick at creation time, with the prices of 1X2 / 2.5 markets. `evaluate()` settles every
+pick for the three players as results arrive (database, then ESPN cache), counts right / wrong / pending per player,
+adds flat-stake profit where a price exists, and sets the coupon status (pending / all right / lost). Storage is a
+JSON file in the results directory (the mounted volume on Railway); there is no per-user separation yet.
+
+**Paper trading** (`src/pipeline/paper.py`, section "Sistemin kendi oyunu" of the Oyun tab, `GET /api/paper?from=&to=&leagues=&edge=3`): six fixed
+strategies stake one unit per qualifying match at the pre-match consensus average odds and, where known, at the
+best available price (an optimistic bound): market favourite, history favourite, deviation (history ≥ E points above
+the market, E selectable), its contrarian mirror, and over/under 2.5 by history or by the market. Profit, ROI, hit
+rate, average odds, maximum drawdown, a cumulative curve, per-league split and the bet list; pending matches are
+listed but not counted. Singles only, no accumulators; İddaa's prices are not in the data and carry a higher
+margin, so real returns there sit below both numbers. The page says so.
+
+**Persistence on a host with an ephemeral disk**: set `FO_STATE_DIR=/data` (a mounted volume). `load_settings`
+then points the raw cache, the processed database and every generated result there, and `serve.py` seeds the
+volume once with the repository's shipped results (backtest, league groups, audit, prediction files). Without it,
+every redeploy re-downloads the data and loses the prediction history the scorecard and paper trading build on.
+
+**No indexing**: the page carries `<meta name="robots" content="noindex, nofollow, noarchive">`, `/robots.txt`
+disallows everything and every response sends `X-Robots-Tag`. Access control (a password) is not implemented yet.
+
 **Commentary** (`commentary()` in `src/web/static/app.js`) is generated in the browser from the numbers already on the
 card, so it is rule-based text, not a model: before kick-off it states the market favourite, the analogue frequency and
 whether the two agree (within 2 points = agree), the 2.5-goal view of both, and the first-half shares; in play it

@@ -37,6 +37,7 @@ TABLE_COLUMNS = [
     "avg_similarity", "median_similarity", "min_similarity", "n_eff",
     "ci_h_lo", "ci_h_hi", "ci_d_lo", "ci_d_hi", "ci_a_lo", "ci_a_hi", "fair_h", "fair_d", "fair_a",
     "market_over25", "signal_outcome", "signal_reason", "match_id",
+    "odds_max_h", "odds_max_d", "odds_max_a", "odds_o25", "odds_u25", "odds_max_o25", "odds_max_u25",
 ]
 
 
