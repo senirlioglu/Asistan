@@ -24,6 +24,7 @@
       <button class="tab is-active" data-view="list" type="button">Maçlar</button>
       <button class="tab" data-view="scorecard" type="button">Özet</button>
       <button class="tab" data-view="paper" type="button">Oyun</button>
+      <button class="tab" data-view="notes" type="button">Notlar</button>
       <button class="tab" data-view="glossary" type="button">Sözlük</button>
     </nav>
     <button class="status" id="status-btn" type="button" title="Veri durumu">
@@ -173,6 +174,23 @@
     <p class="count" id="pp-count"></p>
     <div id="pp-body"></div>
     </section>
+  </section>
+
+  <section class="view" id="view-notes" hidden>
+    <h2 class="h2">Notlar</h2>
+    <p class="lead">Defterdeki kurallar, nesine.com'un o anki oranlarına uygulanıyor. Bir maç hangi notun şartını sağlıyorsa altında o not, dayandığı oranlar ve notun beklentisi yazar. Kurallar senin gözlemlerin; sistem onları doğrulamaz, yalnızca uygular ve veritabanında ölçülebilenler için "geçmişte ne oldu" sayısını yanına koyar.</p>
+    <details class="howto" id="nt-rules">
+      <summary>Notların listesi ve geçmişte ne olduğu</summary>
+      <div id="nt-rule-list">Yükleniyor…</div>
+    </details>
+    <div class="sc-controls">
+      <label class="select"><span class="label">Gün</span><select id="nt-date"></select></label>
+      <label class="toggle"><input type="checkbox" id="nt-only" checked><span>Sadece bir nota uyanlar</span></label>
+      <button type="button" class="btn ghost" id="nt-refresh">Oranları yenile</button>
+    </div>
+    <div class="chips-scroll" id="nt-chips" role="group" aria-label="Not filtresi"></div>
+    <p class="count" id="nt-count"></p>
+    <div id="nt-body"></div>
   </section>
 
   <section class="view" id="view-glossary" hidden>

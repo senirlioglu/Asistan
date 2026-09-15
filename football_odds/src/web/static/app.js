@@ -91,9 +91,74 @@
     $("#view-glossary").hidden = name !== "glossary";
     $("#view-scorecard").hidden = name !== "scorecard";
     $("#view-paper").hidden = name !== "paper";
+    $("#view-notes").hidden = name !== "notes";
     $("#view-empty").hidden = true;
+    if (name === "notes" && !state.nt.data) loadNotes();
     if (name === "scorecard" && !state.sc.data) loadScorecard();
     if (name === "paper") { if (!state.pp.data) loadPaper(); if (!state.cp.loaded) { initCouponBuilder(); loadCoupons(); } }
+  }
+
+  // ------------------------------------------------------------------ notes over nesine odds (Notlar)
+  state.nt = { data: null, date: null, rules: new Set(), only: true, loading: false };
+
+  async function loadNotes(refresh) {
+    if (state.nt.loading) return;
+    state.nt.loading = true;
+    $("#nt-count").textContent = refresh ? "Oranlar yenileniyor…" : "Nesine bülteni okunuyor…";
+    try {
+      const q = new URLSearchParams();
+      if (state.nt.date) q.set("date", state.nt.date);
+      if (refresh) q.set("refresh", "true");
+      state.nt.data = await api(`/api/notlar?${q}`);
+      state.nt.date = state.nt.data.date;
+      renderNotes();
+    } catch (e) { $("#nt-count").textContent = "Notlar yüklenemedi: " + e.message; }
+    state.nt.loading = false;
+  }
+
+  const fmtOdd = (v) => (typeof v === "number" ? v.toFixed(2) : esc(String(v)));
+
+  function ntRuleList(d) {
+    const h = d.history || {};
+    return d.rules.map((r) => {
+      const bt = h[r.id];
+      const rows = bt && bt.rows ? `<div class="table-wrap"><table><thead><tr><th>Beklenti</th><th class="num">Not</th><th class="num">Kural sağlanınca</th><th class="num">Genel</th></tr></thead><tbody>${bt.rows.map((x) => `<tr><td class="wrap">${esc(x.what)}</td><td class="num">${esc(x.note)}</td><td class="num"><b>${x.rule.pct == null ? "–" : "%" + x.rule.pct.toFixed(0)}</b><small class="muted"> (${x.rule.n})</small></td><td class="num">${x.base.pct == null ? "–" : "%" + x.base.pct.toFixed(0)}</td></tr>`).join("")}</tbody></table></div>` : "";
+      return `<div class="nt-rule${r.applied ? "" : " is-off"}"><h4>${r.no}. ${esc(r.title)}${r.applied ? "" : ' <span class="tag">uygulanmadı</span>'}</h4><p class="nt-note">“${esc(r.note)}”</p><p class="note"><b>Nasıl uygulandı:</b> ${esc(r.how)}</p>${rows}</div>`;
+    }).join("") + (h.note ? `<p class="note">${esc(h.note)}${h.n_matches ? ` Veritabanı: ${h.n_matches} maç.` : ""}</p>` : "");
+  }
+
+  function renderNotes() {
+    const d = state.nt.data;
+    $("#nt-rule-list").innerHTML = ntRuleList(d);
+    const sel = $("#nt-date"); sel.innerHTML = "";
+    d.dates.forEach((s) => { const o = el("option"); o.value = s; o.textContent = fmtDate(s); sel.appendChild(o); });
+    sel.value = state.nt.date;
+    const applied = d.rules.filter((r) => r.applied);
+    const chips = $("#nt-chips"); chips.innerHTML = "";
+    const all = el("button", "chip" + (state.nt.rules.size === 0 ? " is-on" : ""), "Tüm notlar"); all.type = "button";
+    all.onclick = () => { state.nt.rules = new Set(); renderNotes(); }; chips.appendChild(all);
+    applied.forEach((r) => {
+      const n = d.matches.filter((m) => m.hits.some((x) => x.id === r.id)).length;
+      const b = el("button", "chip" + (state.nt.rules.has(r.id) ? " is-on" : ""), `${r.no}. ${esc(r.title)} <small>${n}</small>`); b.type = "button";
+      b.onclick = () => { if (state.nt.rules.has(r.id)) state.nt.rules.delete(r.id); else state.nt.rules.add(r.id); renderNotes(); };
+      chips.appendChild(b);
+    });
+    let ms = d.matches.slice();
+    if (state.nt.rules.size) ms = ms.filter((m) => m.hits.some((x) => state.nt.rules.has(x.id)));
+    else if (state.nt.only) ms = ms.filter((m) => m.hits.length);
+    const meta = d.meta || {};
+    $("#nt-count").textContent = `${fmtDate(d.date)} · nesine'de ${d.matches.length} maç, ${d.n_hits} tanesi en az bir nota uyuyor · oranlar ${meta.fetched_at ? meta.fetched_at.slice(11, 16) + " UTC" : "?"}${meta.from_cache ? " (önbellek)" : ""}${meta.error ? " · yenileme başarısız, eski oranlar" : ""}`;
+    const body = $("#nt-body");
+    if (!ms.length) { body.innerHTML = `<div class="day-empty">Bu gün için seçili notlara uyan maç yok.</div>`; return; }
+    body.innerHTML = ms.map((m) => {
+      const hits = m.hits.filter((x) => !state.nt.rules.size || state.nt.rules.has(x.id));
+      const ev = (x) => Object.entries(x.evidence || {}).map(([k, v]) => `<span class="nt-ev"><span>${esc(k)}</span><b class="num">${fmtOdd(v)}</b></span>`).join("");
+      const ours = m.ours ? `<p class="note nt-ours">Bizim analiz (${esc(m.ours.league_name)}): piyasa ${pct(m.ours.market.h)} / ${pct(m.ours.market.d)} / ${pct(m.ours.market.a)} · geçmiş ${pct(m.ours.adj.h)} / ${pct(m.ours.adj.d)} / ${pct(m.ours.adj.a)} · 2,5 üst ${pct(m.ours.over25)} · ${m.ours.n} benzer maç</p>` : `<p class="note nt-ours">Bu maç bizim havuzda yok (lig kapsam dışı ya da henüz analiz edilmedi).</p>`;
+      return `<div class="nt-card"><div class="card-top"><span>${esc(m.league)} · ${esc(m.time)}</span><span class="num">MS ${fmtOdd(m.ms["1"] ?? "–")} / ${fmtOdd(m.ms["X"] ?? "–")} / ${fmtOdd(m.ms["2"] ?? "–")}</span></div>
+        <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
+        ${hits.map((x) => `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev(x)}</div><p class="nt-expect">${esc(x.expect)}</p></div>`).join("")}
+        ${ours}</div>`;
+    }).join("");
   }
 
   // ------------------------------------------------------------------ coupons (Oyun)
@@ -878,6 +943,9 @@
     };
     $("#pp-from").onchange = onPDates; $("#pp-to").onchange = onPDates;
     $("#pp-edge").onchange = (e) => { state.pp.edge = Number(e.target.value); loadPaper(); };
+    $("#nt-date").onchange = (e) => { state.nt.date = e.target.value; loadNotes(); };
+    $("#nt-only").onchange = (e) => { state.nt.only = e.target.checked; if (state.nt.data) renderNotes(); };
+    $("#nt-refresh").onclick = () => loadNotes(true);
     try { if (!localStorage.getItem("fo.introClosed")) $("#intro").hidden = false; } catch (_) { $("#intro").hidden = false; }
     $("#intro-close").onclick = () => { $("#intro").hidden = true; try { localStorage.setItem("fo.introClosed", "1"); } catch (_) {} };
     try {

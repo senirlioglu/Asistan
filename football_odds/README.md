@@ -320,6 +320,24 @@ score, which comes from the database (main divisions) rather than ESPN. Results:
 scores cached in `results/results_cache.json`. `serve.py` writes `results/scorecard/<yesterday>.json` every day at
 `FO_SCORECARD_UTC` (default 05:00 = 08:00 Turkey); the API computes on demand for any range.
 
+**Notes over nesine odds** (`src/nesine/`, tab "Notlar", `GET /api/notlar?date=&refresh=`): the owner's
+hand-written betting heuristics applied to nesine.com's live pre-match bulletin.
+
+* `bulletin.py` fetches `https://cdnbulten.nesine.com/api/bulten/getprebultenfull` (the JSON the site
+  itself loads; no key, ~4 MB, cached 15 minutes in the results directory, a stale cache is served when
+  the fetch fails) and flattens each football event into named markets. Market ids are numeric; the
+  names in `market_types.json` were extracted from nesine's own script bundle. Odds of exactly 1.00
+  mean "not offered" and are dropped. No scraper is needed — this is a plain JSON endpoint.
+* `rules.py` holds the 16 notes as filters, each with the original text, how it was interpreted, and the
+  evidence odds it fires on. Three notes are anecdotes about particular clubs or basketball and are
+  listed but not applied; two (a team's 7th match after a half-time reversal, and the match after one)
+  are evaluated from the processed database instead of the odds.
+* `history.py` counts, over the whole 179k-match database, how often each testable note's promise
+  actually happened next to the base rate, and caches that in `results/notes_history.json`. The page
+  prints those two numbers beside every note. The odds there are Football-Data's pre-match consensus,
+  not nesine's price, and "exactly 1.67" becomes a narrow band — the comparison is indicative.
+* Each listed match also shows our own analysis of it when the fixture is in our pool.
+
 **Coupons** (`src/pipeline/coupons.py`, tab "Oyun", `GET/POST /api/coupons`, `DELETE /api/coupons/{id}`): the user
 picks matches from an analysed day and outcomes in seven markets (1X2, over/under 2.5 and 1.5, first- and
 second-half 0.5/1.5); the system's picks on the same matches — history (adjusted analogue probability) and market —
