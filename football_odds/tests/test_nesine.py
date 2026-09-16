@@ -198,3 +198,26 @@ def test_archive_keeps_every_change_forever(settings, tmp_path, monkeypatch):
     assert gzip.open(archive.day_path(settings, t0.date(), gz=True), "rt").readline()
     assert len(archive.load_day(settings, t0.date())) == n_open + 1
     assert archive.load_day(settings, dt.date(2030, 1, 1)) == []
+
+
+def test_the_archive_records_that_it_looked_even_when_nothing_moved(settings, tmp_path, monkeypatch):
+    """A flat stretch in the file means one of two very different things — the price held, or nobody
+    was watching. Without a heartbeat the reader cannot tell, and "STABLE" becomes an artefact of
+    downtime rather than a finding."""
+    import datetime as dt
+
+    from src.nesine import archive
+
+    monkeypatch.setattr(settings, "raw", settings.with_overrides(**{"data.results_dir": str(tmp_path)}).raw)
+    t0 = dt.datetime(2026, 9, 20, 12, 0, tzinfo=dt.timezone.utc)
+    m = {"code": 7, "date": "2026-09-20", "time": "21:00", "home": "A", "away": "B", "league": "L"}
+
+    assert archive.append(settings, [], [m], now=t0) == 0                      # nothing moved
+    assert archive.append(settings, [{"c": 7, "p": "ms.1", "o": 1.8, "m": 60}], [m],
+                          now=t0 + dt.timedelta(minutes=10)) == 1
+
+    prices = archive.load_day(settings, t0.date())
+    runs = archive.load_day(settings, t0.date(), runs=True)
+    assert len(prices) == 1 and prices[0]["p"] == "ms.1"                       # prices unchanged by this
+    assert len(runs) == 2 and [r["ch"] for r in runs] == [0, 1]                # both refreshes recorded
+    assert all(r["n"] == 1 and "p" not in r for r in runs)

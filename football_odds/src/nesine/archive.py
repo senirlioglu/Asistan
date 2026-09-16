@@ -51,16 +51,26 @@ def _meta_row(m: dict) -> dict:
 
 
 def append(settings: Settings, changes: list[dict], matches: list[dict], now: dt.datetime | None = None) -> int:
-    """Append this refresh's changed prices; returns how many lines were written."""
-    if not changes:
-        return 0
+    """Append this refresh's changed prices plus a heartbeat; returns how many price lines were written.
+
+    Only *changed* prices are stored, which keeps the file narrow but loses something the reader
+    needs: whether a four-hour flat stretch means the price held or the watcher was down. A price
+    that never moved and a price nobody looked at are indistinguishable from the rows alone, and the
+    difference decides whether "STABLE" is a finding or an artefact. Each refresh therefore also
+    writes one heartbeat line, `{"ts", "k": "run", "n": matches seen, "ch": prices changed}`, so
+    coverage can be reconstructed. Heartbeats carry no `p` and readers skip them on that.
+    """
     now = now or dt.datetime.now(dt.timezone.utc)
     d = archive_dir(settings)
     d.mkdir(parents=True, exist_ok=True)
     stamp = now.isoformat(timespec="seconds")
     with day_path(settings, now.date()).open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ts": stamp, "k": "run", "n": len(matches), "ch": len(changes)},
+                            ensure_ascii=False, separators=(",", ":")) + "\n")
         for row in changes:
             fh.write(json.dumps({"ts": stamp, **row}, ensure_ascii=False, separators=(",", ":")) + "\n")
+    if not changes:
+        return 0
     # the teams behind those codes, written once per code per day
     p = meta_path(settings, now.date())
     try:
@@ -76,15 +86,19 @@ def append(settings: Settings, changes: list[dict], matches: list[dict], now: dt
     return len(changes)
 
 
-def load_day(settings: Settings, day: dt.date) -> list[dict]:
-    """Every price change recorded on that UTC day, oldest first (reads the gzipped file too)."""
+def load_day(settings: Settings, day: dt.date, runs: bool = False) -> list[dict]:
+    """Every price change recorded on that UTC day, oldest first (reads the gzipped file too).
+
+    `runs=True` returns the heartbeat lines instead — one per refresh, which is how a reader tells a
+    price that held from a price nobody was watching."""
     for gz in (False, True):
         p = day_path(settings, day, gz=gz)
         if not p.exists():
             continue
         opener = gzip.open if gz else open
         with opener(p, "rt", encoding="utf-8") as fh:
-            return [json.loads(line) for line in fh if line.strip()]
+            rows = [json.loads(line) for line in fh if line.strip()]
+        return [r for r in rows if (r.get("k") == "run") == runs]
     return []
 
 
