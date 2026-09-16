@@ -2550,18 +2550,15 @@
 
   async function lcChoose(team) {
     state.lab.cycle.team = team; $("#lc-q").value = team; $("#lc-suggest").hidden = true; $("#lc-go").disabled = false;
-    const sel = $("#lc-centre"); sel.innerHTML = `<option value="">Son maç (varsayılan)</option>`;
+    const sel = $("#lc-centre"); sel.innerHTML = `<option value="">Otomatik — bu sezonun bütün maçları taranır</option>`;
     try {
-      const today = state.meta?.today || isoDay(new Date());
-      const to = new Date(today + "T12:00:00"); to.setDate(to.getDate() + 7);
-      const d = await api(`/api/lab/maclar?from=${today}&to=${isoDay(to)}`);
-      d.matches.filter((m) => m.home === team || m.away === team).forEach((m) => {
-        const o = el("option", "", `${esc(m.home)} – ${esc(m.away)} · ${fmtShort(m.date)}`); o.value = m.id; sel.appendChild(o);
+      const d = await api(`/api/lab/takim-maclari?team=${encodeURIComponent(team)}`);
+      d.matches.forEach((m) => {
+        const o = el("option", "", `${esc(m.home)} – ${esc(m.away)} · ${fmtShort(m.date)}${m.played ? ` · ${esc(m.score)}` : " · oynanacak"}`);
+        o.value = m.id; sel.appendChild(o);
       });
-      if (sel.options.length > 1) sel.selectedIndex = 1;      // the coming match is what the reader came to ask about
     } catch (_) {}
   }
-
 
   async function lcRun(team, matchId) {
     if (!team) return;
@@ -2586,8 +2583,10 @@
       return;
     }
     const best = d.cycles[0];
+    const bn = best.now;
+    const bcentre = `${bn.home ? `${esc(bn.home)} – ${esc(bn.away)}` : esc(bn.opponents[bn.centre])} (${fmtShort(bn.date)}${bn.played === false ? ", oynanacak" : ""})`;
     const verdict = `<div class="lab-verdict"><span class="ev ev-ctx">BAĞLAM</span><p><b>${esc(best.kind_tr)}, ±${best.window} pencerede, %${best.similarity} benzerlik</b> — ${best.past.season.slice(0, 2)}/${best.past.season.slice(2)} sezonuyla, ${best.n_compared} pozisyon karşılaştırıldı.
-        Merkez maç ${centre}. ${d.searched} geçmiş dizi tarandı. <b>Bu bir fikstür benzerliğidir, sonuç olasılığı değil</b>; bir anlamı olup olmadığını aşağıdaki düğme ölçer.</p></div>`;
+        Merkez maç: <b>${bcentre}</b>. ${d.centres_searched > 1 ? `Bu sezonun ${d.centres_searched} maçı merkez olarak denendi, ` : ""}${d.searched} geçmiş dizi tarandı. <b>Bu bir fikstür benzerliğidir, sonuç olasılığı değil</b>; bir anlamı olup olmadığını aşağıdaki düğme ölçer.</p></div>`;
     const fig = `<div class="lab-fig">
       <div class="lab-stat"><small>DİZİ TÜRÜ</small><b style="font-size:1.25rem">${esc(best.kind_tr)}</b><span class="muted">${esc(best.kind.replace("_", " ").toLowerCase())}</span></div>
       <div class="lab-stat"><small>PENCERE</small><b>±${best.window}</b><span class="muted">${best.n_compared} pozisyon karşılaştırıldı</span></div>
@@ -2599,9 +2598,9 @@
       <div class="lab-actions"><button type="button" class="btn ex-go" data-measure="0">Bu döngü geçmişte işe yaramış mı?</button></div>
       <div id="lc-measure"></div>`;
     const others = d.cycles.length > 1 ? `<details class="ex-more"><summary>Bulunan bütün döngüler <span class="muted">— ${d.cycles.length} tane; her tür için en iyi üçü</span></summary>
-      <div class="table-wrap"><table><thead><tr><th>Tür</th><th class="num">Pencere</th><th class="num">Benzerlik</th><th class="num hide-sm">Konum</th><th class="num hide-sm">Kanat</th><th class="num">Karş.</th><th>Sezon</th><th></th></tr></thead><tbody>
+      <div class="table-wrap"><table><thead><tr><th>Tür</th><th class="num">Pencere</th><th class="num">Benzerlik</th><th class="num hide-sm">Konum</th><th class="num hide-sm">Kanat</th><th class="num">Karş.</th><th>Geçmiş sezon</th><th>Merkez maç</th><th></th></tr></thead><tbody>
       ${d.cycles.map((x, i) => `<tr class="${i === 0 ? "ac-alive" : ""}"><td>${esc(x.kind_tr)}</td><td class="num">±${x.window}</td><td class="num"><b>%${x.similarity}</b></td>
-        <td class="num hide-sm">%${x.positional}</td><td class="num hide-sm">%${x.wing}</td><td class="num">${x.n_compared}</td><td>${x.past.season.slice(0, 2)}/${x.past.season.slice(2)} · ${fmtShort(x.past.date)}</td>
+        <td class="num hide-sm">%${x.positional}</td><td class="num hide-sm">%${x.wing}</td><td class="num">${x.n_compared}</td><td class="nw">${x.past.season.slice(0, 2)}/${x.past.season.slice(2)} · ${fmtShort(x.past.date)}</td><td class="nw">${esc(x.now.opponents[x.now.centre] || "")} · ${fmtShort(x.now.date)}</td>
         <td><button type="button" class="linkbtn" data-measure="${i}">ölç</button></td></tr>`).join("")}</tbody></table></div></details>` : "";
     const pairs = d.pairs || {};
     box.innerHTML = verdict + fig + others + (pairs.n_pairs ? `<p class="note">Döngü çiftleri tablosu: ${Number(pairs.n_pairs).toLocaleString("tr")} çift, ${pairs.generated_at ? ntAgo(pairs.generated_at) : ""}.</p>`
@@ -2613,7 +2612,7 @@
     const box = $("#lc-measure");
     box.innerHTML = `<p class="note">Bütün veritabanı taranıyor: ${esc(cyc.kind_tr)}, ±${cyc.window}, benzerlik ≥ %${cyc.similarity} …</p>`;
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    const tsi = d.centre?.tsi;
+    const tsi = cyc.now?.tsi ?? d.centre?.tsi;
     try {
       const q = new URLSearchParams({ kind: cyc.kind, window: cyc.window, similarity: cyc.similarity, team: d.team });
       if (tsi != null) q.set("tsi", tsi);
@@ -2663,7 +2662,8 @@
       const b = ev.currentTarget; b.disabled = true;
       try {
         const q = new URLSearchParams({ kind: cyc.kind, window: cyc.window, similarity: cyc.similarity, team: d.team, hypothesis: other });
-        if (d.centre?.tsi != null) q.set("tsi", d.centre.tsi);
+        const tsi2 = cyc.now?.tsi ?? d.centre?.tsi;
+        if (tsi2 != null) q.set("tsi", tsi2);
         renderMeasure(await api(`/api/lab/dongu-olc?${q}`), cyc, d, other);
       } catch (e) { toast("Ölçülemedi: " + e.message); b.disabled = false; }
     };

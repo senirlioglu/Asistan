@@ -449,9 +449,14 @@ def test_the_sassuolo_cycle_is_found_and_measured_through_the_api(client, tmp_pa
     service._cached.cache_clear()
     cycles._MEM.update(key=None, pairs=None)
 
-    d = client.get("/api/dongu?team=Sassuolo&match_id=S-2627-2").json()
+    d = client.get("/api/dongu?team=Sassuolo").json()                  # the club, nothing else
     best = d["cycles"][0]
     assert best["kind"] == "EXACT_REVERSE" and best["window"] == 2 and best["similarity"] == 100.0
+    assert best["now"]["away"] == "Bologna" and best["now"]["tsi"] is not None and best["now"]["played"] is True
+    tm = client.get("/api/lab/takim-maclari?team=Sassuolo").json()
+    assert tm["season"] == "2627" and len(tm["matches"]) == 5 and tm["matches"][0]["opponent"] == "Monza"
+    d = client.get("/api/dongu?team=Sassuolo&match_id=S-2627-2").json()
+    best = d["cycles"][0]
     assert best["past"]["season"] == "2324" and best["past"]["opponents"] == ["Juventus", "Monza", "Bologna", "Torino", "Atalanta"]
     assert d["centre"]["venue"] == "home" and "pairs" in d
 

@@ -661,19 +661,53 @@ def dongu(team: str = Query(..., min_length=2, max_length=60), match_id: str = Q
         raise HTTPException(404, "durum tablosu hazır değil")
     out = sequence.find_cycles(df, team.strip(), centre_match_id=match_id.strip() or None,
                                min_similarity=min_similarity)
-    # the club's strength at the centre, so the measurement can ask about comparable clubs, and
-    # whether the whole-database pair table exists yet (the daily job builds it; it can lag a rebuild)
-    c = out.get("centre")
-    if c:
-        hit = df[df["match_id"].astype(str) == c["match_id"]]
+    # every cycle carries its own centre (the club's strength there, the venue, both clubs), so the
+    # measurement can ask about comparable clubs; and whether the whole-database pair table exists
+    # yet (the daily job builds it; it can lag a rebuild)
+    def annotate(c: dict) -> dict:
+        hit = df[df["match_id"].astype(str) == str(c.get("match_id"))]
         if not hit.empty:
             r = hit.iloc[0]
             at_home = str(r["home_team"]) == team.strip()
-            out["centre"]["venue"] = "home" if at_home else "away"
-            out["centre"]["tsi"] = service._f(r.get("h_tsi_pct" if at_home else "a_tsi_pct"))
-            out["centre"]["home"], out["centre"]["away"] = str(r["home_team"]), str(r["away_team"])
+            c["venue"] = "home" if at_home else "away"
+            c["tsi"] = service._f(r.get("h_tsi_pct" if at_home else "a_tsi_pct"))
+            c["home"], c["away"] = str(r["home_team"]), str(r["away_team"])
+            c["played"] = str(r.get("ftr")) in ("H", "D", "A")
+        return c
+    if out.get("centre"):
+        annotate(out["centre"])
+    for cyc in out.get("cycles", []):
+        annotate(cyc["now"])
     out["pairs"] = cycles.status(settings)
     return out
+
+
+@app.get("/api/lab/takim-maclari")
+def lab_team_matches(team: str = Query(..., min_length=2, max_length=60), limit: int = Query(60, ge=1, le=200)) -> dict:
+    """One club's matches in its current season, newest first — the cycle mode's centre picker.
+
+    Played matches are centres too: the run the graphics are about is usually a few matches back,
+    and the state table holds every match the club played, not only the fixtures analysed today."""
+    from ..patterns import service
+
+    df = service.frame(settings)
+    if df is None:
+        raise HTTPException(404, "durum tablosu hazır değil")
+    t = team.strip()
+    mine = df[(df["home_team"].astype(str) == t) | (df["away_team"].astype(str) == t)]
+    if mine.empty:
+        return {"team": t, "matches": []}
+    season = str(mine["season"].astype(str).iloc[-1])
+    cur = mine[mine["season"].astype(str) == season].sort_values("date", ascending=False).head(limit)
+    rows = []
+    for _, r in cur.iterrows():
+        at_home = str(r["home_team"]) == t
+        rows.append({"id": _str(r["match_id"]), "date": str(r["date"])[:10], "home": _str(r["home_team"]), "away": _str(r["away_team"]),
+                     "opponent": _str(r["away_team"] if at_home else r["home_team"]), "venue": "home" if at_home else "away",
+                     "played": _str(r.get("ftr")) in ("H", "D", "A"),
+                     "score": f"{int(r['fthg'])}-{int(r['ftag'])}" if pd.notna(r.get("fthg")) else "",
+                     "league": _str(r["league"]), "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"]))})
+    return {"team": t, "season": season, "matches": rows}
 
 
 # --------------------------------------------------------------------------- Pattern Lab (/api/lab/*)

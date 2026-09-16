@@ -28,7 +28,11 @@ def test_the_reverse_cycle_is_found_without_being_asked_for():
     now = _line("S", ["Atalanta", "Torino", "Bologna", "Juventus", "Monza"], "2627", "2026-08-01")
     out = sq.find_cycles(_db(past, now), "S", min_similarity=60)
 
-    assert out["centre"]["opponent"] == "Monza"          # the latest match is the default centre
+    assert out["centre"]["opponent"] == "Monza"          # the latest match, reported for orientation
+    assert out["centres_searched"] == 5                  # ... but every match of the season was a candidate centre
+    auto = out["cycles"][0]
+    assert auto["kind"] == "EXACT_REVERSE" and auto["window"] == 2 and auto["similarity"] == 100.0
+    assert auto["now"]["opponents"][auto["now"]["centre"]] == "Bologna"   # found without naming the centre
     got = sq.find_cycles(_db(past, now), "S", centre_match_id="S-2627-2", min_similarity=60)
     best = got["cycles"][0]
     assert best["kind"] == "EXACT_REVERSE"

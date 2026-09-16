@@ -273,7 +273,12 @@ def find_cycles(df: pd.DataFrame, team: str, centre_match_id: str | None = None,
     if centre_match_id:
         centres = line.index[line["match_id"].astype(str) == str(centre_match_id)].tolist()
     else:
-        centres = [len(line) - 1]                       # the most recent match with a full run
+        # No centre given: every match of the club's current season is a candidate centre. The
+        # graphics are never about the club's LAST match in particular — the Sassuolo run reverses
+        # around the Bologna fixture, three matches back — so a reader who only names the club must
+        # still be shown it. The cost is a few hundred extra comparisons per window.
+        seasons = line["season"].astype(str)
+        centres = line.index[seasons == seasons.iloc[-1]].tolist() or [len(line) - 1]
     if not centres:
         return {"team": team, "cycles": [], "searched": 0, "note": "merkez maç bulunamadı"}
 
@@ -300,18 +305,20 @@ def find_cycles(df: pd.DataFrame, team: str, centre_match_id: str | None = None,
         if c.similarity < min_similarity:
             continue
         seen = best.setdefault(c.kind, [])
-        if any(s.past.centre_match_id == c.past.centre_match_id for s in seen):
-            continue                                    # the same past match, at a narrower window
+        if any(s.past.centre_match_id == c.past.centre_match_id and s.now.centre_match_id == c.now.centre_match_id
+               for s in seen):
+            continue                                    # the same pair of matches, at a narrower window
         if len(seen) < per_kind:
             seen.append(c)
 
     order = {k: i for i, k in enumerate(KINDS)}
     cycles = sorted((c for v in best.values() for c in v),
                     key=lambda c: (-c.similarity, -c.n_compared, order.get(c.kind, 9), c.window))
-    return {"team": team, "centre": None if not centres else {
-        "match_id": str(line["match_id"].iloc[centres[0]]),
-        "date": str(line["date"].iloc[centres[0]])[:10],
-        "opponent": str(line["opponent"].iloc[centres[0]]),
-        "season": str(line["season"].iloc[centres[0]]),
-    }, "searched": searched, "windows": list(windows),
+    last = centres[-1]
+    return {"team": team, "centre": {
+        "match_id": str(line["match_id"].iloc[last]),
+        "date": str(line["date"].iloc[last])[:10],
+        "opponent": str(line["opponent"].iloc[last]),
+        "season": str(line["season"].iloc[last]),
+    }, "centres_searched": len(centres), "searched": searched, "windows": list(windows),
         "cycles": [c.as_dict() for c in cycles]}
