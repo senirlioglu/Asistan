@@ -6,6 +6,7 @@
     python -m src.cli state               # match state table (form, goals, table, TSI) next to it
     python -m src.cli notes               # re-measure the notebook notes against price-matched history
     python -m src.cli models              # walk-forward comparison: market vs similarity / pattern / twin
+    python -m src.cli discover            # scan the pattern grid: discovery -> validation -> untouched test
     python -m src.cli backtest            # walk-forward backtest, model comparison, ROI, buckets
     python -m src.cli today               # analyse upcoming fixtures -> results/YYYY-MM-DD_predictions.csv
     python -m src.cli dashboard           # launch the Streamlit dashboard
@@ -47,6 +48,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("state", help="build the match state table (pre-match form / goals / table / TSI)")
 
     sub.add_parser("notes", help="measure the notebook notes against the market and against price-matched matches")
+
+    p = sub.add_parser("discover", help="scan the candidate pattern grid through train / validation / test windows")
+    p.add_argument("--min-n", type=int, default=200, help="smallest sample a claim may be made on (default 200)")
+    p.add_argument("--min-edge", type=float, default=1.0, help="points of edge worth following up (default 1.0)")
 
     p = sub.add_parser("models", help="walk-forward comparison of market / similarity / pattern / twin models")
     p.add_argument("--sample", type=int, default=1000, help="test matches per season (default 1000)")
@@ -120,6 +125,28 @@ def main(argv: list[str] | None = None) -> int:
         out = settings.results_dir / "notes_measured.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+        log.info("wrote %s", out)
+        return 0
+
+    if args.command == "discover":
+        import json
+
+        import pandas as pd
+
+        from .patterns import discovery, engine, state
+        st = state.load(settings)
+        if st is None:
+            log.error("match state not built yet — run: python -m src.cli state")
+            return 1
+        frame = engine.prepare(st, pd.read_parquet(settings.processed_dir / "matches.parquet"))
+        res = discovery.discover(frame, min_n=args.min_n, min_edge=args.min_edge)
+        print("\n" + discovery.report(res))
+        out = settings.results_dir / "backtest" / "discovery.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"stages": res["stages"],
+                   "survivors": [] if not len(res["survivors"]) else res["survivors"].drop(columns=["pattern"]).to_dict("records"),
+                   "confirmed": [] if not len(res["confirmed"]) else res["confirmed"].drop(columns=["pattern"]).to_dict("records")}
+        out.write_text(json.dumps(payload, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
         log.info("wrote %s", out)
         return 0
 

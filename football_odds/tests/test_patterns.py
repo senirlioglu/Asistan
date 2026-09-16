@@ -397,3 +397,78 @@ def test_summarise_weights_the_seasons_by_their_size():
     ])
     out = evaluate.summarise(per).iloc[0]
     assert out["n"] == 400 and out["brier"] == 0.525 and out["roi"] == -1.0   # 0.25 / 0.75 weights
+
+
+# --------------------------------------------------------------------------- pattern discovery
+from src.patterns import discovery  # noqa: E402
+
+
+def test_the_candidate_grid_is_countable_and_every_name_is_unique():
+    cands = discovery.candidates()
+    assert len(cands) == len(discovery.FORMS) * 2 * len(discovery.PRICE_BANDS) * len(discovery.REST_BANDS)
+    # two candidates differing only by their rest band must not print the same label (they did once)
+    names = [(c.side, c.label()) for c in cands]
+    assert len(set(names)) == len(names)
+    keys = [discovery._key(c) for c in cands]
+    assert len(set(keys)) == len(keys)
+
+
+def test_windows_are_time_based_and_never_overlap():
+    w = discovery.DEFAULT_WINDOWS
+    frame = _pool([{"date": d, "home_team": "H", "away_team": "A", "ftr": "H", "p_home": 0.5, "p_away": 0.25}
+                   for d in ("2015-01-01", "2019-01-01", "2023-01-01")])
+    assert len(w.slice(frame, "train")) == 1 and len(w.slice(frame, "validation")) == 1
+    assert len(w.slice(frame, "test")) == 1
+    assert w.train[1] == w.validation[0] and w.validation[1] == w.test[0]     # contiguous, no gap, no overlap
+
+
+def _discovery_pool(real_edge: float, train_only_edge: float) -> pd.DataFrame:
+    """A pool where one pattern holds in all three windows, one only in the first, and the rest is
+    background priced correctly — so the pool's own baseline stays at zero, as in real data."""
+    rows, counter = [], {}
+    for window, year0, n_years in (("train", 2012, 7), ("validation", 2019, 3), ("test", 2022, 3)):
+        for yr in range(n_years):
+            for month in range(1, 5):
+                for day in range(1, 29):
+                    groups = [("WWWWW", real_edge), ("LLL", train_only_edge if window == "train" else 0.0)]
+                    # the background outnumbers the patterns ten to one, as in the real pool, so one
+                    # strong pattern cannot drag the pool's own baseline with it
+                    groups += [(f, 0.0) for f in ("DDD", "WDWDW", "WLWLW", "DD")] * 5
+                    for form, edge in groups:
+                        # count per group, so each group's rate is exactly what it is meant to be
+                        c = counter[form] = counter.get(form, 0) + 1
+                        p_home = 0.45
+                        won = (c % 100) < (100 * (p_home + edge))       # the price is right except for `edge`
+                        rows.append({"date": f"{year0 + yr}-{month:02d}-{day:02d}",
+                                     "home_team": "H", "away_team": "A", "h_form": form, "a_form": "WDWDW",
+                                     # no draws in this toy world, and the price says so too: otherwise
+                                     # every group would carry a huge permanent edge on the away side
+                                     "ftr": "H" if won else "A", "p_home": p_home, "p_draw": 0.0,
+                                     "p_away": 1.0 - p_home,
+                                     "htr": "H" if won else "A", "hthg": 1, "htag": 0, "total_goals": 2.0,
+                                     "p_over25": 0.5})
+    pool = _pool(rows)
+    pool["match_id"] = [f"d{j}" for j in range(len(pool))]
+    return pool
+
+
+def test_a_pattern_that_only_works_in_the_discovery_window_is_thrown_out():
+    pool = _discovery_pool(real_edge=0.15, train_only_edge=0.15)
+    pats = [engine.Pattern(form=f, side="home") for f in ("WWWWW", "LLL", "DDD")]
+    res = discovery.discover(pool, min_n=100, patterns=pats)
+    s = res["stages"]
+    assert s["candidates"] == 3 and s["claims_scanned"] > 0
+    names = {(r["form"], r["outcome"]) for _, r in res["survivors"].iterrows()} if len(res["survivors"]) else set()
+    assert ("WWWWW", "win") in names                       # real in all three windows -> survives
+    assert not any(f == "LLL" for f, _ in names)           # only real in the first -> dies
+    assert not any(f == "DDD" for f, _ in names)           # never real -> never even enters
+    # the report says how many died where, and never claims more than the survivors
+    text = discovery.report(res)
+    assert "SAĞ KALANLAR" in text and "aday desen: 3" in text
+
+
+def test_nothing_survives_when_the_price_is_always_right():
+    pool = _discovery_pool(real_edge=0.0, train_only_edge=0.0)
+    res = discovery.discover(pool, min_n=100, patterns=[engine.Pattern(form=f, side="home") for f in ("WWWWW", "LLL")])
+    assert res["stages"]["survived_test"] == 0
+    assert "Hiçbir desen üç pencereden de geçemedi." in discovery.report(res)
