@@ -28,6 +28,7 @@ authority of a test it never took.
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 
 import pandas as pd
@@ -145,9 +146,11 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
                         "note": f"{c['n_compared']} pozisyonda karşılaştırıldı — benzerlik, olasılık değildir",
                         "data": c})
 
-    nes = _movement_context(settings, match_id, row)
+    quoted = _quoted(settings, str(row["date"])[:10], str(row["home_team"]), str(row["away_team"]))
+    nes = _movement_context(settings, quoted)
     if nes:
         context.append(nes)
+    context += _note_context(settings, quoted)
 
     # ---- the funnel ------------------------------------------------------------------------
     scanned = len(candidates)
@@ -177,19 +180,80 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
     }
 
 
-def _movement_context(settings: Settings, match_id: str, row: pd.Series) -> dict | None:
-    """The odds movement shape, if this match is in the nesine bulletin and the archive saw it."""
+def _quoted(settings: Settings, date: str, home: str, away: str) -> dict:
+    """Resolve one of our fixtures to nesine's side of it, once, for everything that needs it.
+
+    There are two ways this can come back empty and they mean opposite things:
+
+        the rules were evaluated against a price and none matched   -> the notebook says nothing here
+        there was no price to evaluate anything against             -> nothing was asked at all
+
+    The second is the normal case for a match that has already been played. nesine publishes a
+    *pre*-bulletin (`getprebultenfull`) and an event leaves it the moment betting closes, so a
+    played fixture is simply not there — not a bug, and not something a retry fixes. The archive is
+    the other half of that deal: `watcher.TRACKED` is by construction every price a note reads, so
+    the row is rebuilt from the last price seen before kick-off and the notes are evaluated on that
+    instead. `source` says which of the three happened, and everything downstream must say so too —
+    a frozen price is not the closing price.
+    """
+    out = {"code": None, "source": "yok", "row": None, "hits": [], "date": date}
     try:
-        from ..web.api import _nesine_brief            # noqa: PLC0415 - optional, and it may not match
-        brief = _nesine_brief(str(row["date"])[:10], str(row["home_team"]), str(row["away_team"]))
-    except Exception:                                   # noqa: BLE001 - context is never load-bearing
-        return None
-    code = (brief or {}).get("code")
+        from ..nesine import movement as mv, rules       # noqa: PLC0415 - optional import chain
+        from ..nesine.history import team_hits
+        from ..web.api import _nesine_brief, _team_index
+        from ..web.live import name_score
+    except Exception:                                    # noqa: BLE001 - context is never load-bearing
+        return out
+
+    try:
+        brief = _nesine_brief(date, home, away)
+    except Exception:                                    # noqa: BLE001
+        brief = None
+    if brief and not brief.get("error") and brief.get("code"):
+        return {**out, "code": int(brief["code"]), "source": "canlı",
+                "row": brief, "hits": list(brief.get("hits") or [])}
+
+    try:
+        best, best_s = None, 0.0
+        for code, meta in mv.codes_on(settings, date).items():
+            s = (name_score(home, str(meta.get("home", ""))) + name_score(away, str(meta.get("away", "")))) / 2
+            if s > best_s:
+                best, best_s = code, s
+        if best is None or best_s < 0.6:
+            return out
+        frozen = mv.frozen_row(settings, best, as_of=_end_of(date))
+        if not frozen:
+            return {**out, "code": best}                 # the archive saw the match but not its prices
+        index = _team_index()
+        hits = rules.evaluate(frozen, team_hits(frozen, index) if index is not None else {})
+        return {**out, "code": best, "source": "donmuş", "row": frozen, "hits": list(hits)}
+    except Exception:                                    # noqa: BLE001
+        return out
+
+
+def _end_of(date: str) -> dt.datetime:
+    """When to read the archive as of: the end of that match day, or now — whichever is earlier.
+
+    The lookback has to be anchored on the match rather than on today, or a fixture played last week
+    falls outside the few days of archive a reader gets. Anchoring it in the future would be worse
+    than useless: `for_match` decides `started` by comparing as_of with kick-off, so tonight's match
+    would be read as already played and its current price shown as a closing price."""
+    day = dt.date.fromisoformat(str(date)[:10])
+    end = dt.datetime.combine(day + dt.timedelta(days=1), dt.time(0, 0), tzinfo=dt.timezone.utc)
+    return min(end, dt.datetime.now(dt.timezone.utc))
+
+
+def _movement_context(settings: Settings, quoted: dict) -> dict | None:
+    """The odds movement shape, when the archive watched this match's price on its way to kick-off.
+
+    Works on played matches too: the shape is read from the archive by nesine code, and the code
+    survives the bulletin dropping the match."""
+    code = quoted.get("code")
     if not code:
         return None
-    from ..nesine import movement as mv
+    from ..nesine import movement as mv                   # noqa: PLC0415
 
-    out = mv.for_match(settings, int(code), cfg=mv.config_from_env())
+    out = mv.for_match(settings, int(code), cfg=mv.config_from_env(), as_of=_end_of(quoted["date"]))
     sel = (out.get("selections") or {}).get("ms.1") or {}
     v = sel.get("movement") or {}
     if not v.get("type"):
@@ -215,3 +279,59 @@ def _mark_tested(settings: Settings, findings: list[Finding], side: str) -> None
     for f in findings:
         if (f.source.startswith("pattern") or f.source == "combined") and f.outcome in alive:
             f.evidence = "tested"
+
+
+def _note_context(settings: Settings, quoted: dict) -> list[dict]:
+    """Which of the owner's notebook notes fire on this match — and what each one measured.
+
+    The notes are hypotheses, and Pattern Lab is the hypothesis engine, so this closes the loop:
+    the idea that started as a line in a notebook comes back with the number it produced over
+    179.545 matches. A firing note is not a finding. It was measured in its own family with its own
+    correction, and 24 of the 26 claims did not survive; the verdict travels with the hit so a note
+    cannot be read as fresh evidence just because it lit up today.
+
+    An empty answer is reported rather than left blank, because "no note matched" and "no price to
+    match against" look identical on screen and mean opposite things."""
+    hits, source = list(quoted.get("hits") or []), str(quoted.get("source") or "yok")
+    notes = service.research_files(settings).get("notes") or []
+    if not hits:
+        return [{
+            "source": "note", "source_tr": "Defter notları",
+            "label": "hiçbiri tutmadı" if source != "yok" else "fiyat yok",
+            "value": (f"{len(notes)} notun hiçbiri bu maçta tutmadı" if source != "yok"
+                      else "bu maçın fiyatı bulunamadı"),
+            "note": ("notlar bu maçın " + ("canlı" if source == "canlı" else "kick-off öncesi donmuş")
+                     + " fiyatına bakıp hiçbir kuralı eşleştiremedi"
+                     if source != "yok" else
+                     "nesine bülteni maç öncesidir: bahis kapandığı anda maç bültenden düşer, "
+                     "yani oynanmış bir maç orada bulunamaz. Arşivde de bu maçın fiyatı yok "
+                     "(arşiv 15 Eylül 2026'da başladı) — yani notlar tutmadı değil, hiç sorulmadı"),
+            "data": {"source": source, "n_notes": len(notes)},
+        }]
+    measured = {}
+    for note in notes:
+        measured.setdefault(note.get("no"), note)
+    frozen_at = (quoted.get("row") or {}).get("minutes_before") if source == "donmuş" else None
+    out = []
+    for h in hits[:4]:
+        note = measured.get(h.get("no"))
+        claims = (note or {}).get("claims") or []
+        alive = [c for c in claims if c.get("q") is not None and c["q"] <= ALPHA]
+        best = min(claims, key=lambda c: c.get("q", 1.0)) if claims else None
+        out.append({
+            "source": "note", "source_tr": f"Defter notu {h.get('no')}",
+            "label": str(h.get("title", ""))[:60],
+            "value": "ölçülmedi" if not claims
+                     else (f"{len(alive)}/{len(claims)} iddia ayakta" if alive else "hiçbir iddiası ayakta değil"),
+            "note": ("bu not bu maçta tutuyor" if source == "canlı" else
+                     "bu not, kick-off'tan "
+                     + (f"{frozen_at} dakika önceki" if frozen_at is not None else "önceki")
+                     + " donmuş fiyatta tutuyordu (maç oynandı, bülten fiyatı artık yok)")
+                    + " — ama ölçümü zaten yapıldı, bugünkü isabeti yeni kanıt değil"
+                    + ("" if not best else
+                       f" · en iyi iddia: {best.get('text', '')} %{best.get('actual')} "
+                       f"vs %{best.get('market') if best.get('market') is not None else best.get('ref')} "
+                       f"(q={best.get('q')})"),
+            "data": {"hit": h, "claims": claims},
+        })
+    return out

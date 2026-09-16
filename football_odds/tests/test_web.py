@@ -340,7 +340,7 @@ def test_the_scan_corrects_across_the_whole_family_before_showing_anything(resea
         assert f["ci"][0] is not None
     # context never enters the family: a similarity and a shape are not claims that took a test
     for c in d["context"]:
-        assert c["source"] in ("sequence", "movement") and "q" not in c
+        assert c["source"] in ("sequence", "movement", "note") and "q" not in c
     assert research_client.get("/api/tarama/yok").status_code == 404
 
 
@@ -464,3 +464,104 @@ def test_the_sassuolo_cycle_is_found_and_measured_through_the_api(client, tmp_pa
         assert l["evidence_tr"] == "YETERSİZ VERİ"                    # three seasons of one club is not evidence
     assert "olasılık değildir" in m["bands"][0]["note"]
     assert client.get("/api/lab/dongu-olc?kind=NOPE&window=2&similarity=50").status_code == 422
+
+def test_a_firing_notebook_note_arrives_with_the_verdict_it_already_earned(research_client, monkeypatch):
+    """The notes are hypotheses and Pattern Lab is the hypothesis engine, so a note that fires today
+    comes back with what it measured over 179.545 matches. Lighting up today is not new evidence:
+    24 of the 26 claims did not survive their own correction, and the hit must not hide that."""
+    import json as _json
+
+    from src.patterns import lab, service
+
+    monkeypatch.setattr(web, "_nesine_brief", lambda *a, **k: {
+        "code": 1, "hits": [{"no": 4, "title": "Favoriye oran açılmıyor", "id": "n4"}]})
+    monkeypatch.setattr(service, "research_files", lambda *a, **k: {"notes": [
+        {"no": 4, "title": "Favoriye oran açılmıyor", "claims": [
+            {"outcome": "win", "text": "favori kazanır", "actual": 71.0, "market": 70.4,
+             "diff": 0.6, "q": 0.83},
+            {"outcome": "draw", "text": "berabere", "actual": 18.0, "ref": 18.2, "q": 0.91}]}]})
+
+    out = lab.scan(web.settings, "s59")
+    notes = [c for c in out["context"] if c["source"] == "note"]
+    assert len(notes) == 1
+    n = notes[0]
+    assert n["source_tr"] == "Defter notu 4"
+    assert n["value"] == "hiçbir iddiası ayakta değil"        # both q values are far above alpha
+    assert "yeni kanıt değil" in n["note"] and "q=0.83" in n["note"]
+    # and it stays context: a note measured in its own family never joins this match's correction
+    assert all(f["source"] != "note" for f in out["findings"])
+
+
+def test_the_pattern_lab_tab_is_wired_to_something(client):
+    """A tab button whose view nothing ever unhides is worse than no tab. The Pattern Lab lives at
+    the top of the research view (the four modes of the brief); the tab jumps there, and every mode
+    has a panel, a handler and a real engine behind it."""
+    html = client.get("/").text
+    js = client.get("/static/app.js").text
+    assert 'data-view="lab"' in html and 'id="lab"' in html
+    assert 'if (name === "lab")' in js                          # showView knows the tab
+    for mode in ("match", "find", "own", "cycle"):              # the four modes, each with its panel
+        assert f'data-lab="{mode}"' in html and f'id="lab-{mode}"' in html
+    for fn in ("function labInit", "function renderScan", "function renderCycles", "function renderFind",
+               "function targetHTML", "function renderOwn", "function renderMeasure"):
+        assert fn in js
+    for endpoint in ("/api/tarama/", "/api/dongu?", "/api/lab/hedef/", "/api/lab/tara?", "/api/lab/kendi?", "/api/lab/dongu-olc?"):
+        assert endpoint in js                                   # the screens call the real engines
+
+
+def test_a_played_match_says_why_the_notebook_was_never_asked(research_client, monkeypatch):
+    """The state table is history, so every match Pattern Lab can scan has already been played — and
+    nesine's bulletin is a *pre*-bulletin, dropping an event the moment betting closes. "No note
+    fired" and "there was no price to ask about" therefore look identical on screen while meaning
+    opposite things, and the second one is the one that happens all day."""
+    from src.nesine import bulletin
+    from src.patterns import lab
+
+    monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([], {"fetched_at": "x"}))
+
+    out = lab.scan(web.settings, "s59")
+    note = next(c for c in out["context"] if c["source"] == "note")
+    assert note["label"] == "fiyat yok" and note["data"]["source"] == "yok"
+    assert "bahis kapandığı anda maç bültenden düşer" in note["note"]
+    assert "hiç sorulmadı" in note["note"]                  # not "the rules were tried and failed"
+    assert all(f["source"] != "note" for f in out["findings"])
+
+
+def test_a_played_match_gets_its_notes_from_the_frozen_pre_kick_off_price(research_client, monkeypatch, tmp_path):
+    """Once the bulletin has dropped the match, the archive is the only place its price survives —
+    and `watcher.TRACKED` is by construction every price a note reads, so the row can be rebuilt and
+    the notebook asked after all. The answer must say it is reading a frozen price, because a price
+    seen 15 minutes before kick-off is not the closing price."""
+    import datetime as dt
+
+    from src.nesine import archive, bulletin, movement as mv
+    from src.patterns import lab
+
+    monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([], {"fetched_at": "x"}))
+    monkeypatch.setattr(web.settings, "raw", web.settings.with_overrides(
+        **{"data.results_dir": str(tmp_path / "res")}).raw)
+    ko = dt.datetime(2026, 2, 4, 18, 0, tzinfo=dt.timezone.utc)      # 21:00 Turkey, the fixture's day
+    meta = {"date": "2026-02-04", "time": "21:00", "home": "T5", "away": "T0", "league": "L", "league_code": 1}
+    d = archive.archive_dir(web.settings)
+    d.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for minutes, one in ((1440, 2.05), (360, 1.92), (60, 1.84), (15, 1.78)):
+        ts = (ko - dt.timedelta(minutes=minutes)).isoformat(timespec="seconds")
+        rows.append({"ts": ts, "k": "run", "n": 1, "ch": 3})
+        for path, o in (("ms.1", one), ("ms.X", 3.4), ("ms.2", 4.3), ("iy05.alt", 1.64)):
+            rows.append({"ts": ts, "c": 777, "p": path, "o": o, "m": minutes})
+    with archive.day_path(web.settings, ko.date()).open("a", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    archive.meta_path(web.settings, ko.date()).write_text(json.dumps({"777": meta}), encoding="utf-8")
+    mv._CACHE.clear()
+
+    out = lab.scan(web.settings, "s59")
+    note = next(c for c in out["context"] if c["source"].startswith("note"))
+    assert note["source_tr"] == "Defter notu 5"                  # 1,64 in the HT 0,5 market fires it
+    assert "donmuş fiyatta tutuyordu" in note["note"] and "15 dakika önceki" in note["note"]
+    assert "yeni kanıt değil" in note["note"]                    # still context, still already measured
+    # and the movement shape comes back from the same archive the bulletin no longer has
+    move = next((c for c in out["context"] if c["source"] == "movement"), None)
+    assert move is not None and move["data"]["movement"]["type"]
+    assert all(f["source"] != "note" for f in out["findings"])

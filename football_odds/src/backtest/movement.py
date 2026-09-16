@@ -63,7 +63,14 @@ def movement_by_bucket(d: pd.DataFrame, outcome: str = "home", edges: list[float
 
 
 def steam_vs_drift_test(table: pd.DataFrame) -> pd.DataFrame:
-    """Two-proportion z-test steam vs drift inside each closing bucket."""
+    """Two-proportion z-test steam vs drift inside each closing bucket, corrected across them all.
+
+    This is a grid — two outcomes times seven closing-probability bands — and reading raw p-values
+    off a grid is how the rest of this package is forbidden to work: at 95 % about one cell in
+    twenty clears on noise alone. The Benjamini-Hochberg `q_value` is therefore computed over the
+    whole family and is the column to read. On the real data (54.125 matches with both prices) the
+    smallest raw p is 0.014 in one band, which corrects to q ≈ 0.20: nothing survives, so the
+    closing price already contains what the opening -> closing move knew."""
     rows = []
     for (outcome, bucket), g in table.groupby(["outcome", "closing_bucket"]):
         s = g[g["movement"].str.startswith("steam")]
@@ -79,4 +86,9 @@ def steam_vs_drift_test(table: pd.DataFrame) -> pd.DataFrame:
         p = 2 * (1 - sps.norm.cdf(abs(z))) if np.isfinite(z) else np.nan
         rows.append({"outcome": outcome, "closing_bucket": bucket, "steam_n": n1, "steam_actual_pct": 100 * p1,
                      "drift_n": n2, "drift_actual_pct": 100 * p2, "diff_pp": 100 * (p1 - p2), "z": z, "p_value": p})
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+    if not out.empty:
+        from ..patterns.engine import fdr
+
+        out["q_value"] = fdr([None if not np.isfinite(v) else float(v) for v in out["p_value"]])
+    return out

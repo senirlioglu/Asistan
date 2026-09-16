@@ -86,6 +86,11 @@
 
   // ------------------------------------------------------------------ views
   function showView(name) {
+    if (name === "lab") {                     // the Pattern Lab tab: the lab sits at the top of the research view
+      showView("research");
+      setTimeout(() => { const lab = $("#lab"); if (lab) lab.scrollIntoView({ behavior: "smooth", block: "start" }); }, 60);
+      return;
+    }
     state.view = name;
     document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("is-active", b.dataset.view === name));
     $("#view-list").hidden = name !== "list";
@@ -159,6 +164,7 @@
         doğrulamada küçülmesi ya da <b>işaret değiştirmesi</b> beklenen bir şeydir — tek pencerede ölçüp
         inanmanın neden yanlış olduğunu bu tablo gösterir.</p>`;
   }
+
 
   function renderResearch() {
     labInit();
@@ -1248,7 +1254,7 @@
       <section data-anchor="patterns"><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3>${whatFor("patterns")}<div data-patterns>Yükleniyor…</div></section>
       <section data-anchor="fixture"><h3>Fikstür bağlamı <small class="muted">(aynı sıra tekrarlıyor mu)</small></h3>${whatFor("fixture")}<div data-fixture>Yükleniyor…</div></section>
       <section data-anchor="combo"><h3>İki takım birlikte <small class="muted">(koşul koşul)</small></h3>${whatFor("combo")}<div data-combo>Yükleniyor…</div></section>
-      <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
+      <section data-anchor="nesine"><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
       <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" data-kseg>${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div data-analogues>Yükleniyor…</div></section>`;
   }
@@ -2182,6 +2188,7 @@
   function contextCard(c, m) {
     const go = c.source === "sequence"
       ? `<button type="button" class="btn ghost" data-cycle="${esc(c.data?.now?.match_id || m.id)}">Döngüyü aç</button>`
+      : c.source === "note" ? `<button type="button" class="btn ghost" data-open="nesine">Notları aç</button>`
       : `<button type="button" class="btn ghost" data-open="move">İncele</button>`;
     return `<div class="lab-card is-ctx">
       <div class="lab-card-top"><span>${esc(c.source_tr)}</span><span class="ev ev-ctx">BAĞLAM</span></div>
