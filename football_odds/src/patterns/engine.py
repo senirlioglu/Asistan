@@ -107,7 +107,8 @@ def prepare(state: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:
     The raw consensus odds ride along too: the owner's notes are written about the printed price
     ("favoriye 1,20 altı", "tam 1,67"), not about a margin-free probability."""
     cols = ["match_id", "p_home", "p_draw", "p_away", "p_over25", "ftr", "htr", "fthg", "ftag", "hthg", "htag",
-            "total_goals", "cons_h", "cons_d", "cons_a"]
+            "total_goals", "cons_h", "cons_d", "cons_a",
+            "delta_p_home", "delta_p_draw", "delta_p_away"]   # pre-close -> close, the only movement history there is
     have = [c for c in cols if c in matches.columns]
     out = state.merge(matches[have], on="match_id", how="inner", validate="one_to_one")
     if {"cons_h", "cons_a"} <= set(out.columns):

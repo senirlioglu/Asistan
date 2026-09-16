@@ -254,3 +254,81 @@ def test_the_notebook_notes_are_measured_with_their_caveats(settings):
     assert all("q" in c for r in out for c in r["claims"])     # every claim carries its corrected p
     assert notes.verdict({"n": 0}) == "ölçülemedi"
     assert "N=" in notes.report(out)
+
+
+# --------------------------------------------------------------------------- the twin engine
+from src.patterns import twins  # noqa: E402
+
+
+def _twin_pool(rows: list[dict]) -> pd.DataFrame:
+    pool = _pool(rows)
+    pool["match_id"] = [f"t{i}" for i in range(len(pool))]
+    for col, default in (("h_gf5", 7.0), ("h_ga5", 5.0), ("a_gf5", 6.0), ("a_ga5", 6.0), ("delta_p_home", 0.0)):
+        if col not in pool:
+            pool[col] = default
+    return pool
+
+
+def _twin_row(date, hf, af, p_home=0.5, **kw):
+    return {"date": date, "home_team": "H", "away_team": "A", "h_form": hf, "a_form": af, "ftr": "H",
+            "p_home": p_home, "p_draw": 0.25, "p_away": 0.95 - p_home - 0.25,
+            "h_tsi_pct": 60.0, "a_tsi_pct": 40.0, "strength_gap": 80.0, **kw}
+
+
+def test_a_twin_of_itself_scores_a_hundred_everywhere():
+    pool = _twin_pool([_twin_row("2026-01-01", "WWDLW", "LDWDL"), _twin_row("2026-01-02", "WWDLW", "LDWDL")])
+    res = twins.TwinIndex(pool).query(pool.iloc[1], k=5)
+    assert list(res.rows["match_id"]) == ["t0"]                      # itself is never its own twin
+    top = res.rows.iloc[0]
+    assert top["twin_score"] == 100.0
+    assert all(top[f"sim_{c}"] == 100.0 for c in ("market", "strength", "opponent", "gap", "form", "goals"))
+
+
+def test_a_team_with_two_matches_played_is_not_a_perfect_form_match():
+    """The bug this pins: NaN slots were skipped, so half a history matched everything."""
+    pool = _twin_pool([_twin_row("2026-01-01", "DW", "LDWDL"),            # only two results known
+                       _twin_row("2026-01-02", "WWDDW", "LDWDL"),         # four of five slots agree
+                       _twin_row("2026-01-03", "WWDLW", "LDWDL")])        # the query itself
+    idx = twins.TwinIndex(pool)
+    res = idx.query(pool.iloc[2], k=5)
+    by = res.rows.set_index("match_id")
+    assert pd.isna(by.loc["t0", "sim_form"])                              # not comparable, not 100
+    assert 0 < by.loc["t1", "sim_form"] < 100                             # comparable, imperfect
+    assert by.loc["t1", "twin_score"] > by.loc["t0", "twin_score"]
+
+
+def test_weights_decide_what_similar_means():
+    pool = _twin_pool([
+        _twin_row("2026-01-01", "LLLLL", "WWWWW", p_home=0.50),           # same price, opposite form
+        _twin_row("2026-01-02", "WWDLW", "LDWDL", p_home=0.20),           # same form, different price
+        _twin_row("2026-01-03", "WWDLW", "LDWDL", p_home=0.50),           # the query
+    ])
+    q = pool.iloc[2]
+    by_market = twins.TwinIndex(pool, weights=twins.Weights(market=10, strength=0, opponent=0, gap=0, form=0, goals=0, movement=0))
+    by_form = twins.TwinIndex(pool, weights=twins.Weights(market=0, strength=0, opponent=0, gap=0, form=10, goals=0, movement=0))
+    assert by_market.query(q, k=2).rows.iloc[0]["match_id"] == "t0"
+    assert by_form.query(q, k=2).rows.iloc[0]["match_id"] == "t1"
+
+
+def test_the_query_only_sees_earlier_matches_and_reports_how_far_the_last_twin_is():
+    rows = [_twin_row(f"2026-01-{d:02d}", "WWDLW", "LDWDL", p_home=0.3 + d / 100) for d in range(1, 21)]
+    pool = _twin_pool(rows)
+    idx = twins.TwinIndex(pool)
+    res = idx.query(pool.iloc[10], k=5, as_of=pool.iloc[10]["date"])
+    assert len(res.rows) == 5 and (res.rows["date"] < pool.iloc[10]["date"]).all()
+    d = res.diagnostics
+    assert d["k"] == 5 and d["asked"] == 5 and d["n_candidates"] == 10
+    assert d["best"] >= d["median"] >= d["worst"]                          # the K-th twin's own score is reported
+    assert set(d["categories"]) == set(res.weights)
+    # what the twins did, always next to what their own prices said
+    assert res.outcomes["win"]["n"] == 5 and res.outcomes["win"]["market"] is not None
+
+
+def test_k_sweep_shows_what_widening_the_neighbourhood_costs():
+    rows = [_twin_row(f"2026-0{1 + d // 28}-{1 + d % 28:02d}", "WWDLW", "LDWDL", p_home=0.3 + (d % 30) / 100)
+            for d in range(60)]
+    pool = _twin_pool(rows)
+    sweep = twins.k_sweep(twins.TwinIndex(pool), pool.iloc[-1], ks=(5, 10, 25), as_of=pool.iloc[-1]["date"])
+    assert list(sweep["k"]) == [5, 10, 25] and (sweep["n"] <= sweep["k"]).all()
+    assert (sweep["worst"].diff().dropna() <= 0).all()                     # a wider K can only reach further out
+    assert sweep["win_market"].notna().all()
