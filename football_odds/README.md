@@ -17,6 +17,8 @@ today's odds ─► remove margin ─► [p_home, p_draw, p_away] ─► K neare
 
 ## Contents
 
+- **[Motor sözlüğü — `docs/MOTORLAR.md`](docs/MOTORLAR.md)** — every engine in the system: what it
+  takes, what it returns, where it is used, and what it deliberately does not do. Start here.
 - [Installation](#installation)
 - [Commands](#commands)
 - [Data source and audit findings](#data-source-and-audit-findings)
