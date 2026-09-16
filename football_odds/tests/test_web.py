@@ -310,3 +310,17 @@ def test_fixture_context_lists_past_meetings_and_carries_its_own_verdict(researc
     assert v["none"]["n"] > v["prev_only"]["n"] > v["full"]["n"]     # context only ever narrows
     assert v["full"]["ci"][0] < 0 < v["full"]["ci"][1]               # and the full context says nothing
     assert research_client.get("/api/fikstur/yok").status_code == 404
+
+
+def test_the_cycle_endpoint_takes_a_team_and_nothing_else(research_client):
+    """Spec 4: no season picker, no window picker, no search-type picker — the reader picks a club."""
+    d = research_client.get("/api/dongu?team=T0").json()
+    assert d["team"] == "T0" and d["windows"] == [2, 3, 4]
+    assert "searched" in d and isinstance(d["cycles"], list)
+    for c in d["cycles"]:
+        assert c["kind"] in ("EXACT_SAME", "EXACT_REVERSE", "SHIFTED", "STRENGTH")
+        assert c["n_compared"] >= 2 and "positional" in c and "wing" in c
+        assert c["past"]["date"] < c["now"]["date"]
+    unknown = research_client.get("/api/dongu?team=Yok").json()
+    assert unknown["cycles"] == [] and unknown.get("note")
+    assert research_client.get("/api/dongu?team=T").status_code == 422

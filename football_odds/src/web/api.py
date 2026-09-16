@@ -628,6 +628,24 @@ def kombine(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
     return out
 
 
+@app.get("/api/dongu")
+def dongu(team: str = Query(..., min_length=2, max_length=60), match_id: str = Query(""),
+          min_similarity: float = Query(50.0, ge=0, le=100)) -> dict:
+    """Fixture cycles for one club — the reader picks a team, never a search type.
+
+    Every window (±2, ±3, ±4), every earlier season and all four shapes (same / reverse / shifted /
+    strength) are searched automatically. A cycle carries a similarity, never a probability: whether
+    a repeating run says anything about the centre match is a separate question, and the measurement
+    on the whole database says it does not."""
+    from ..patterns import sequence, service
+
+    df = service.frame(settings)
+    if df is None:
+        raise HTTPException(404, "durum tablosu hazır değil")
+    return sequence.find_cycles(df, team.strip(), centre_match_id=match_id.strip() or None,
+                                min_similarity=min_similarity)
+
+
 @app.get("/api/fikstur/{match_id}")
 def fikstur(match_id: str) -> dict:
     """The "aynı fikstür sırası tekrarlıyor" pattern, made checkable.
