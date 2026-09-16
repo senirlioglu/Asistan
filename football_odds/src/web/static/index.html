@@ -25,6 +25,7 @@
       <button class="tab" data-view="scorecard" type="button">Özet</button>
       <button class="tab" data-view="paper" type="button">Oyun</button>
       <button class="tab" data-view="notes" type="button">Nesine</button>
+      <button class="tab" data-view="lab" type="button">Pattern Lab</button>
       <button class="tab" data-view="research" type="button">Araştırma</button>
       <button class="tab" data-view="glossary" type="button">Sözlük</button>
     </nav>
@@ -236,6 +237,59 @@
       <summary>Notların listesi ve geçmişte ne olduğu</summary>
       <div id="nt-rule-list">Yükleniyor…</div>
     </details>
+  </section>
+
+  <section class="view" id="view-lab" hidden>
+    <h2 class="h2">Pattern Lab</h2>
+    <p class="lead">Aklındaki futbol fikrini veriye sor. Maçları, takımları ve futbolun döngülerini
+    179.545 geçmiş maçta test et. <b>Hangi motorun çalışacağını sen seçmiyorsun</b> — sistem hepsini tarar.</p>
+
+    <div class="lab-quote">“Geçmişte sık gerçekleşmesi yeterli değildir. Önemli olan, bunun piyasanın
+    beklediğinden daha sık gerçekleşip gerçekleşmediğidir.”</div>
+
+    <div class="lab-cards">
+      <button class="lab-card" type="button" data-lab="match">
+        <b>Bu maçta ne olur?</b>
+        <span>Bir maç seç. Sistem bütün pattern türlerini otomatik tarar ve bulduklarını gösterir.</span></button>
+      <button class="lab-card" type="button" data-lab="explore">
+        <b>Kendi patternini test et</b>
+        <span>Form, güç, rakip ve piyasa koşullarını kendin belirle. Geçmişte ne olmuş?</span></button>
+      <button class="lab-card" type="button" data-lab="cycle">
+        <b>Döngü ara</b>
+        <span>Bir takım seç. Geçmiş sezonlardaki aynı/ters fikstür dizilerini sistem bulsun.</span></button>
+      <button class="lab-card" type="button" data-lab="scan-all">
+        <b>Taranan bütün desenler</b>
+        <span>396 aday, 658 iddia — hangisi hangi pencerede elendi.</span></button>
+    </div>
+
+    <section class="lab-panel" id="lab-match" hidden>
+      <h3 class="rs-h">Bu maçta ne olur?</h3>
+      <div class="lab-pick">
+        <label>Gün <select id="lab-date"></select></label>
+        <label>Maç <select id="lab-mid"></select></label>
+        <label>Taraf <select id="lab-side"><option value="home">Ev sahibi</option>
+          <option value="away">Deplasman</option></select></label>
+        <button class="btn" id="lab-go" type="button">Bu maçı analiz et</button>
+      </div>
+      <div id="lab-out"></div>
+    </section>
+
+    <section class="lab-panel" id="lab-cycle" hidden>
+      <h3 class="rs-h">Döngü ara</h3>
+      <p class="note">Bir takım yaz. Sistem <b>±2, ±3 ve ±4</b> penceresini, <b>bütün geçmiş sezonları</b> ve
+      dört şekli (aynı sıra / ters sıra / kaymış / aynı güç profili) kendisi tarar. Çıkan sayı bir
+      <b>benzerliktir, olasılık değildir</b>: aynı dizinin tekrar etmesinin sonucu değiştirdiğine dair
+      veritabanı genelinde bir kanıt bulunamadı.</p>
+      <div class="lab-pick">
+        <label>Takım <input id="lab-team" type="text" list="lab-teams" placeholder="örn. Sassuolo" autocomplete="off"></label>
+        <label>En az benzerlik <select id="lab-sim">
+          <option value="70">%70</option><option value="50" selected>%50</option>
+          <option value="85">%85</option><option value="100">%100 (tam)</option></select></label>
+        <button class="btn" id="lab-cyc-go" type="button">Döngüleri bul</button>
+      </div>
+      <datalist id="lab-teams"></datalist>
+      <div id="lab-cyc-out"></div>
+    </section>
   </section>
 
   <section class="view" id="view-research" hidden>

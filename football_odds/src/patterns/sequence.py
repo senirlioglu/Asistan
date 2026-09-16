@@ -113,10 +113,14 @@ class Cycle:
             "kind": self.kind, "kind_tr": KIND_TR.get(self.kind, self.kind), "window": self.window,
             "similarity": round(self.similarity, 1), "positional": round(self.positional, 1),
             "wing": round(self.wing, 1), "n_compared": self.n_compared,
+            # `centre_at` is the index of the centre inside `opponents`: a run in progress has fewer
+            # matches after the centre than before it, so the middle of the list is not the centre
             "past": {"season": self.past.season, "date": str(self.past.centre_date)[:10],
-                     "match_id": self.past.centre_match_id, "opponents": self.past.opponents},
+                     "match_id": self.past.centre_match_id, "opponents": self.past.opponents,
+                     "centre_at": len(self.past.before)},
             "now": {"season": self.now.season, "date": str(self.now.centre_date)[:10],
-                    "match_id": self.now.centre_match_id, "opponents": self.now.opponents},
+                    "match_id": self.now.centre_match_id, "opponents": self.now.opponents,
+                    "centre_at": len(self.now.before)},
         }
 
 

@@ -148,6 +148,7 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
     nes = _movement_context(settings, match_id, row)
     if nes:
         context.append(nes)
+    context += _note_context(settings, row)
 
     # ---- the funnel ------------------------------------------------------------------------
     scanned = len(candidates)
@@ -212,3 +213,43 @@ def _mark_tested(settings: Settings, findings: list[Finding], side: str) -> None
     for f in findings:
         if (f.source.startswith("pattern") or f.source == "combined") and f.outcome in alive:
             f.evidence = "tested"
+
+
+def _note_context(settings: Settings, row: pd.Series) -> list[dict]:
+    """Which of the owner's notebook notes fire on this match — and what each one measured.
+
+    The notes are hypotheses, and Pattern Lab is the hypothesis engine, so this closes the loop:
+    the idea that started as a line in a notebook comes back with the number it produced over
+    179.545 matches. A firing note is not a finding. It was measured in its own family with its own
+    correction, and 24 of the 26 claims did not survive; the verdict travels with the hit so a note
+    cannot be read as fresh evidence just because it lit up today."""
+    try:
+        from ..web.api import _nesine_brief             # noqa: PLC0415 - optional and may not match
+        payload = _nesine_brief(str(row["date"])[:10], str(row["home_team"]), str(row["away_team"]))
+    except Exception:                                   # noqa: BLE001 - context is never load-bearing
+        return []
+    hits = (payload or {}).get("hits") or []
+    if not hits:
+        return []
+    measured = {}
+    for note in (service.research_files(settings).get("notes") or []):
+        measured.setdefault(note.get("no"), note)
+    out = []
+    for h in hits[:4]:
+        note = measured.get(h.get("no"))
+        claims = (note or {}).get("claims") or []
+        alive = [c for c in claims if c.get("q") is not None and c["q"] <= ALPHA]
+        best = min(claims, key=lambda c: c.get("q", 1.0)) if claims else None
+        out.append({
+            "source": "note", "source_tr": f"Defter notu {h.get('no')}",
+            "label": str(h.get("title", ""))[:60],
+            "value": "ölçülmedi" if not claims
+                     else (f"{len(alive)}/{len(claims)} iddia ayakta" if alive else "hiçbir iddiası ayakta değil"),
+            "note": "bu not bugün bu maçta tutuyor — ama ölçümü zaten yapıldı, bugünkü isabeti yeni kanıt değil"
+                    + ("" if not best else
+                       f" · en iyi iddia: {best.get('text', '')} %{best.get('actual')} "
+                       f"vs %{best.get('market') if best.get('market') is not None else best.get('ref')} "
+                       f"(q={best.get('q')})"),
+            "data": {"hit": h, "claims": claims},
+        })
+    return out

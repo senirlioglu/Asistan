@@ -342,3 +342,47 @@ def test_the_scan_corrects_across_the_whole_family_before_showing_anything(resea
     for c in d["context"]:
         assert c["source"] in ("sequence", "movement") and "q" not in c
     assert research_client.get("/api/tarama/yok").status_code == 404
+
+
+def test_a_firing_notebook_note_arrives_with_the_verdict_it_already_earned(research_client, monkeypatch):
+    """The notes are hypotheses and Pattern Lab is the hypothesis engine, so a note that fires today
+    comes back with what it measured over 179.545 matches. Lighting up today is not new evidence:
+    24 of the 26 claims did not survive their own correction, and the hit must not hide that."""
+    import json as _json
+
+    from src.patterns import lab, service
+
+    monkeypatch.setattr(web, "_nesine_brief", lambda *a, **k: {
+        "code": 1, "hits": [{"no": 4, "title": "Favoriye oran açılmıyor", "id": "n4"}]})
+    monkeypatch.setattr(service, "research_files", lambda *a, **k: {"notes": [
+        {"no": 4, "title": "Favoriye oran açılmıyor", "claims": [
+            {"outcome": "win", "text": "favori kazanır", "actual": 71.0, "market": 70.4,
+             "diff": 0.6, "q": 0.83},
+            {"outcome": "draw", "text": "berabere", "actual": 18.0, "ref": 18.2, "q": 0.91}]}]})
+
+    out = lab.scan(web.settings, "s59")
+    notes = [c for c in out["context"] if c["source"] == "note"]
+    assert len(notes) == 1
+    n = notes[0]
+    assert n["source_tr"] == "Defter notu 4"
+    assert n["value"] == "hiçbir iddiası ayakta değil"        # both q values are far above alpha
+    assert "yeni kanıt değil" in n["note"] and "q=0.83" in n["note"]
+    # and it stays context: a note measured in its own family never joins this match's correction
+    assert all(f["source"] != "note" for f in out["findings"])
+
+
+def test_the_pattern_lab_tab_is_wired_to_something(client):
+    """A tab button whose view nothing ever unhides is worse than no tab: the page looks like it has
+    the feature and does nothing when tapped. The three halves — button, section, handler — are
+    checked together because breaking any one of them fails silently in a browser."""
+    html = client.get("/").text
+    js = client.get("/static/app.js").text
+    assert 'data-view="lab"' in html and 'id="view-lab"' in html
+    assert '$("#view-lab").hidden = name !== "lab"' in js       # showView knows the view exists
+    assert 'if (name === "lab") labWire();' in js               # and something wires it on first open
+    for entry in ("match", "explore", "cycle", "scan-all"):     # every entry card has a destination
+        assert f'data-lab="{entry}"' in html
+    for fn in ("function labWire", "function renderScan", "function renderCycles"):
+        assert fn in js
+    for endpoint in ("/api/tarama/", "/api/dongu?"):            # the screens call the real engines
+        assert endpoint in js

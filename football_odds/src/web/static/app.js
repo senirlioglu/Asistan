@@ -93,8 +93,10 @@
     $("#view-scorecard").hidden = name !== "scorecard";
     $("#view-paper").hidden = name !== "paper";
     $("#view-notes").hidden = name !== "notes";
+    $("#view-lab").hidden = name !== "lab";
     $("#view-research").hidden = name !== "research";
     $("#view-empty").hidden = true;
+    if (name === "lab") labWire();
     if (name === "notes" && !state.nt.data) loadNotes();
     if (name === "research" && !state.rs) loadResearch();
     if (name === "scorecard" && !state.sc.data) loadScorecard();
@@ -330,6 +332,221 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
       <p class="note">Sütunlar üç pencerenin farkı (puan). Bir desenin keşif penceresinde büyük çıkıp
         doğrulamada küçülmesi ya da <b>işaret değiştirmesi</b> beklenen bir şeydir — tek pencerede ölçüp
         inanmanın neden yanlış olduğunu bu tablo gösterir.</p>`;
+  }
+
+
+  // ---------------------------------------------------------------- Pattern Lab
+  // The reader picks a match, never an engine and never a setting. Everything underneath already
+  // existed — patterns, twins, combined, sequences, movement, the notebook — and the only new thing
+  // here is that they all run at once and then most of the answers are thrown away. That last part
+  // is the product: eight engines across nine outcomes make seventy-odd measurements, and with a
+  // 95 % interval a handful clear zero in a match where nothing is happening. The screen therefore
+  // always shows the denominator next to the survivors, and "hiçbir şey bulunamadı" is a result.
+  state.lab = { opened: false, day: null, teams: null };
+
+  const LAB_EV = { thin: "yetersiz", discovery: "keşif", confirmed: "doğrulandı", tested: "ileri testte" };
+
+  function labWire() {
+    if (state.lab.opened) return;
+    state.lab.opened = true;
+    document.querySelectorAll("[data-lab]").forEach((b) => (b.onclick = () => labOpen(b.dataset.lab)));
+    $("#lab-date").onchange = (e) => labDay(e.target.value);
+    $("#lab-go").onclick = labRun;
+    $("#lab-cyc-go").onclick = labCycles;
+    $("#lab-team").onkeydown = (e) => { if (e.key === "Enter") labCycles(); };
+    labDates();
+  }
+
+  function labOpen(which) {
+    if (which === "match" || which === "cycle") {
+      const want = which === "match" ? "#lab-match" : "#lab-cycle";
+      document.querySelectorAll(".lab-panel").forEach((p) => (p.hidden = "#" + p.id !== want));
+      document.querySelectorAll("[data-lab]").forEach((b) => b.classList.toggle("is-on", b.dataset.lab === which));
+      $(want).scrollIntoView({ behavior: "smooth", block: "start" });
+      if (which === "cycle") labTeams();
+      return;
+    }
+    // the other two entries already exist in the research tab; jumping beats a second copy
+    showView("research");
+    setTimeout(() => {
+      if (which === "scan-all") { const d = $("#rs-all"); if (d) d.open = true; }
+      const target = which === "explore" ? $("#ex-q") : $("#ac-out");
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+  }
+
+  function labDates() {
+    const sel = $("#lab-date");
+    const dates = state.meta?.dates || [];
+    if (!dates.length || sel._filled) return;
+    sel._filled = true;
+    const today = state.meta?.today || new Date().toISOString().slice(0, 10);
+    [...dates].sort().reverse().slice(0, 30).forEach((d) => {
+      const o = el("option"); o.value = d;
+      o.textContent = fmtDate(d) + (d === today ? " · bugün" : d < today ? " · oynandı" : "");
+      sel.appendChild(o);
+    });
+    sel.value = dates.includes(today) ? today : sel.options[0]?.value;
+    if (sel.value) labDay(sel.value);
+  }
+
+  async function labDay(stamp) {
+    const sel = $("#lab-mid");
+    sel.innerHTML = `<option>Yükleniyor…</option>`;
+    try {
+      state.lab.day = await api(`/api/day/${stamp}`);
+    } catch (_) {
+      state.lab.day = { matches: [] };
+    }
+    sel.innerHTML = "";
+    const ms = state.lab.day.matches || [];
+    if (!ms.length) { sel.innerHTML = `<option value="">bu günde maç yok</option>`; return; }
+    ms.forEach((m) => {
+      const o = el("option"); o.value = m.id;
+      o.textContent = `${m.time ? m.time.slice(0, 5) + " · " : ""}${m.home} – ${m.away} · ${m.league_name}`;
+      sel.appendChild(o);
+    });
+  }
+
+  async function labRun() {
+    const id = $("#lab-mid").value, side = $("#lab-side").value;
+    const out = $("#lab-out");
+    if (!id) { out.innerHTML = `<p class="note">Önce bir maç seç.</p>`; return; }
+    out.innerHTML = `<p class="note">Bütün motorlar çalışıyor — bu birkaç saniye sürer.</p>`;
+    try {
+      renderScan(await api(`/api/tarama/${encodeURIComponent(id)}?side=${side}`));
+    } catch (e) {
+      out.innerHTML = `<p class="note">Taranamadı: ${esc(e.message)}</p>`;
+    }
+  }
+
+  function labFinding(f) {
+    const solid = f.ci[0] > 0 || f.ci[1] < 0;
+    return `<article class="lab-find ${solid ? "solid" : ""}">
+      <header><b>${esc(f.outcome_tr)}</b>
+        <span class="lab-badge ev-${f.evidence}">${esc(f.evidence_tr)}</span></header>
+      <p class="lab-src">${esc(f.source_tr)}${f.detail ? ` · <span class="muted">${esc(f.detail)}</span>` : ""}</p>
+      <div class="lab-nums">
+        <div><span class="label">Örnek</span><b>${f.n.toLocaleString("tr")}</b></div>
+        <div><span class="label">Oldu</span><b>${pct(f.actual, 1)}</b></div>
+        <div><span class="label">Fiyat</span><b>${f.market == null ? "–" : pct(f.market, 1)}</b></div>
+        <div><span class="label">Fark</span><b class="${solid ? "yes" : ""}">${pp1(f.edge)} puan</b></div>
+      </div>
+      ${ciBar(f.edge, f.ci[0], f.ci[1])}
+      <p class="note">%95 aralık [${pp1(f.ci[0])}, ${pp1(f.ci[1])}] · düzeltilmiş q = ${num(f.q, 3)}</p>
+    </article>`;
+  }
+
+  function labContext(c) {
+    return `<article class="lab-ctx">
+      <header><b>${esc(c.source_tr)}</b><span class="lab-badge ctx">bağlam</span></header>
+      <p class="lab-ctx-val">${esc(c.label)} — <b>${esc(c.value)}</b></p>
+      <p class="note">${esc(c.note)}</p></article>`;
+  }
+
+  function renderScan(d) {
+    const m = d.match;
+    const head = `<p class="sentence"><b>${esc(m.home)} – ${esc(m.away)}</b> · ${esc(m.league)} ·
+      ${fmtShort(m.date)} · ${m.side === "home" ? "ev sahibi" : "deplasman"} tarafından bakıldı.</p>`;
+    const counts = `<p class="sentence">Bu maçta <b>${d.scanned} ölçüm</b> yapıldı
+      (${d.too_thin} tanesi ${d.min_n.toLocaleString("tr")} örneğin altında kaldığı için okunmadı),
+      çoklu test düzeltmesinden sonra <b>${d.after_correction} tanesi</b> ayakta kaldı.</p>`;
+
+    const body = d.findings.length
+      ? `<div class="lab-finds">${d.findings.map(labFinding).join("")}</div>
+         <p class="ex-warn">Ayakta kalmak "oyna" demek değildir. Fark, <b>aynı fiyattaki maçlarda</b> aynı şeyin
+           ne sıklıkta olduğuna göredir ve tek bir maç hakkında hiçbir şey söylemez — sadece bu durumun
+           araştırılmaya değer olduğunu söyler.</p>`
+      : `<p class="lab-none"><b>Bu maçta araştırılabilir bir durum bulunamadı.</b>
+         ${d.scanned} ölçümün hiçbiri, aynı fiyattaki maçlardan istatistiksel olarak ayrışmadı.
+         Bu bir arıza değil, beklenen sonuçtur: motorların ezici çoğunluğu her maçta boş döner, ve
+         dönmediğinde de bunu piyasanın zaten bildiği bir şeyi tekrarlayarak yapar.</p>`;
+
+    const near = d.near_misses.length
+      ? `<details class="ex-more"><summary>Az farkla elenenler (${d.near_misses.length})</summary>
+         <div class="ex-more-body"><div class="table-wrap"><table><thead><tr><th>Motor</th><th>Sonuç</th>
+           <th class="num">N</th><th class="num">Fark</th><th class="num hide-sm">%95 aralık</th>
+           <th class="num">q</th></tr></thead><tbody>
+           ${d.near_misses.map((f) => `<tr><td class="wrap">${esc(f.source_tr)}</td><td>${esc(f.outcome_tr)}</td>
+             <td class="num">${f.n}</td><td class="num">${pp1(f.edge)}</td>
+             <td class="num hide-sm">[${pp1(f.ci[0])}, ${pp1(f.ci[1])}]</td>
+             <td class="num">${num(f.q, 3)}</td></tr>`).join("")}
+         </tbody></table></div>
+         <p class="note">Bunlar "neredeyse bulgu" değildir. Düzeltmeden geçememiş olmaları, aynı taramada
+           yapılan diğer ölçümler hesaba katıldığında bu büyüklükte bir farkın şans eseri çıkma ihtimalinin
+           yüksek olması demektir.</p></div></details>`
+      : "";
+
+    const ctx = d.context.length
+      ? `<h4 class="lab-h4">Bağlam — ölçülmedi, iddia değil</h4>
+         <div class="lab-ctxs">${d.context.map(labContext).join("")}</div>`
+      : "";
+
+    $("#lab-out").innerHTML = `${head}${counts}${body}${ctx}${near}
+      <details class="ex-more"><summary>Bu tarama nasıl çalışıyor?</summary>
+        <div class="ex-more-body">
+          <p>Sırayla: form deseni (üç seviyede), çok boyutlu ikizler, iki takımın birlikte oluşturduğu
+            durum, fikstür döngüleri, oran hareketi ve deftere yazılmış notlar çalıştırılır. Hiçbirini
+            sen seçmezsin — "±2 mi tam mı", "hangi pencere", "ikiz mi desen mi" gibi sorular bu ekranın
+            işidir, okuyanın değil.</p>
+          <p>Sonra <b>huni</b>: (1) her ölçüm sayılır, (2) fiyat karşılığı olmayan ve
+            ${d.min_n.toLocaleString("tr")} örneğin altındaki ölçümler atılır, (3) kalanlara
+            <b>bu maçın tamamı tek bir aile sayılarak</b> Benjamini-Hochberg düzeltmesi uygulanır,
+            (4) hem q ≤ ${d.alpha} hem de en az ${num(d.min_edge, 1)} puanlık fark isteyen ne kaldıysa gösterilir.</p>
+          <p>Döngüler ve oran hareketi bu aileye <b>girmez</b>: biri benzerlik, diğeri bir şekil üretir —
+            olasılık değil. Aileye sokulsalardı, hiç girmedikleri bir sınavın otoritesini ödünç alırlardı.</p>
+        </div></details>`;
+  }
+
+  async function labTeams() {
+    if (state.lab.teams) return;
+    const list = $("#lab-teams");
+    const names = new Set();
+    (state.lab.day?.matches || state.day?.matches || []).forEach((m) => { names.add(m.home); names.add(m.away); });
+    state.lab.teams = [...names].sort();
+    list.innerHTML = state.lab.teams.map((t) => `<option value="${esc(t)}">`).join("");
+  }
+
+  async function labCycles() {
+    const team = $("#lab-team").value.trim();
+    const out = $("#lab-cyc-out");
+    if (team.length < 2) { out.innerHTML = `<p class="note">Bir takım adı yaz.</p>`; return; }
+    out.innerHTML = `<p class="note">Geçmiş sezonlar taranıyor…</p>`;
+    try {
+      const q = new URLSearchParams({ team, min_similarity: $("#lab-sim").value });
+      renderCycles(await api(`/api/dongu?${q}`));
+    } catch (e) {
+      out.innerHTML = `<p class="note">Aranamadı: ${esc(e.message)}</p>`;
+    }
+  }
+
+  function cycLine(run, label) {
+    const at = run.centre_at ?? Math.floor(run.opponents.length / 2);
+    return `<div class="cyc-line"><span class="cyc-tag">${esc(label)} · ${esc(run.season)}</span>
+      ${run.opponents.map((o, i) => `<span class="cyc-o ${i === at ? "is-centre" : ""}">${esc(o)}</span>`).join("")}</div>`;
+  }
+
+  function renderCycles(d) {
+    const out = $("#lab-cyc-out");
+    if (!d.cycles.length) {
+      out.innerHTML = `<p class="lab-none"><b>${esc(d.team)}</b> için bu eşiğin üstünde bir döngü bulunamadı —
+        ${d.searched} geçmiş dizi karşılaştırıldı.${d.note ? " " + esc(d.note) : ""}</p>`;
+      return;
+    }
+    const c0 = d.centre;
+    out.innerHTML = `<p class="sentence">Merkez maç: <b>${esc(c0.opponent)}</b> · ${fmtShort(c0.date)} ·
+      ${esc(c0.season)} sezonu. ${d.windows.map((w) => "±" + w).join(", ")} penceresinde
+      <b>${d.searched}</b> geçmiş dizi karşılaştırıldı, <b>${d.cycles.length}</b> tanesi eşiği geçti.</p>
+      ${d.cycles.map((c) => `<article class="lab-ctx">
+        <header><b>${esc(c.kind_tr)}</b><span class="lab-badge ctx">±${c.window} · benzerlik %${num(c.similarity, 0)}</span></header>
+        ${cycLine(c.past, "geçmiş")}${cycLine(c.now, "şimdi")}
+        <p class="note">Pozisyon pozisyon %${num(c.positional, 0)} · "aynı kulüpler önde, aynı kulüpler arkada"
+          okumasıyla %${num(c.wing, 0)} · ${c.n_compared} pozisyonda karşılaştırıldı.</p></article>`).join("")}
+      <p class="ex-warn">Bu skorlar <b>benzerliktir, olasılık değildir</b>. Grafiklerde dolaşan "%100 aynı fikstür"
+        iddiası genellikle kanat okumasıdır; pozisyonel okuma çoğu zaman daha düşüktür ve ikisi birlikte
+        gösterilmezse tablo olduğundan güçlü görünür. Ayrıca aynı dizinin tekrarlamasının sonucu
+        değiştirdiğine dair veritabanı genelinde bir kanıt bulunamadı — bu ekran bir desen bulur,
+        o desenin işe yaradığını söylemez.</p>`;
   }
 
   function renderResearch() {
