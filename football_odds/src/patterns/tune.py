@@ -335,6 +335,7 @@ def report(out: dict) -> str:
         f"  denenen yapılandırma : {out['n_configs']}  ({out['seconds']} s)",
         f"  seçilen ağırlıklar   : {c['weights']}",
         f"  seçilen yarı ömür    : {c['half_life']} yıl" if c["half_life"] else "  seçilen yarı ömür    : yok (zaman ağırlığı kapalı)",
+        f"  eksik kategori cezası: {c.get('missing_penalty')}",
         "",
         f"  doğrulama  seçilen {c['logloss']:.5f}   varsayılan {(out['default_on_validation'] or {}).get('logloss')}",
         f"  TEST       seçilen {t['chosen']['logloss']:.5f}   varsayılan {t['default']['logloss']:.5f}   piyasa {t['market']['logloss']:.5f}",
