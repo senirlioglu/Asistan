@@ -5,6 +5,7 @@
     python -m src.cli build               # processed Parquet database + data quality report
     python -m src.cli state               # match state table (form, goals, table, TSI) next to it
     python -m src.cli notes               # re-measure the notebook notes against price-matched history
+    python -m src.cli models              # walk-forward comparison: market vs similarity / pattern / twin
     python -m src.cli backtest            # walk-forward backtest, model comparison, ROI, buckets
     python -m src.cli today               # analyse upcoming fixtures -> results/YYYY-MM-DD_predictions.csv
     python -m src.cli dashboard           # launch the Streamlit dashboard
@@ -46,6 +47,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("state", help="build the match state table (pre-match form / goals / table / TSI)")
 
     sub.add_parser("notes", help="measure the notebook notes against the market and against price-matched matches")
+
+    p = sub.add_parser("models", help="walk-forward comparison of market / similarity / pattern / twin models")
+    p.add_argument("--sample", type=int, default=1000, help="test matches per season (default 1000)")
+    p.add_argument("--seasons", help="comma separated season codes (default: the last five)")
+    p.add_argument("--k-twins", type=int, default=200)
 
     p = sub.add_parser("backtest", help="walk-forward backtest + model comparison")
     p.add_argument("--quick", action="store_true", help="smaller parameter grid (development)")
@@ -114,6 +120,29 @@ def main(argv: list[str] | None = None) -> int:
         out = settings.results_dir / "notes_measured.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+        log.info("wrote %s", out)
+        return 0
+
+    if args.command == "models":
+        import json
+
+        import pandas as pd
+
+        from .patterns import engine, evaluate, state
+        st = state.load(settings)
+        if st is None:
+            log.error("match state not built yet — run: python -m src.cli state")
+            return 1
+        frame = engine.prepare(st, pd.read_parquet(settings.processed_dir / "matches.parquet"))
+        per = evaluate.run(settings, frame, test_seasons=_parse_list(args.seasons), sample=args.sample,
+                           k_twins=args.k_twins)
+        summary = evaluate.summarise(per)
+        print("\n=== sezon bazında ===\n" + per.to_string(index=False))
+        print("\n=== toplam ===\n" + summary.to_string(index=False))
+        out = settings.results_dir / "backtest" / "models.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps({"per_season": per.to_dict("records"), "summary": summary.to_dict("records")},
+                                  ensure_ascii=False, indent=1), encoding="utf-8")
         log.info("wrote %s", out)
         return 0
 

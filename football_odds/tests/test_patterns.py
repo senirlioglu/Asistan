@@ -1,5 +1,6 @@
 """Match state: the features must describe the past only, and describe it correctly."""
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -332,3 +333,67 @@ def test_k_sweep_shows_what_widening_the_neighbourhood_costs():
     assert list(sweep["k"]) == [5, 10, 25] and (sweep["n"] <= sweep["k"]).all()
     assert (sweep["worst"].diff().dropna() <= 0).all()                     # a wider K can only reach further out
     assert sweep["win_market"].notna().all()
+
+
+# --------------------------------------------------------------------------- the model comparison
+from src.patterns import evaluate  # noqa: E402
+
+
+def test_pattern_residuals_are_learned_and_shrunk():
+    """Teams on a good run winning more than their price says must show up as a positive residual,
+    scaled down by how thin the bucket is."""
+    rows = []
+    for i in range(1200):
+        good = i % 2 == 0
+        # the price says 50 % everywhere; the good-form home sides actually win 60 %, the others 40 %
+        won = (i % 10 < 6) if good else (i % 10 < 4)
+        rows.append({"date": f"2026-0{1 + i // 600}-{1 + i % 28:02d}", "home_team": "H", "away_team": "A",
+                     "ftr": "H" if won else "A", "p_home": 0.5, "p_draw": 0.0, "p_away": 0.5,
+                     "h_pts5": 13 if good else 1, "a_pts5": 7})
+    train = _pool(rows)
+    res = evaluate.fit_pattern_residuals(train).set_index(["hb", "ab"])
+    good_r = res.loc[(3, 1), "r_home"]                       # top points bucket, mid away bucket
+    poor_r = res.loc[(0, 1), "r_home"]
+    assert good_r > 0.02 and poor_r < -0.02                  # direction
+    raw = 0.10                                                # 60 % vs a 50 % price
+    assert good_r < raw                                       # ... but shrunk towards zero
+    assert abs(good_r - raw * 600 / (600 + evaluate.SHRINK_N)) < 0.01
+
+    test = _pool([{"date": "2026-03-01", "home_team": "H", "away_team": "A", "ftr": "H",
+                   "p_home": 0.5, "p_draw": 0.0, "p_away": 0.5, "h_pts5": 13, "a_pts5": 7},
+                  {"date": "2026-03-02", "home_team": "H", "away_team": "A", "ftr": "H",
+                   "p_home": 0.5, "p_draw": 0.0, "p_away": 0.5, "h_pts5": None, "a_pts5": None}])
+    market = test[["p_home", "p_draw", "p_away"]].to_numpy(dtype=float)
+    out = evaluate.apply_pattern_residuals(test, evaluate.fit_pattern_residuals(train), market)
+    assert out[0][0] > market[0][0]                           # the bucket moves the price up
+    assert abs(out[1][0] - 0.5) < 0.01                        # an unknown bucket leaves it alone
+    assert np.allclose(out.sum(axis=1), 1.0)
+
+
+def test_score_reports_loss_roi_and_closing_line_value():
+    test = _pool([
+        {"date": "2026-01-01", "home_team": "H", "away_team": "A", "ftr": "H", "cons_h": 2.0, "cons_d": 3.5,
+         "cons_a": 4.0, "avgc_h": 1.8, "avgc_d": 3.5, "avgc_a": 4.5},
+        {"date": "2026-01-02", "home_team": "H", "away_team": "A", "ftr": "A", "cons_h": 2.0, "cons_d": 3.5,
+         "cons_a": 4.0, "avgc_h": 2.2, "avgc_d": 3.5, "avgc_a": 3.6},
+    ])
+    test["result_code"] = [0, 2]
+    probs = np.array([[0.6, 0.2, 0.2], [0.6, 0.2, 0.2]])      # always picks the home side
+    row = evaluate.score("test", probs, test, base=None)
+    assert row["n"] == 2 and row["n_bets"] == 2 and row["hit_rate"] == 50.0
+    assert row["roi"] == 0.0                                   # +1.0 then -1.0 at odds 2.00
+    # taken 2.00 against closing 1.80 and 2.20: +11,1 % and -9,1 %, so about +1 % on average
+    assert row["clv"] == round(100 * ((2 / 1.8 - 1) + (2 / 2.2 - 1)) / 2, 2) and row["n_clv"] == 2
+    beaten = evaluate.score("worse", np.array([[0.2, 0.2, 0.6], [0.6, 0.2, 0.2]]), test, base=probs)
+    assert "brier_diff" in beaten and "p_value" in beaten
+
+
+def test_summarise_weights_the_seasons_by_their_size():
+    per = pd.DataFrame([
+        {"season": "2324", "model": "A", "n": 100, "brier": 0.60, "logloss": 1.0, "calib_err": 0.02,
+         "brier_diff": None, "roi": -10.0, "hit_rate": 50.0, "clv": 0.0},
+        {"season": "2425", "model": "A", "n": 300, "brier": 0.50, "logloss": 0.9, "calib_err": 0.04,
+         "brier_diff": None, "roi": 2.0, "hit_rate": 54.0, "clv": 1.0},
+    ])
+    out = evaluate.summarise(per).iloc[0]
+    assert out["n"] == 400 and out["brier"] == 0.525 and out["roi"] == -1.0   # 0.25 / 0.75 weights
