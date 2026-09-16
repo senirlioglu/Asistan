@@ -3,6 +3,7 @@
     python -m src.cli download            # fetch/refresh Football-Data CSVs into data/raw
     python -m src.cli audit               # PHASE 1 column/market availability audit
     python -m src.cli build               # processed Parquet database + data quality report
+    python -m src.cli state               # match state table (form, goals, table, TSI) next to it
     python -m src.cli backtest            # walk-forward backtest, model comparison, ROI, buckets
     python -m src.cli today               # analyse upcoming fixtures -> results/YYYY-MM-DD_predictions.csv
     python -m src.cli dashboard           # launch the Streamlit dashboard
@@ -40,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("build", help="build processed parquet database")
     p.add_argument("--seasons")
     p.add_argument("--leagues")
+
+    sub.add_parser("state", help="build the match state table (pre-match form / goals / table / TSI)")
 
     p = sub.add_parser("backtest", help="walk-forward backtest + model comparison")
     p.add_argument("--quick", action="store_true", help="smaller parameter grid (development)")
@@ -84,6 +87,12 @@ def main(argv: list[str] | None = None) -> int:
         from .data.build import build_processed
         df, report = build_processed(settings, _parse_list(args.seasons), _parse_list(args.leagues))
         log.info("built %d matches; missing 1X2 %.2f%%; duplicates %d", len(df), report["missing_1x2_odds_pct"], report["duplicate_matches"])
+        return 0
+
+    if args.command == "state":
+        from .patterns.state import build, state_path
+        out = build(settings)
+        log.info("wrote %s: %d matches, %d columns", state_path(settings), len(out), len(out.columns))
         return 0
 
     if args.command == "backtest":
