@@ -240,19 +240,22 @@
 
   <section class="view" id="view-research" hidden>
     <section class="lab" id="lab">
-      <div class="lab-head">
-        <h2 class="h2">Pattern Lab</h2>
-        <p class="lab-sub">Aklındaki futbol fikrini veriye sor.</p>
-        <p class="lead">Bir maç seç, bir sonuç ara veya kendi fikrini kur. Sistem geçmiş maçları, benzer takımları,
-        piyasa fiyatlarını ve sezonlar arası döngüleri otomatik araştırır. Motor seçmezsin, araştırma türü seçmezsin;
-        her sayı <b>piyasanın beklentisinin yanında</b> gelir ve benzerlik hiçbir yerde olasılık diye sunulmaz.</p>
-      </div>
-      <div class="lab-modes" role="tablist" aria-label="Pattern Lab modları">
-        <button type="button" class="lab-mode" data-lab="match" role="tab"><span class="lab-n">1</span><b>Bu maçta ne olur?</b><small>Bir maç seç; araştırılabilir durumları sistem bulsun.</small></button>
-        <button type="button" class="lab-mode" data-lab="find" role="tab"><span class="lab-n">2</span><b>Bu sonuca uyan maç bul</b><small>Bir sonuç seç; günün maçları taransın.</small></button>
-        <button type="button" class="lab-mode" data-lab="own" role="tab"><span class="lab-n">3</span><b>Kendi patternini test et</b><small>Koşulları kur; geçmişte ne olmuş, koşul koşul.</small></button>
-        <button type="button" class="lab-mode" data-lab="cycle" role="tab"><span class="lab-n">4</span><b>Döngü ara</b><small>Bir takım seç; fikstür döngülerini sistem bulsun.</small></button>
-      </div>
+      <header class="lab-head">
+        <p class="lab-eyebrow">Pattern Lab · araştırma aracı</p>
+        <h2 class="lab-title">Aklındaki futbol fikrini veriye sor.</h2>
+        <p class="lab-lead">Bir maç seç, bir sonuç ara veya kendi fikrini kur. Sistem geçmiş maçları, benzer takımları,
+        piyasa fiyatlarını ve sezonlar arası döngüleri kendisi araştırır. Motor seçmezsin, pencere seçmezsin; her sayı
+        <b>piyasanın beklentisinin yanında</b> gelir ve benzerlik hiçbir yerde olasılık gibi çizilmez.</p>
+      </header>
+      <div class="lab-grid">
+        <nav class="lab-rail" role="tablist" aria-label="Pattern Lab modları">
+          <button type="button" class="lab-mode" data-lab="match" role="tab"><span class="lab-n">1</span><span class="lab-mode-t"><b>Bu maçta ne olur?</b><small>Maçı seç, durumları sistem bulsun</small></span></button>
+          <button type="button" class="lab-mode" data-lab="find" role="tab"><span class="lab-n">2</span><span class="lab-mode-t"><b>Bu sonuca uyan maç bul</b><small>Sonucu seç, günün maçları taransın</small></span></button>
+          <button type="button" class="lab-mode" data-lab="own" role="tab"><span class="lab-n">3</span><span class="lab-mode-t"><b>Kendi patternini test et</b><small>Koşulları kur, koşul koşul oku</small></span></button>
+          <button type="button" class="lab-mode" data-lab="cycle" role="tab"><span class="lab-n">4</span><span class="lab-mode-t"><b>Döngü ara</b><small>Takımı seç, döngüyü sistem bulsun</small></span></button>
+        </nav>
+        <div class="lab-stage">
+        <p class="lab-qbar" id="lab-qbar" aria-live="polite"></p>
 
       <!-- MOD 1 — BU MAÇTA NE OLUR? -->
       <div class="lab-panel" id="lab-match" hidden>
@@ -424,6 +427,8 @@
         </div>
         <div class="lab-suggest" id="lc-suggest" hidden></div>
         <div id="lc-out"></div>
+      </div>
+        </div>
       </div>
     </section>
 
