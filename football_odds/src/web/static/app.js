@@ -416,7 +416,14 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
     try {
       renderScan(await api(`/api/tarama/${encodeURIComponent(id)}?side=${side}`));
     } catch (e) {
-      out.innerHTML = `<p class="note">Taranamadı: ${esc(e.message)}</p>`;
+      // the one error a reader actually meets: the match is analysed but the state table — which is
+      // rebuilt by the daily job and by each intraday fixture refresh — has not caught up with it yet
+      out.innerHTML = String(e.message).startsWith("404")
+        ? `<p class="lab-none"><b>Bu maç durum tablosunda yok.</b> Motorların okuduğu maç-öncesi tablo
+           (form, güç, lig sırası, TSI) günlük iş her çalıştığında yeniden kuruluyor ve o günün maçlarını
+           da içeriyor. Gün içinde bültene yeni eklenen bir maç, bir sonraki tur tabloyu kurana kadar
+           taranamaz — <b>tahmin üretip boşluğu doldurmaktansa taramayı reddediyor</b>.</p>`
+        : `<p class="note">Taranamadı: ${esc(e.message)}</p>`;
     }
   }
 
