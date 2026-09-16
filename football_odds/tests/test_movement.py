@@ -357,3 +357,40 @@ def test_a_pullback_is_not_a_reversal_and_does_not_swallow_steam(arch):
     # and the share is a threshold like every other one, not a number in the code
     loose = mv.MovementConfig(reversal_min_share=0.1)
     assert mv.classify(pause, loose)["type"] == "REVERSAL"
+
+
+def test_a_played_match_is_rebuilt_from_the_archive_because_the_bulletin_drops_it(arch):
+    """nesine publishes a *pre*-bulletin: an event leaves it the moment betting closes, so a played
+    fixture cannot be looked up live at all. The archive is the other half of that deal, and the
+    prices it keeps are by construction the ones the notes read."""
+    write(arch, steam_rows() + [(90, "o25.ust", 1.70), (90, "o25.alt", 2.05)])
+    row = mv.frozen_row(arch, 55, as_of=KO + dt.timedelta(hours=3))
+    assert row["home"] == "A" and row["away"] == "B" and row["frozen"] is True
+    assert row["ms"] == {"1": 1.76, "X": 3.40, "2": 4.87}      # the last price seen before kick-off
+    assert row["o25"] == {"ust": 1.70, "alt": 2.05}            # un-flattened back into market groups
+    assert row["minutes_before"] == 15                         # and it says how stale it is
+
+
+def test_a_price_seen_after_kick_off_never_becomes_the_frozen_price(arch):
+    """A match starting late keeps ticking in the archive. Judging a pre-match note on a price the
+    bettor could not have had would turn the note's verdict into hindsight."""
+    write(arch, steam_rows() + [(-20, "ms.1", 1.40), (-20, "ms.X", 4.50), (-20, "ms.2", 7.00)])
+    row = mv.frozen_row(arch, 55, as_of=KO + dt.timedelta(hours=3))
+    assert row["ms"]["1"] == 1.76 and row["minutes_before"] == 15
+
+
+def test_a_match_the_archive_never_priced_says_so_instead_of_inventing_a_row(arch):
+    write(arch, [(600, "skor.diger", 30.0)])                   # tracked, but not a 1X2 market
+    assert mv.frozen_row(arch, 55, as_of=KO + dt.timedelta(hours=3)) is None
+    assert mv.frozen_row(arch, 999, as_of=KO) is None          # a code the archive never saw
+
+
+def test_codes_on_finds_a_match_from_the_days_its_price_was_moving(arch):
+    """The archive is filed by the UTC day a price was *seen*, and a code's meta row is written once
+    — usually days before kick-off. Looking only in the match day's own file would miss it."""
+    write(arch, [(2880, "ms.1", 2.10), (2880, "ms.X", 3.40), (2880, "ms.2", 3.60)],
+          day=KO.date() - dt.timedelta(days=2))
+    found = mv.codes_on(arch, "2026-09-20")
+    assert list(found) == [55] and found[55]["home"] == "A"
+    assert mv.codes_on(arch, "2026-09-21") == {}               # filtered on kick-off, not on the file
+    assert mv.codes_on(arch, "gecersiz") == {}

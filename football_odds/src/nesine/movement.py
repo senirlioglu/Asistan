@@ -186,6 +186,66 @@ def match_meta(settings: Settings, code: int, as_of: dt.datetime | None = None, 
     return None
 
 
+def codes_on(settings: Settings, date: str, days: int = 3) -> dict[int, dict]:
+    """{code: meta} for every archived match kicking off on `date` (Turkey local).
+
+    The archive is filed by the UTC day a price was *seen*, not by kick-off, and a code's meta row is
+    written once — on the first day its price moved, which is usually days before the match. The
+    lookup therefore reads a small window of day files and filters on the meta's own date."""
+    try:
+        day = dt.date.fromisoformat(str(date))
+    except ValueError:
+        return {}
+    out: dict[int, dict] = {}
+    for offset in range(-days, 2):
+        for code, m in archive.load_meta(settings, day + dt.timedelta(days=offset)).items():
+            if str(m.get("date")) == str(date):
+                out.setdefault(int(code), m)
+    return out
+
+
+def frozen_row(settings: Settings, code: int, as_of: dt.datetime | None = None, days: int = 4,
+               meta: dict | None = None) -> dict | None:
+    """The bulletin row as it stood at the last price seen before kick-off.
+
+    nesine publishes a *pre*-bulletin: the moment betting closes a match leaves it, so a played
+    fixture cannot be looked up live at all — not a bug, and not something a retry fixes. The
+    archive is the other half of that deal, and `watcher.TRACKED` is by construction every price a
+    note reads, so the row can be rebuilt from it and the notes can still be evaluated afterwards.
+
+    What comes back is a frozen row, and it says so: `frozen`, `frozen_at` and `minutes_before`
+    travel with it, because a price read 40 minutes before kick-off is not the closing price and
+    nothing downstream may quietly treat it as one. Prices seen *after* kick-off are dropped — the
+    archive can contain them when a match starts late — since a note about a pre-match price must
+    never be judged on one the bettor could not have had."""
+    meta = meta if meta is not None else match_meta(settings, code, as_of=as_of, days=days)
+    if not meta:
+        return None
+    raw = raw_series(settings, int(code), as_of=as_of, days=days)
+    if not raw:
+        return None
+    ko = kickoff(meta)
+    cut = ko.isoformat(timespec="seconds") if ko else None
+    out: dict = {"code": int(code), "frozen": True,
+                 **{k: meta.get(k) for k in ("date", "time", "home", "away", "league", "league_code")}}
+    last_ts: str | None = None
+    for path, points in raw.items():
+        usable = [(ts, o) for ts, o in points if cut is None or ts <= cut]
+        if not usable:
+            continue
+        ts, odds = usable[-1]
+        group, _, sel = path.partition(".")
+        if sel:
+            out.setdefault(group, {})[sel] = odds
+        last_ts = ts if last_ts is None or ts > last_ts else last_ts
+    if not out.get("ms"):
+        return None                     # no 1X2 is no bulletin row; half a market would mislead
+    out["frozen_at"] = last_ts
+    out["minutes_before"] = (None if not (ko and last_ts)
+                             else round((ko - _parse_ts(last_ts)).total_seconds() / 60))
+    return out
+
+
 # --------------------------------------------------------------------------- building the series
 
 def _parse_ts(s: str) -> dt.datetime:

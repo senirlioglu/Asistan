@@ -340,7 +340,7 @@ def test_the_scan_corrects_across_the_whole_family_before_showing_anything(resea
         assert f["ci"][0] is not None
     # context never enters the family: a similarity and a shape are not claims that took a test
     for c in d["context"]:
-        assert c["source"] in ("sequence", "movement") and "q" not in c
+        assert c["source"] in ("sequence", "movement", "note") and "q" not in c
     assert research_client.get("/api/tarama/yok").status_code == 404
 
 
@@ -386,3 +386,61 @@ def test_the_pattern_lab_tab_is_wired_to_something(client):
         assert fn in js
     for endpoint in ("/api/tarama/", "/api/dongu?"):            # the screens call the real engines
         assert endpoint in js
+
+
+def test_a_played_match_says_why_the_notebook_was_never_asked(research_client, monkeypatch):
+    """The state table is history, so every match Pattern Lab can scan has already been played — and
+    nesine's bulletin is a *pre*-bulletin, dropping an event the moment betting closes. "No note
+    fired" and "there was no price to ask about" therefore look identical on screen while meaning
+    opposite things, and the second one is the one that happens all day."""
+    from src.nesine import bulletin
+    from src.patterns import lab
+
+    monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([], {"fetched_at": "x"}))
+
+    out = lab.scan(web.settings, "s59")
+    note = next(c for c in out["context"] if c["source"] == "note")
+    assert note["label"] == "fiyat yok" and note["data"]["source"] == "yok"
+    assert "bahis kapandığı anda maç bültenden düşer" in note["note"]
+    assert "hiç sorulmadı" in note["note"]                  # not "the rules were tried and failed"
+    assert all(f["source"] != "note" for f in out["findings"])
+
+
+def test_a_played_match_gets_its_notes_from_the_frozen_pre_kick_off_price(research_client, monkeypatch, tmp_path):
+    """Once the bulletin has dropped the match, the archive is the only place its price survives —
+    and `watcher.TRACKED` is by construction every price a note reads, so the row can be rebuilt and
+    the notebook asked after all. The answer must say it is reading a frozen price, because a price
+    seen 15 minutes before kick-off is not the closing price."""
+    import datetime as dt
+
+    from src.nesine import archive, bulletin, movement as mv
+    from src.patterns import lab
+
+    monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([], {"fetched_at": "x"}))
+    monkeypatch.setattr(web.settings, "raw", web.settings.with_overrides(
+        **{"data.results_dir": str(tmp_path / "res")}).raw)
+    ko = dt.datetime(2026, 2, 4, 18, 0, tzinfo=dt.timezone.utc)      # 21:00 Turkey, the fixture's day
+    meta = {"date": "2026-02-04", "time": "21:00", "home": "T5", "away": "T0", "league": "L", "league_code": 1}
+    d = archive.archive_dir(web.settings)
+    d.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for minutes, one in ((1440, 2.05), (360, 1.92), (60, 1.84), (15, 1.78)):
+        ts = (ko - dt.timedelta(minutes=minutes)).isoformat(timespec="seconds")
+        rows.append({"ts": ts, "k": "run", "n": 1, "ch": 3})
+        for path, o in (("ms.1", one), ("ms.X", 3.4), ("ms.2", 4.3), ("iy05.alt", 1.64)):
+            rows.append({"ts": ts, "c": 777, "p": path, "o": o, "m": minutes})
+    with archive.day_path(web.settings, ko.date()).open("a", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    archive.meta_path(web.settings, ko.date()).write_text(json.dumps({"777": meta}), encoding="utf-8")
+    mv._CACHE.clear()
+
+    out = lab.scan(web.settings, "s59")
+    note = next(c for c in out["context"] if c["source"].startswith("note"))
+    assert note["source_tr"] == "Defter notu 5"                  # 1,64 in the HT 0,5 market fires it
+    assert "donmuş fiyatta tutuyordu" in note["note"] and "15 dakika önceki" in note["note"]
+    assert "yeni kanıt değil" in note["note"]                    # still context, still already measured
+    # and the movement shape comes back from the same archive the bulletin no longer has
+    move = next((c for c in out["context"] if c["source"] == "movement"), None)
+    assert move is not None and move["data"]["movement"]["type"]
+    assert all(f["source"] != "note" for f in out["findings"])
