@@ -26,9 +26,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import load_settings
+from ..logging_setup import get_logger
 from ..pipeline.jobs import is_running, read_status, start_background
 from .live import ESPN_LEAGUES
 
+log = get_logger("web.api")
 STATIC = Path(__file__).resolve().parent / "static"
 settings = load_settings()
 RESULTS = settings.results_dir
@@ -631,8 +633,15 @@ def research() -> dict:
     """The offline research results: the notebook notes, the model comparison, the pattern scan."""
     from ..patterns import service
 
+    from ..nesine import forward
+
     files = service.research_files(settings)
     df = service.frame(settings)
+    try:
+        files["forward"] = forward.summary(settings)
+    except Exception as exc:  # noqa: BLE001 - a young forward test must not take the tab down
+        log.warning("forward summary failed: %s", exc)
+        files["forward"] = None
     files["state"] = {"matches": int(len(df)) if df is not None else 0,
                       "from": str(df["date"].min())[:10] if df is not None and len(df) else None,
                       "to": str(df["date"].max())[:10] if df is not None and len(df) else None}

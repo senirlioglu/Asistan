@@ -141,6 +141,30 @@
          ve uzun vadede kârın tek güvenilir erken göstergesidir.</p>`
       : `<p class="note">Model karşılaştırması henüz çalıştırılmadı (<code>cli models</code>).</p>`;
 
+    const fw = d.forward || {};
+    const fwRows = fw.rows || [];
+    $("#rs-forward").innerHTML = fw.n_frozen
+      ? `<div class="rs-funnel">
+           ${[["dondurulan karar", fw.n_frozen], ["sonucu gelen", fw.n_settled],
+              ["gösterim eşiği", fw.floors?.display], ["araştırma eşiği", fw.floors?.research]]
+             .map(([k, v]) => `<div class="rs-step"><span class="v num">${v == null ? "–" : v}</span><small>${k}</small></div>`).join("")}
+         </div>
+         <div class="table-wrap"><table><thead><tr><th>Hareket sınıfı</th><th class="num">Donduruldu</th>
+           <th class="num">Sonuçlandı</th><th class="num">Gerçekleşen</th><th class="num">Piyasa</th></tr></thead><tbody>
+           ${fwRows.map((r) => `<tr class="${r.enough ? "" : "thin"}"><td>${esc(r.type)}</td>
+             <td class="num">${r.n_frozen}</td><td class="num">${r.n_settled}</td>
+             <td class="num">${r.actual == null ? "—" : "%" + num(r.actual, 1)}</td>
+             <td class="num">${r.market == null ? "—" : "%" + num(r.market, 1)}</td></tr>`).join("")}
+         </tbody></table></div>
+         <p class="note">${fw.since ? `İlk donmuş karar: ${ntAgo(fw.since)}. ` : ""}Örneklem
+         ${fw.floors?.display} maçın altındayken oran <b>gösterilmiyor</b> — 14 maçta gelen %71, aynı yöne
+         düşen 14 yazı turadır. Bu tablo dolmaya başladığında F (piyasa + hareket) ve G (hepsi birlikte)
+         modelleri yukarıdaki karşılaştırmaya eklenecek; o zamana kadar eklenmeyecek.</p>`
+      : `<p class="note">Henüz donmuş karar yok. Oran arşivi 15 Eylül 2026'da başladı ve ileri test,
+         bir maç kick-off'tan ~25 dakika önce izlenirken kaydediliyor — yani tablo ancak bugünden sonra
+         oynanan maçlarla dolar. <b>Geçmişe dönük üretilmeyecek:</b> maç başladıktan sonra hesaplanan bir
+         sınıflandırma ileri test değildir.</p>`;
+
     const dc = d.discovery || {};
     const s2 = dc.stages || {};
     $("#rs-discovery").innerHTML = s2.candidates

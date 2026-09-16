@@ -179,7 +179,7 @@ def interval_for(matches: list[dict], now: dt.datetime | None = None) -> int:
 
 # --------------------------------------------------------------------------- the thread
 
-_state: dict[str, Any] = {"thread": None, "last": None, "error": None, "interval": None, "n": 0, "runs": 0, "archived": 0}
+_state: dict[str, Any] = {"thread": None, "last": None, "error": None, "interval": None, "n": 0, "runs": 0, "archived": 0, "frozen": 0}
 _lock = threading.Lock()
 
 
@@ -202,11 +202,26 @@ def refresh_once(settings: Settings) -> tuple[list[dict], dict]:
     return matches, meta
 
 
+def _freeze(settings: Settings, matches: list[dict]) -> None:
+    """Freeze the pre-kick-off movement verdict. Imported here to keep the watcher's own import
+    graph flat, and wrapped because a forward test failing must never stop the odds refreshing."""
+    try:
+        from . import forward
+
+        n = forward.freeze_due(settings, matches)
+        if n:
+            with _lock:
+                _state["frozen"] = _state.get("frozen", 0) + n
+    except Exception as exc:  # noqa: BLE001 - the refresher is the job; this rides along
+        log.warning("forward freeze failed: %s", exc)
+
+
 def _loop(settings: Settings, min_interval: int) -> None:
     while True:
         wait = INTERVALS["idle"]
         try:
             matches, _ = refresh_once(settings)
+            _freeze(settings, matches)                 # the forward test: a verdict, before the match
             if _state["runs"] % 24 == 1:               # once in a while: gzip the finished day files
                 archive.compress_old(settings)
             wait = max(min_interval, interval_for(matches))

@@ -214,3 +214,77 @@ def test_the_verdict_has_one_shape_whether_or_not_there_was_enough_data(arch):
     thin = mv.classify(mv.trajectory(arch, 66, as_of=KO)["ms.1"])
     assert set(full) == set(thin)
     assert thin["type"] is None and thin["total_pp"] is None and thin["consistency"] is None
+
+
+# --------------------------------------------------------------------------- the forward test
+
+def test_the_verdict_is_frozen_once_before_kick_off_and_never_revised(arch):
+    """Spec 30. The trajectory is only complete after the match has started, so reclassifying later
+    is always possible and always wrong. The freeze happens before, once, and is append-only."""
+    import datetime as dt
+
+    from src.nesine import forward
+
+    write(arch, steam_rows())
+    m = {**META, "ms": {"1": 1.76, "X": 3.40, "2": 4.87}}
+    just_before = KO - dt.timedelta(minutes=10)
+
+    assert forward.freeze_due(arch, [m], now=KO - dt.timedelta(hours=3)) == 0     # too early
+    assert forward.freeze_due(arch, [m], now=just_before) == 1
+    assert forward.freeze_due(arch, [m], now=just_before) == 0                    # never twice
+    assert forward.freeze_due(arch, [m], now=KO + dt.timedelta(minutes=5)) == 0   # too late
+
+    rows = forward.load(arch, "freeze")
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["code"] == 55 and r["minutes_left"] == 10 and r["market"]["ms.1"] == 1.76
+    assert r["sel"]["ms.1"]["movement"]["type"] == "STEAM"
+    assert r["sel"]["ms.1"]["quality"]["snapshots"] >= 4
+    assert "config" in r and r["config"]["movement_min_pp"] > 0    # the thresholds it was judged by
+
+
+def test_settling_appends_the_result_and_leaves_the_verdict_alone(arch):
+    import datetime as dt
+
+    import pandas as pd
+
+    from src.nesine import forward
+
+    write(arch, steam_rows())
+    forward.freeze_due(arch, [META], now=KO - dt.timedelta(minutes=10))
+    before = forward.store_path(arch).read_text(encoding="utf-8")
+
+    df = pd.DataFrame([{"date": pd.Timestamp(KO.date()), "home_team": "A", "away_team": "B",
+                        "fthg": 2, "ftag": 0, "ftr": "H", "htr": "H", "hthg": 1, "htag": 0,
+                        "league": "L", "season": "2627", "cons_h": 1.8, "cons_d": 3.5, "cons_a": 4.2}])
+    assert forward.settle(arch, df=df, now=KO + dt.timedelta(minutes=30)) == 0        # still playing
+    assert forward.settle(arch, df=df, now=KO + dt.timedelta(hours=4)) == 1
+    assert forward.settle(arch, df=df, now=KO + dt.timedelta(hours=5)) == 0           # only once
+
+    after = forward.store_path(arch).read_text(encoding="utf-8")
+    assert after.startswith(before)                              # the frozen line is untouched
+    got = forward.load(arch, "settle")[0]
+    assert got["ftr"] == "H" and got["fthg"] == 2
+
+
+def test_the_forward_summary_refuses_to_quote_a_rate_on_a_handful(arch):
+    """Spec 29: STEAM came in at 71 % is a coin landing the same way fourteen times."""
+    import datetime as dt
+
+    import pandas as pd
+
+    from src.nesine import forward
+
+    write(arch, steam_rows())
+    forward.freeze_due(arch, [META], now=KO - dt.timedelta(minutes=10))
+    df = pd.DataFrame([{"date": pd.Timestamp(KO.date()), "home_team": "A", "away_team": "B",
+                        "fthg": 2, "ftag": 0, "ftr": "H", "htr": "H", "hthg": 1, "htag": 0,
+                        "league": "L", "season": "2627", "cons_h": 1.8, "cons_d": 3.5, "cons_a": 4.2}])
+    forward.settle(arch, df=df, now=KO + dt.timedelta(hours=4))
+
+    out = forward.summary(arch)
+    assert out["n_frozen"] == 1 and out["n_settled"] == 1
+    steam = next(r for r in out["rows"] if r["type"] == "STEAM")
+    assert steam["n_settled"] == 1 and steam["enough"] is False
+    assert steam["actual"] is None and steam["market"] is None    # a rate on one match is not a rate
+    assert out["floors"]["display"] >= 30

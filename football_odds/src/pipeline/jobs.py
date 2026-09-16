@@ -115,6 +115,11 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
             run_backfill(settings, days=7)
         except Exception as exc:  # noqa: BLE001 - derived data; never fails the daily job
             log.warning("backfill skipped: %s", exc)
+        try:  # yesterday's frozen movement verdicts now have results: append them, never rewrite
+            from ..nesine import forward
+            forward.settle(settings, df=df)
+        except Exception as exc:  # noqa: BLE001 - same: the forward test rides along
+            log.warning("forward settle skipped: %s", exc)
         secs = (dt.datetime.now(dt.timezone.utc) - started).total_seconds()
         _write(settings, "ok", f"{len(table)} fixtures analysed, {len(df)} historical matches", started_at=started.isoformat(),
                finished_at=dt.datetime.now(dt.timezone.utc).isoformat(), duration_s=round(secs), n_fixtures=int(len(table)),
