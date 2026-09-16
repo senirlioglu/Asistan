@@ -282,7 +282,7 @@
   }
 
   // ------------------------------------------------------------------ coupons (Oyun)
-  state.cp = { loaded: false, date: null, day: null, picks: new Map(), saving: false };
+  state.cp = { loaded: false, date: null, day: null, picks: new Map(), saving: false, info: null, matches: new Map() };
   const CP_MARKETS = [
     ["ms", "Maç sonucu", ["h", "d", "a"]], ["o25", "2,5 gol", ["over", "under"]], ["o15", "1,5 gol", ["over", "under"]],
     ["fh05", "İY 0,5", ["over", "under"]], ["fh15", "İY 1,5", ["over", "under"]], ["sh05", "2Y 0,5", ["over", "under"]], ["sh15", "2Y 1,5", ["over", "under"]],
@@ -330,7 +330,7 @@
   }
 
   async function loadCouponDay(stamp) {
-    state.cp.date = stamp; state.cp.picks.clear();
+    state.cp.date = stamp; state.cp.picks.clear(); state.cp.info = null;   // the open panel belongs to the old day
     $("#cp-matches").innerHTML = `<p class="note">Yükleniyor…</p>`;
     try { state.cp.day = await api(`/api/day/${stamp}`); }
     catch (e) { state.cp.day = { matches: [] }; }
@@ -360,7 +360,11 @@
     if (!ms.length) { box.innerHTML = `<div class="day-empty">Bu gün için analiz edilmiş maç yok. Football-Data yeni haftanın maçlarını genellikle Salı–Çarşamba yükler.</div>`; }
     else box.innerHTML = ms.map(cpRow).join("");
     const byId = new Map(ms.map((m) => [m.id, m]));
-    box.querySelectorAll("[data-info]").forEach((b) => (b.onclick = () => openSheet(byId.get(b.dataset.info))));
+    box.querySelectorAll("[data-info]").forEach((b) => (b.onclick = () => {
+      state.cp.info = state.cp.info === b.dataset.info ? null : b.dataset.info;
+      mountBuilderInfo(byId);
+    }));
+    mountBuilderInfo(byId);
     box.querySelectorAll(".cp-btn").forEach((b) => (b.onclick = () => {
       const key = b.dataset.key, pick = b.dataset.pick;
       if (state.cp.picks.get(key) === pick) state.cp.picks.delete(key); else state.cp.picks.set(key, pick);
@@ -369,6 +373,38 @@
     const n = state.cp.picks.size;
     $("#cp-summary").textContent = n ? `${n} seçim` : "Henüz seçim yok";
     $("#cp-save").disabled = n === 0 || state.cp.saving;
+  }
+
+  /** The open match panel of the coupon builder, re-mounted after every redraw of the list. */
+  function mountBuilderInfo(byId) {
+    const box = $("#cp-matches");
+    box.querySelectorAll(".cp-detail").forEach((x) => x.remove());
+    box.querySelectorAll("[data-info]").forEach((b) => b.classList.toggle("is-on", b.dataset.info === state.cp.info));
+    const m = state.cp.info && byId.get(state.cp.info);
+    if (!m) return;
+    const row = box.querySelector(`[data-info="${CSS.escape(m.id)}"]`)?.closest(".cp-row");
+    if (!row) return;
+    const panel = detailPanel(m, () => { state.cp.info = null; mountBuilderInfo(byId); });
+    row.insertAdjacentElement("afterend", panel);
+  }
+
+  /** An inline copy of the detail sheet: same body, its own header and a close button. */
+  function detailPanel(m, onClose) {
+    const panel = el("div", "cp-detail");
+    panel.dataset.mid = m.id;
+    const head = el("div", "cp-detail-head",
+      `<div><b>${esc(m.home)} – ${esc(m.away)}</b><small class="muted">${esc(m.league_name || "")}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)}</small></div>`);
+    const close = el("button", "btn ghost", "Bilgileri kapat"); close.type = "button";
+    close.onclick = onClose;
+    head.appendChild(close);
+    const body = el("div", "sheet-body cp-detail-body");   // same styling as the full-screen sheet
+    const foot = el("div", "cp-detail-foot");
+    const close2 = el("button", "btn ghost", "Bilgileri kapat"); close2.type = "button";
+    close2.onclick = onClose;                               // the panel is long: a way out at both ends
+    foot.appendChild(close2);
+    panel.append(head, body, foot);
+    mountDetail(body, m);
+    return panel;
   }
 
   async function saveCoupon() {
@@ -415,22 +451,38 @@
         <div class="cp-tally"><span><b>Sen</b> ${tallyTxt(c.tally.user)}</span><span><b class="c-hist">Geçmiş</b> ${tallyTxt(c.tally.hist)}</span><span><b class="c-market">Piyasa</b> ${tallyTxt(c.tally.market)}</span></div>
         <div class="table-wrap"><table><thead><tr><th>Maç</th><th>Başlık</th><th class="num">Sen</th><th class="num">Geçmiş</th><th class="num hide-sm">Piyasa</th><th class="num hide-sm">Skor (İY)</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join("");
-    box.querySelectorAll("[data-mid]").forEach((b) => (b.onclick = () => openMatchById(b.dataset.mid, b)));
+    box.querySelectorAll("[data-mid]").forEach((b) => (b.onclick = () => togglePickDetail(b)));
     box.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
       if (!window.confirm("Bu kupon silinsin mi?")) return;
       try { await api(`/api/coupons/${b.dataset.del}`, { method: "DELETE" }); await loadCoupons(); } catch (e) { toast("Silinemedi: " + e.message); }
     }));
   }
 
-  /** A coupon row knows only the match id: fetch the analysis (and its nesine side) and open the sheet. */
-  async function openMatchById(id, btn) {
-    if (btn) btn.disabled = true;
+  /** A coupon row knows only the match id: fetch the analysis (with its nesine side) and open it under
+      the coupon, so the picks stay on screen next to what the numbers say about them. */
+  async function togglePickDetail(btn) {
+    const card = btn.closest(".cp-card"), id = btn.dataset.mid;
+    const mark = () => {
+      const open = card.querySelector(".cp-detail");
+      card.querySelectorAll("[data-mid]").forEach((b) => b.classList.toggle("is-on", !!open && b.dataset.mid === open.dataset.mid));
+    };
+    const open = card.querySelector(".cp-detail");
+    if (open) { const same = open.dataset.mid === id; open.remove(); mark(); if (same) return; }
+    let box = el("div", "cp-detail", `<p class="note">Yükleniyor…</p>`);
+    box.dataset.mid = id;
+    card.appendChild(box); mark();
     try {
-      const d = await api(`/api/match/${encodeURIComponent(id)}`);
-      const m = d.match; m._nesine = d.nesine;
-      openSheet(m);
-    } catch (e) { toast("Maç açılamadı: " + e.message); }
-    if (btn) btn.disabled = false;
+      let m = state.cp.matches.get(id);
+      if (!m) {
+        const d = await api(`/api/match/${encodeURIComponent(id)}`);
+        m = d.match; m._nesine = d.nesine;
+        state.cp.matches.set(id, m);
+      }
+      if (!card.contains(box)) return;            // closed again while the request was in flight
+      const panel = detailPanel(m, () => { panel.remove(); mark(); });
+      box.replaceWith(panel); box = panel; mark();
+      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) { box.innerHTML = `<p class="note">Maç açılamadı: ${esc(e.message)}</p>`; }
   }
 
   // ------------------------------------------------------------------ paper trading (Sanal oyun)
@@ -680,8 +732,10 @@
     });
     const open = $("#sheet-live");
     if (open && open.dataset.id) open.innerHTML = liveBadge(state.live[open.dataset.id], byId.get(open.dataset.id));
-    const sc = $("#sheet-comment");
-    if (sc && byId.has(sc.dataset.id)) sc.innerHTML = commentary(byId.get(sc.dataset.id), state.live[sc.dataset.id]).full;
+    document.querySelectorAll("[data-mcomment]").forEach((p) => {
+      const id = p.dataset.mcomment;
+      if (byId.has(id)) p.innerHTML = commentary(byId.get(id), state.live[id]).full;
+    });
     renderStatusChips();   // the live scores just told us which matches are over and which are running
     if (state.status.size !== STATUS.length) renderCards();   // ... which can move a match out of the current filter
     renderTally();
@@ -986,11 +1040,9 @@
     return `<section><h3>${title}</h3><div class="vbars">${entries.map(([k, v]) => `<div class="vbar"><span class="num">${(100 * v).toFixed(0)}%</span><i style="height:${Math.max(2, (v / max) * 80)}%"></i><small>${esc(k)}</small></div>`).join("")}</div>${note ? `<p class="note">${note}</p>` : ""}</section>`;
   }
 
-  async function openSheet(m) {
-    const src = m.source === "nesine" ? ` · <b>nesine oranıyla</b>` : "";
-    $("#sheet-sub").innerHTML = `${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)}${src} <span id="sheet-live" data-id="${esc(m.id)}">${liveBadge(state.live?.[m.id], m)}</span>`;
-    $("#sheet-title").textContent = `${m.home} – ${m.away}`;
-    const body = $("#sheet-body");
+  /** The whole analysis of one match as HTML. The same body fills the full-screen sheet (Maçlar, Nesine)
+      and the panel that opens inside a coupon (Oyun), so ids are data attributes scoped to the container. */
+  function detailHTML(m) {
     const rows = ["home", "draw", "away"].map((oc) => {
       const k = KEY[oc]; const [outside, ci] = outsideCI(m, oc);
       return `<tr><td>${OUT[k]}</td><td class="num">${pct(m.market[k], 1)}</td><td class="num hide-sm">${pct(m.hist[k], 1)}</td><td class="num">${pct(m.adj[k], 1)}</td><td class="num">${pp(m.edge[k])}</td><td class="num hide-sm">${ci || "–"}</td><td class="num hide-sm">${num(m.fair[k])}</td><td class="wrap">${outside ? '<span class="yes">Hayır, anlamlı</span>' : '<span class="no">Evet, olabilir</span>'}</td></tr>`;
@@ -1002,9 +1054,9 @@
     const nesineNote = m.source === "nesine"
       ? `<p class="note nt-warn">Bu analiz <b>nesine oranlarıyla</b> yapıldı. Nesine'nin marjı yüksektir (bu maçta oranların toplam ihtimali <b>${m.overround != null ? "%" + (100 * m.overround).toFixed(0) : "?"}</b>, Avrupa ortalamasında ~%107), marj çıkarıldıktan sonraki yüzdeler bu yüzden Maçlar sekmesindekilerden biraz farklı çıkabilir. Benzer maçlar yine 38 ligden, 179 bin maçlık havuzdan seçilir; bu maçın ligi havuzda olmayabilir, seçim yalnızca oran profiline bakar.</p>`
       : "";
-    body.innerHTML = `
+    return `
       ${nesineNote}
-      <section><h3>Yorum</h3><p class="sentence comment full" id="sheet-comment" data-id="${esc(m.id)}">${commentary(m, state.live?.[m.id]).full}</p></section>
+      <section><h3>Yorum</h3><p class="sentence comment full" data-mcomment="${esc(m.id)}">${commentary(m, state.live?.[m.id]).full}</p></section>
       <section><h3>Üç ihtimal, üç bakış</h3><div class="table-wrap"><table>
         <thead><tr><th>Sonuç</th><th class="num">Piyasa</th><th class="num hide-sm">Geçmiş (ham)</th><th class="num">Düzeltilmiş</th><th class="num">Sapma</th><th class="num hide-sm">%95 aralık</th><th class="num hide-sm">Adil oran</th><th>Şansla açıklanır mı?</th></tr></thead>
         <tbody>${rows}</tbody></table></div>
@@ -1014,21 +1066,37 @@
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
       ${tol ? `<section><h3>Tolerans eşleşmesi</h3><p class="note">Üç ihtimalin hepsi bu kadar yakın olan geçmiş maç sayısı: ${tol}</p></section>` : ""}
-      <section><h3>Nesine oranları ve defter notları</h3><div id="sheet-nesine">Yükleniyor…</div></section>
-      <section><h3>Aynı takımlar</h3><div id="teams">Yükleniyor…</div></section>
-      <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" id="kseg">${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div id="analogues">Yükleniyor…</div></section>`;
+      <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
+      <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
+      <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" data-kseg>${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div data-analogues>Yükleniyor…</div></section>`;
+  }
+
+  /** Put that body into `root` and start the three lazy parts inside it. */
+  function mountDetail(root, m) {
+    root.innerHTML = detailHTML(m);
+    root.querySelectorAll("[data-kseg] button").forEach((b) => {
+      b.onclick = () => {
+        root.querySelectorAll("[data-kseg] button").forEach((x) => x.classList.toggle("is-on", x === b));
+        loadAnalogues(m, Number(b.dataset.k), root);
+      };
+    });
+    loadAnalogues(m, 25, root);
+    loadTeams(m, root);
+    loadNesineFor(m, root);
+  }
+
+  function openSheet(m) {
+    const src = m.source === "nesine" ? ` · <b>nesine oranıyla</b>` : "";
+    $("#sheet-sub").innerHTML = `${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)}${src} <span id="sheet-live" data-id="${esc(m.id)}">${liveBadge(state.live?.[m.id], m)}</span>`;
+    $("#sheet-title").textContent = `${m.home} – ${m.away}`;
+    mountDetail($("#sheet-body"), m);
     $("#sheet").hidden = false; $("#sheet-backdrop").hidden = false; document.body.style.overflow = "hidden";
     $("#sheet").scrollTop = 0;
-    const load = (k) => loadAnalogues(m, k);
-    body.querySelectorAll("#kseg button").forEach((b) => { b.onclick = () => { body.querySelectorAll("#kseg button").forEach((x) => x.classList.toggle("is-on", x === b)); load(Number(b.dataset.k)); }; });
-    load(25);
-    loadTeams(m);
-    loadNesineFor(m);
   }
 
   /** The same match on nesine: its odds with the movement arrows and every notebook note it fires. */
-  async function loadNesineFor(m) {
-    const box = $("#sheet-nesine");
+  async function loadNesineFor(m, root) {
+    const box = root.querySelector("[data-nesine]");
     if (!box) return;
     try {
       // opened from the Nesine tab the bulletin entry rides along; from Maçlar/Oyun it is fetched by match id
@@ -1067,10 +1135,12 @@
       ${teamRows(t.rows)}${t.n_similar > t.rows.length ? `<p class="note">Son ${t.rows.length} maç gösteriliyor.</p>` : ""}</div>`;
   }
 
-  async function loadTeams(m) {
-    const box = $("#teams");
+  async function loadTeams(m, root) {
+    const box = root.querySelector("[data-teams]");
+    if (!box) return;
     try {
       const d = m._teams !== undefined ? m._teams : await api(`/api/teams/${m.stamp || state.date}/${m.id}`);
+      m._teams = d;   // reopening the panel (a pick re-renders the list) must not hit the API again
       if (!d) { box.innerHTML = `<p class="note">Bu maçın takımları veritabanımızda bulunamadı (nesine yazımı eşleşmedi ya da lig kapsam dışı).</p>`; return; }
       const h = d.h2h;
       const h2h = h.n
@@ -1082,12 +1152,14 @@
     } catch (e) { box.innerHTML = `<p class="note">Takım geçmişi yüklenemedi: ${esc(e.message)}</p>`; }
   }
 
-  async function loadAnalogues(m, k) {
-    const box = $("#analogues");
+  async function loadAnalogues(m, k, root) {
+    const box = root.querySelector("[data-analogues]");
+    if (!box) return;
     try {
       const data = m._analogues && m._analogueK === k ? m._analogues
         : m.nesine_code ? (await api(`/api/nesine-analiz?code=${m.nesine_code}&k=${k}`)).analogues
         : await api(`/api/analogues/${m.stamp || state.date}/${m.id}?k=${k}`);
+      m._analogues = data; m._analogueK = k;
       if (!data.rows.length) { box.textContent = "Benzer maç listesi bulunamadı."; return; }
       const RES = { H: "Ev", D: "Ber.", A: "Dep." };
       const same = data.same_team_count || 0;

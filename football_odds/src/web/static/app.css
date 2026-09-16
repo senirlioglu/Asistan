@@ -313,6 +313,16 @@ td .no { color: var(--ink-3); }
 .infobtn { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface-2);
   color: var(--ink-2); font-family: var(--font-display); font-size: 0.82rem; font-style: italic; line-height: 1; cursor: pointer; }
 .infobtn:hover { color: var(--ink); border-color: var(--ink-3); }
+.infobtn.is-on { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+/* the analysis opened inside the coupon: the picks stay above it, and the way out is at both ends */
+.cp-detail { margin-top: 12px; border-top: 1px dashed var(--line-strong); padding-top: 10px; min-width: 0; }
+.cp-detail-head { position: sticky; top: 56px; z-index: 3; background: var(--surface); display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.cp-detail-head b { font-family: var(--font-display); }
+.cp-detail-head small { display: block; font-size: 0.78rem; }
+.cp-detail-head .btn, .cp-detail-foot .btn { flex: 0 0 auto; padding: 6px 12px; font-size: 0.85rem; }
+.cp-detail-foot { margin-top: 14px; display: flex; justify-content: flex-end; }
+.cp-row .cp-detail { border-top-style: solid; }
 td .infobtn { width: 22px; height: 22px; font-size: 0.75rem; vertical-align: middle; margin-right: 4px; }
 .cp-mks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .cp-mk { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
