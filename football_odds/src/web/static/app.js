@@ -1179,6 +1179,7 @@
       : "";
     return `
       ${nesineNote}
+      ${decisionHTML(m)}
       <section><h3>Yorum</h3><p class="sentence comment full" data-mcomment="${esc(m.id)}">${commentary(m, state.live?.[m.id]).full}</p></section>
       <section><h3>Üç ihtimal, üç bakış</h3><div class="table-wrap"><table>
         <thead><tr><th>Sonuç</th><th class="num">Piyasa</th><th class="num hide-sm">Geçmiş (ham)</th><th class="num">Düzeltilmiş</th><th class="num">Sapma</th><th class="num hide-sm">%95 aralık</th><th class="num hide-sm">Adil oran</th><th>Şansla açıklanır mı?</th></tr></thead>
@@ -1189,13 +1190,13 @@
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
       ${tol ? `<section><h3>Tolerans eşleşmesi</h3><p class="note">Üç ihtimalin hepsi bu kadar yakın olan geçmiş maç sayısı: ${tol}</p></section>` : ""}
-      <section><h3>Oran hareketi <small class="muted">(nesine, kick-off'a doğru)</small></h3>${whatFor("move")}<div data-move>Yükleniyor…</div></section>
-      <section><h3>Maç künyesi <small class="muted">(maç öncesi bilinenler)</small></h3>${whatFor("dna")}<div data-dna>Yükleniyor…</div></section>
-      <section><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3>${whatFor("twins")}
+      <section data-anchor="move"><h3>Oran hareketi <small class="muted">(nesine, kick-off'a doğru)</small></h3>${whatFor("move")}<div data-move>Yükleniyor…</div></section>
+      <section data-anchor="dna"><h3>Maç künyesi <small class="muted">(maç öncesi bilinenler)</small></h3>${whatFor("dna")}<div data-dna>Yükleniyor…</div></section>
+      <section data-anchor="twins"><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3>${whatFor("twins")}
         <div class="kseg" data-twink>${[25, 50, 100, 250].map((k) => `<button type="button" data-k="${k}" class="${k === 50 ? "is-on" : ""}">${k}</button>`).join("")}</div>
         <div data-twins>Yükleniyor…</div></section>
-      <section><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3>${whatFor("patterns")}<div data-patterns>Yükleniyor…</div></section>
-      <section><h3>İki takım birlikte <small class="muted">(koşul koşul)</small></h3>${whatFor("combo")}<div data-combo>Yükleniyor…</div></section>
+      <section data-anchor="patterns"><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3>${whatFor("patterns")}<div data-patterns>Yükleniyor…</div></section>
+      <section data-anchor="combo"><h3>İki takım birlikte <small class="muted">(koşul koşul)</small></h3>${whatFor("combo")}<div data-combo>Yükleniyor…</div></section>
       <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
       <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" data-kseg>${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div data-analogues>Yükleniyor…</div></section>`;
@@ -1253,9 +1254,139 @@
     return x ? `<details class="whatfor"><summary>Bu bölüm ne işe yarar?</summary><div>${x[1]}</div></details>` : "";
   }
 
+
+  // ---------------------------------------------------------------- karar özeti
+  // Every engine already answers the same question — "is this different from the price, and by how
+  // much, and how sure are we" — but the answers were scattered over twelve sections and the reader
+  // had to combine the intervals in their head. This card puts them on one line each, drawn against
+  // zero, and then says out loud what the combination means. In most matches that sentence is
+  // "nothing here", which is the honest majority case and the one the old layout hid best.
+  const DECISION_ROWS = [
+    ["price", "Benzer fiyat", "Fiyatı bu maça benzeyen geçmiş maçlar (ana motor)"],
+    ["twins", "Çok boyutlu ikiz", "Fiyat + güç + form + gol benzerliği"],
+    ["pattern", "Form deseni", "Aynı form dizisiyle gelen takımlar"],
+    ["combo", "İki takım birlikte", "Her iki takımın durumu aynı anda"],
+    ["move", "Oran hareketi", "Fiyat kick-off'a doğru ne yaptı"],
+  ];
+  const DECISION_OUTCOMES = [["home", "Ev sahibi kazanır"], ["draw", "Beraberlik"],
+                             ["away", "Deplasman kazanır"], ["over25", "2,5 üst"]];
+
+  function decisionHTML(m) {
+    const best = (m.market?.h >= m.market?.a && m.market?.h >= m.market?.d) ? "home"
+      : (m.market?.a >= m.market?.d ? "away" : "draw");
+    return `<section class="decide" data-decide data-oc="${best}">
+      <div class="decide-top"><h3>Karar özeti</h3>
+        <select data-decide-oc aria-label="Hangi sonuç">${DECISION_OUTCOMES.map(([k, t]) =>
+          `<option value="${k}"${k === best ? " selected" : ""}>${t}</option>`).join("")}</select></div>
+      <div class="decide-mk" data-decide-mk></div>
+      <div class="table-wrap"><table class="decide-tbl"><thead><tr><th>Motor</th><th class="num">Fark</th>
+        <th>Sıfıra göre</th><th class="num hide-sm">%95 aralık</th></tr></thead>
+        <tbody>${DECISION_ROWS.map(([k, label, hint]) =>
+          `<tr data-row="${k}"><td class="wrap"><button type="button" class="jump" data-jump="${k}" title="${esc(hint)}">${label}</button></td>
+           <td class="num" data-cell="edge">…</td><td data-cell="bar"></td>
+           <td class="num hide-sm" data-cell="ci">…</td></tr>`).join("")}</tbody></table></div>
+      <p class="decide-verdict" data-decide-verdict>Motorlar yükleniyor…</p>
+    </section>`;
+  }
+
+  /** One interval drawn against zero. The only thing worth seeing at a glance is whether it crosses. */
+  function ciBar(edge, lo, hi) {
+    if (edge == null || lo == null || hi == null) return `<span class="muted">–</span>`;
+    const span = Math.max(12, Math.abs(lo), Math.abs(hi), Math.abs(edge)) * 1.1;
+    const x = (v) => 50 + 50 * (Math.max(-span, Math.min(span, v)) / span);
+    const crosses = lo <= 0 && hi >= 0;
+    return `<svg class="cib ${crosses ? "" : "solid"}" viewBox="0 0 100 14" preserveAspectRatio="none"
+        role="img" aria-label="${edge > 0 ? "+" : ""}${edge.toFixed(1)} puan, aralık ${lo.toFixed(1)} ile ${hi.toFixed(1)}, sıfırı ${crosses ? "içeriyor" : "içermiyor"}">
+      <line class="zero" x1="50" y1="0" x2="50" y2="14"/>
+      <line class="rng" x1="${x(lo).toFixed(1)}" y1="7" x2="${x(hi).toFixed(1)}" y2="7"/>
+      <circle class="pt" cx="${x(edge).toFixed(1)}" cy="7" r="2.6"/></svg>`;
+  }
+
+  /** Each loader reports here as it finishes; the verdict is recomputed from whatever has arrived. */
+  function setDecision(root, key, data) {
+    const box = root.querySelector("[data-decide]");
+    if (!box) return;
+    box._got = box._got || {};
+    if (data !== undefined) box._got[key] = data;
+    const oc = box.dataset.oc;
+    const rows = box._got;
+    let crossing = 0, solid = 0, known = 0;
+    DECISION_ROWS.forEach(([k]) => {
+      const tr = box.querySelector(`[data-row="${k}"]`);
+      if (!tr) return;
+      const got = rows[k];
+      const v = got && typeof got === "function" ? got(oc) : got;
+      if (!v) { tr.querySelector('[data-cell="edge"]').textContent = rows[k] === null ? "yok" : "…";
+                tr.querySelector('[data-cell="ci"]').textContent = "–";
+                tr.querySelector('[data-cell="bar"]').innerHTML = ""; return; }
+      if (v.text) {                                    // movement: a label, not an edge
+        tr.querySelector('[data-cell="edge"]').innerHTML = esc(v.text);
+        tr.querySelector('[data-cell="ci"]').textContent = v.note || "–";
+        tr.querySelector('[data-cell="bar"]').innerHTML = "";
+        return;
+      }
+      const [lo, hi] = v.ci || [null, null];
+      tr.querySelector('[data-cell="edge"]').innerHTML = v.edge == null ? "–"
+        : `<b class="${lo != null && (lo > 0 || hi < 0) ? "yes" : ""}">${pp1(v.edge)}</b>`;
+      tr.querySelector('[data-cell="ci"]').textContent = lo == null ? "–" : `[${pp1(lo)}, ${pp1(hi)}]`;
+      tr.querySelector('[data-cell="bar"]').innerHTML = ciBar(v.edge, lo, hi);
+      if (lo != null) { known++; if (lo > 0 || hi < 0) solid++; else crossing++; }
+    });
+    const vb = box.querySelector("[data-decide-verdict]");
+    if (!known) { vb.textContent = "Motorlar yükleniyor…"; return; }
+    const name = (DECISION_OUTCOMES.find(([k]) => k === oc) || [, oc])[1];
+    vb.innerHTML = solid === 0
+      ? `<b>«${esc(name)}» için ${known} ölçümün ${known === 1 ? "tamamı" : "hepsi"} sıfırı içeriyor — bu maçta piyasadan
+         ayrılan bir şey bulunamadı.</b> Bu, sonucun ne olacağı hakkında bir şey söylemez; sadece bizim fiyata
+         ekleyecek bir şeyimiz olmadığını söyler.`
+      : `${known} ölçümden <b>${solid} tanesi</b> sıfırı dışlıyor, ${crossing} tanesi içeriyor.
+         Dışlayan satır(lar) tek başına bir bahis gerekçesi değildir: aynı maçta dört market ve beş motor
+         ölçülüyor, yani bu kadar testten birinin şans eseri sıfırı dışlaması beklenen bir şeydir.
+         <b>Hiçbir motor ileriye dönük testte piyasayı geçemedi</b> (Araştırma sekmesi).`;
+  }
+
+  function mountDecision(root, m) {
+    const box = root.querySelector("[data-decide]");
+    if (!box) return;
+    const mk = box.querySelector("[data-decide-mk]");
+    const sel = box.querySelector("[data-decide-oc]");
+    const paint = () => {
+      const oc = box.dataset.oc, k = KEY[oc];
+      const p = oc === "over25" ? m.over25 : m.market?.[k];
+      const fair = oc === "over25" ? (m.over25 ? 100 / m.over25 : null) : m.fair?.[k];
+      const mkt = oc === "over25" ? m.market_over25 : m.market?.[k];
+      mk.innerHTML = `<span>Piyasa <b>${pct(mkt, 1)}</b></span>
+        <span>Geçmiş (düzeltilmiş) <b>${pct(p, 1)}</b></span>
+        <span>Adil oran <b>${num(fair)}</b></span>
+        <span class="muted">${esc((DECISION_OUTCOMES.find(([x]) => x === oc) || [, ""])[1])}</span>`;
+      setDecision(root, "__paint", undefined);
+    };
+    sel.onchange = () => { box.dataset.oc = sel.value; paint(); };
+    // the card doubles as the table of contents: the engines themselves sit eight sections further
+    // down, which is how a reader ends up asking which tab they are on
+    const ANCHOR = { price: "twins", twins: "twins", pattern: "patterns", combo: "combo", move: "move" };
+    box.querySelectorAll("[data-jump]").forEach((b) => {
+      b.onclick = () => {
+        const target = root.querySelector(`[data-anchor="${ANCHOR[b.dataset.jump] || b.dataset.jump}"]`);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+    });
+    paint();
+    // the price engine's own answer is already in the payload
+    const priceRow = (oc) => {
+      if (oc === "over25") return { edge: null, ci: [null, null] };
+      const k = KEY[oc], [outside, ci] = outsideCI(m, oc);
+      const raw = (m.ci?.[k] || [null, null]);
+      return { edge: m.edge?.[k], ci: m.market?.[k] == null || raw[0] == null ? [null, null]
+                 : [raw[0] - m.market[k], raw[1] - m.market[k]] };
+    };
+    setDecision(root, "price", priceRow);
+  }
+
   /** Put that body into `root` and start the three lazy parts inside it. */
   function mountDetail(root, m) {
     root.innerHTML = detailHTML(m);
+    mountDecision(root, m);
     root.querySelectorAll("[data-kseg] button").forEach((b) => {
       b.onclick = () => {
         root.querySelectorAll("[data-kseg] button").forEach((x) => x.classList.toggle("is-on", x === b));
@@ -1291,6 +1422,15 @@
         : await api(`/api/kombine/${encodeURIComponent(m.id)}?length=${length}&approx=${approx}`);
       m._combo[key] = d;
       const q = d.match;
+      setDecision(root, "combo", (want) => {
+        const key = { home: "win", draw: "draw", away: "loss", over25: "over25" }[want];
+        // the last row that still rests on a readable sample: below 200 the interval is the answer
+        const usable = (d.rows || []).filter((r) => (r.outcomes?.[key]?.n || 0) >= 200);
+        const r = usable[usable.length - 1];
+        const x = r?.outcomes?.[key];
+        if (!x) return { edge: null, ci: [null, null] };
+        return { edge: x.edge != null ? x.edge : x.vs_ref, ci: x.edge_ci || x.vs_ref_ci || [null, null] };
+      });
       const oc = opts.outcome || "win";
       const rows = d.rows.map((r) => {
         const x = r.outcomes[oc] || {};
@@ -1353,6 +1493,14 @@
     try {
       const d = m._move !== undefined ? m._move : await api(`/api/hareket/${code}`);
       m._move = d;
+      setDecision(root, "move", (oc) => {
+        const path = { home: "ms.1", draw: "ms.X", away: "ms.2" }[oc];
+        const sel = path && d.selections?.[path];
+        if (!sel || sel.missing) return { text: "—", note: "bu markette kayıt yok" };
+        const v = sel.movement;
+        if (v.confidence === "low") return { text: "düşük güven", note: `${v.n_points || 0} snapshot` };
+        return { text: (MOVE_TR[v.type] || [v.type])[0], note: v.total_pp == null ? "–" : `${pp1(v.total_pp)} puan` };
+      });
       const rows = Object.entries(d.selections).map(([path, s]) => mvBlock(path, s, d)).filter(Boolean);
       box.innerHTML = rows.length
         ? rows.join("")
@@ -1460,6 +1608,10 @@
       const d = m._twins[k] !== undefined ? m._twins[k] : await api(`/api/twins/${encodeURIComponent(m.id)}?k=${k}`);
       m._twins[k] = d;
       if (dna) dna.innerHTML = dnaHTML(d.match);
+      setDecision(root, "twins", (oc) => {
+        const x = d.outcomes?.[{ home: "win", draw: "draw", away: "loss", over25: "over25" }[oc]];
+        return x && x.diff != null ? { edge: x.diff, ci: x.diff_ci } : { edge: null, ci: [null, null] };
+      });
       const g = d.diagnostics, w = d.outcomes?.win;
       const rows = d.twins.map((t) => `<tr><td class="num">${fmtShort(t.date)}</td><td class="wrap">${esc(t.home_team)} – ${esc(t.away_team)}</td>
         <td class="num"><b>${num(t.twin_score, 1)}</b></td><td class="num hide-sm">${num(t.sim_market, 0)}</td>
@@ -1511,6 +1663,11 @@
       const d = m._pat[approx] !== undefined ? m._pat[approx] : await api(`/api/patterns/${encodeURIComponent(m.id)}?approx=${approx}`);
       m._pat[approx] = d;
       const q = d.match;
+      setDecision(root, "pattern", (oc) => {
+        const x = d.levels?.all?.outcomes?.[{ home: "win", draw: "draw", away: "loss", over25: "over25" }[oc]];
+        if (!x) return { edge: null, ci: [null, null] };
+        return { edge: x.edge != null ? x.edge : x.vs_ref, ci: x.edge_ci || x.vs_ref_ci || [null, null] };
+      });
       const near = d.levels.all?.n ?? 0;
       const lvOrder = ["same_team", "all", "similar"].filter((k) => d.levels[k]);
       const body = d.outcomes.map((o) => {

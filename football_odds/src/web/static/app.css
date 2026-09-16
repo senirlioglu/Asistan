@@ -453,3 +453,26 @@ tr.thin td { color: var(--ink-3); }          /* under 200 matches: visible, but 
 #rs-purpose { margin: 0 0 16px; }
 #rs-purpose ul { margin: 8px 0; padding-left: 18px; }
 #rs-purpose li { margin: 6px 0; }
+
+/* Karar özeti: every engine's answer to the same question, drawn against zero. The point of the
+   card is the verdict line at the bottom — in most matches it reads "nothing here", which is the
+   honest majority case and the one a twelve-section layout hides best. */
+.decide { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px 14px; margin: 0 0 16px; background: var(--surface); }
+.decide-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.decide-top h3 { margin: 0; font-size: 1rem; }
+.decide-top select { font: inherit; font-size: 0.85rem; padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--ground); color: var(--ink); }
+.decide-mk { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 10px; }
+.decide-mk b { color: var(--ink); }
+.decide-tbl td, .decide-tbl th { padding: 5px 6px; }
+.decide-tbl td[data-cell="bar"] { width: 110px; }
+.cib { width: 100px; height: 14px; display: block; }
+.cib .zero { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; }
+.cib .rng { stroke: var(--ink-3); stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.cib .pt { fill: var(--ink-2); }
+.cib.solid .rng { stroke: var(--good); } .cib.solid .pt { fill: var(--good); }
+.decide-verdict { margin: 10px 0 0; font-size: 0.88rem; line-height: 1.5; color: var(--ink-2); }
+.decide-verdict b { color: var(--ink); }
+@media (max-width: 520px) { .decide-tbl td[data-cell="bar"] { width: 70px; } .cib { width: 64px; } }
+.decide-tbl .jump { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-align: left;
+  border-bottom: 1px dotted var(--line-strong); cursor: pointer; }
+.decide-tbl .jump:hover { color: var(--market); }
