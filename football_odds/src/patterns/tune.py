@@ -262,25 +262,42 @@ def run(settings: Settings, windows: Windows = DEFAULT_WINDOWS, n_val: int = 600
     base = twins.Weights()
     best, tried = search(index, val, base, k=k)
 
-    # "does time decay help?" deserves its own number rather than an inference from the search: the
-    # half lives are swept once more at the FINAL weights, on both windows. The search only ever saw
-    # them at the weights it happened to hold at the time.
-    sweep_val = [_Scored(best.weights, hl) for hl in HALF_LIVES]
-    _evaluate(index, val, sweep_val, k)
-    sweep_test = [_Scored(best.weights, hl) for hl in HALF_LIVES]
-    _evaluate(index, test, sweep_test, k)
-    decay = [{"half_life": v.half_life, "validation": round(v.logloss, 5), "test": round(t.logloss, 5)}
-             for v, t in zip(sweep_val, sweep_test)]
+    # The greedy walk judges the half life and the missing penalty at whichever weights it happens to
+    # hold at the time, and never looks again once the weights move. Both are therefore refined once
+    # at the FINAL weights, jointly, on the validation window -- 25 configurations, which is cheap --
+    # and the winner of THAT is what ships. Picking here is still picking on validation; the test
+    # window is read afterwards and takes no part in the choice.
+    grid = [(hl, pen) for hl in HALF_LIVES for pen in PENALTIES]
+    joint = [_Scored(best.weights.replace(missing_penalty=pen), hl) for hl, pen in grid]
+    _evaluate(index, val, joint, k)
+    refined = min((c for c in joint if np.isfinite(c.logloss)), key=lambda c: c.logloss, default=best)
+    if refined.logloss < best.logloss:
+        log.info("refinement: %.5f -> %.5f (hl=%s, ceza=%s)", best.logloss, refined.logloss,
+                 refined.half_life, refined.weights.missing_penalty)
+        best = refined
+    tried += [{**c.as_dict(), "refine": True} for c in joint]
 
-    # "what is an incomparable category worth?" deserves the same treatment. The greedy search only
-    # ever sees the penalty at whichever weights it happens to hold, and the record of what it tried
-    # is truncated, so the matched sweep is run once at the final weights and written out in full.
-    pen_val = [_Scored(best.weights.replace(missing_penalty=v), best.half_life) for v in PENALTIES]
-    _evaluate(index, val, pen_val, k)
-    pen_test = [_Scored(best.weights.replace(missing_penalty=v), best.half_life) for v in PENALTIES]
-    _evaluate(index, test, pen_test, k)
-    penalty = [{"missing_penalty": v.weights.missing_penalty, "validation": round(v.logloss, 5),
-                "test": round(t.logloss, 5)} for v, t in zip(pen_val, pen_test)]
+    # the two marginal sweeps, at the settings that actually ship, so each question has a readable
+    # answer instead of one that has to be reconstructed from the trial record
+    def _sweep(vary: str):
+        made = [_Scored(best.weights.replace(missing_penalty=v), best.half_life) for v in PENALTIES] if vary == "pen" \
+            else [_Scored(best.weights, hl) for hl in HALF_LIVES]
+        at_val = {c.key(): c for c in joint}
+        out = []
+        for c in made:
+            cached = at_val.get(c.key())
+            v = cached.logloss if cached is not None else float("nan")
+            out.append((c, v))
+        on_test = [_Scored(c.weights, c.half_life) for c, _ in out]
+        _evaluate(index, test, on_test, k)
+        return out, on_test
+
+    pen_pairs, pen_test = _sweep("pen")
+    penalty = [{"missing_penalty": c.weights.missing_penalty, "validation": round(v, 5),
+                "test": round(t.logloss, 5)} for (c, v), t in zip(pen_pairs, pen_test)]
+    hl_pairs, hl_test = _sweep("hl")
+    decay = [{"half_life": c.half_life, "validation": round(v, 5), "test": round(t.logloss, 5)}
+             for (c, v), t in zip(hl_pairs, hl_test)]
 
     # the test window is read ONCE, after the choice is frozen, for the defaults and the winner
     frozen = [_Scored(base, None), _Scored(best.weights, best.half_life)]
