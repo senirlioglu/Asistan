@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-16T11:26:32.717814+00:00",
+  "generated_at": "2026-09-16T13:51:46.265275+00:00",
   "windows": {
     "validation": [
       "2018-07-01",
@@ -12,8 +12,8 @@
   },
   "k": 100,
   "prior_for_adjusted": 200.0,
-  "n_configs": 79,
-  "seconds": 468,
+  "n_configs": 87,
+  "seconds": 476,
   "chosen": {
     "weights": {
       "market": 6.0,
@@ -24,6 +24,7 @@
       "goals": 4.0,
       "movement": 1.0
     },
+    "missing_penalty": 0.5,
     "half_life": null,
     "n": 500,
     "logloss": 1.00572,
@@ -41,6 +42,7 @@
       "goals": 1.0,
       "movement": 1.0
     },
+    "missing_penalty": 0.5,
     "half_life": null,
     "n": 500,
     "logloss": 1.01361,
@@ -87,6 +89,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 1000,
       "logloss": 0.9853,
@@ -104,6 +107,7 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 1000,
       "logloss": 0.99403,
@@ -129,6 +133,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00572,
@@ -146,6 +151,7 @@
         "goals": 4.0,
         "movement": 4.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00633,
@@ -163,6 +169,7 @@
         "goals": 4.0,
         "movement": 2.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00704,
@@ -180,6 +187,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00725,
@@ -197,6 +205,7 @@
         "goals": 4.0,
         "movement": 0.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00734,
@@ -214,6 +223,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.0075,
@@ -231,6 +241,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": 12.0,
       "n": 500,
       "logloss": 1.00759,
@@ -248,6 +259,7 @@
         "goals": 4.0,
         "movement": 0.5
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00765,
@@ -265,12 +277,31 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": 8.0,
       "n": 500,
       "logloss": 1.00776,
       "brier": 0.60354,
       "logloss_adj": 1.00393,
       "brier_adj": 0.60161
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "missing_penalty": 1.0,
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00793,
+      "brier": 0.60365,
+      "logloss_adj": 1.00396,
+      "brier_adj": 0.60167
     },
     {
       "weights": {
@@ -282,6 +313,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00794,
@@ -299,6 +331,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00811,
@@ -316,6 +349,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00815,
@@ -333,6 +367,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": 5.0,
       "n": 500,
       "logloss": 1.00829,
@@ -346,10 +381,47 @@
         "strength": 2.0,
         "opponent": 2.0,
         "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "missing_penalty": 0.75,
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00848,
+      "brier": 0.60402,
+      "logloss_adj": 1.00423,
+      "brier_adj": 0.60181
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "missing_penalty": 0.25,
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00862,
+      "brier": 0.60472,
+      "logloss_adj": 1.00437,
+      "brier_adj": 0.60207
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
         "form": 0.0,
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00878,
@@ -367,6 +439,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.0089,
@@ -384,6 +457,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00951,
@@ -401,6 +475,7 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00957,
@@ -418,6 +493,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.0096,
@@ -435,6 +511,7 @@
         "goals": 3.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00963,
@@ -452,6 +529,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00967,
@@ -469,6 +547,7 @@
         "goals": 4.0,
         "movement": 3.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.00995,
@@ -486,6 +565,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": 3.0,
       "n": 500,
       "logloss": 1.01,
@@ -503,6 +583,7 @@
         "goals": 4.0,
         "movement": 4.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01025,
@@ -521,6 +602,7 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.0104,
@@ -538,6 +620,7 @@
         "goals": 4.0,
         "movement": 4.0
       },
+      "missing_penalty": 0.5,
       "half_life": 12.0,
       "n": 500,
       "logloss": 1.0105,
@@ -556,6 +639,7 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01074,
@@ -573,6 +657,7 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01095,
@@ -590,6 +675,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01154,
@@ -607,6 +693,7 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.0116,
@@ -624,6 +711,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01175,
@@ -641,6 +729,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01182,
@@ -658,6 +747,7 @@
         "goals": 1.0,
         "movement": 0.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01203,
@@ -675,6 +765,7 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01218,
@@ -692,6 +783,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01225,
@@ -709,6 +801,7 @@
         "goals": 1.0,
         "movement": 0.5
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01233,
@@ -726,6 +819,7 @@
         "goals": 4.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01235,
@@ -743,63 +837,13 @@
         "goals": 1.0,
         "movement": 1.0
       },
+      "missing_penalty": 0.5,
       "half_life": null,
       "n": 500,
       "logloss": 1.01236,
       "brier": 0.60727,
       "logloss_adj": 1.00586,
       "brier_adj": 0.60295
-    },
-    {
-      "weights": {
-        "market": 3.0,
-        "strength": 2.0,
-        "opponent": 2.0,
-        "gap": 2.0,
-        "form": 1.0,
-        "goals": 1.0,
-        "movement": 1.0
-      },
-      "half_life": null,
-      "n": 500,
-      "logloss": 1.01237,
-      "brier": 0.60781,
-      "logloss_adj": 1.00579,
-      "brier_adj": 0.60319
-    },
-    {
-      "weights": {
-        "market": 3.0,
-        "strength": 2.0,
-        "opponent": 2.0,
-        "gap": 2.0,
-        "form": 1.5,
-        "goals": 1.0,
-        "movement": 3.0
-      },
-      "half_life": null,
-      "n": 500,
-      "logloss": 1.01284,
-      "brier": 0.60717,
-      "logloss_adj": 1.00583,
-      "brier_adj": 0.6029
-    },
-    {
-      "weights": {
-        "market": 3.0,
-        "strength": 2.0,
-        "opponent": 0.5,
-        "gap": 2.0,
-        "form": 1.5,
-        "goals": 4.0,
-        "movement": 1.0
-      },
-      "half_life": null,
-      "n": 500,
-      "logloss": 1.01302,
-      "brier": 0.60761,
-      "logloss_adj": 1.00584,
-      "brier_adj": 0.60304
     }
   ]
 }

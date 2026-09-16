@@ -42,6 +42,8 @@ from .discovery import DEFAULT_WINDOWS, Windows
 
 log = get_logger("patterns.tune")
 
+PENALTIES = (0.0, 0.25, 0.5, 0.75, 1.0)   # what an incomparable category is worth
+
 GRID = {                                  # the values each category weight may take
     "market": (0.0, 1.0, 2.0, 3.0, 4.0, 6.0),
     "strength": (0.0, 0.5, 1.0, 2.0, 3.0, 4.0),
@@ -54,7 +56,7 @@ GRID = {                                  # the values each category weight may 
     # (a 2014 match has no closing line; penalising it for that is penalising the archive's age, not
     # the match's dissimilarity). 1.0 counts it at full weight as a flat 50. This was a hand-set
     # 0.5 until the search was allowed an opinion.
-    "missing_penalty": (0.0, 0.25, 0.5, 0.75, 1.0),
+    "missing_penalty": PENALTIES,
 }
 HALF_LIVES = (None, 3.0, 5.0, 8.0, 12.0)
 K = 100
@@ -270,6 +272,16 @@ def run(settings: Settings, windows: Windows = DEFAULT_WINDOWS, n_val: int = 600
     decay = [{"half_life": v.half_life, "validation": round(v.logloss, 5), "test": round(t.logloss, 5)}
              for v, t in zip(sweep_val, sweep_test)]
 
+    # "what is an incomparable category worth?" deserves the same treatment. The greedy search only
+    # ever sees the penalty at whichever weights it happens to hold, and the record of what it tried
+    # is truncated, so the matched sweep is run once at the final weights and written out in full.
+    pen_val = [_Scored(best.weights.replace(missing_penalty=v), best.half_life) for v in PENALTIES]
+    _evaluate(index, val, pen_val, k)
+    pen_test = [_Scored(best.weights.replace(missing_penalty=v), best.half_life) for v in PENALTIES]
+    _evaluate(index, test, pen_test, k)
+    penalty = [{"missing_penalty": v.weights.missing_penalty, "validation": round(v.logloss, 5),
+                "test": round(t.logloss, 5)} for v, t in zip(pen_val, pen_test)]
+
     # the test window is read ONCE, after the choice is frozen, for the defaults and the winner
     frozen = [_Scored(base, None), _Scored(best.weights, best.half_life)]
     _evaluate(index, test, frozen, k)
@@ -285,6 +297,7 @@ def run(settings: Settings, windows: Windows = DEFAULT_WINDOWS, n_val: int = 600
         "k": k, "prior_for_adjusted": PRIOR, "n_configs": len(tried),
         "seconds": round((dt.datetime.now() - started).total_seconds()),
         "chosen": best.as_dict(), "default_on_validation": base_val, "decay_sweep": decay,
+        "penalty_sweep": penalty,
         "test": {"chosen": best_test.as_dict(), "default": base_test.as_dict(), "market": mk},
         "beats_default_on_test": bool(np.isfinite(best_test.logloss) and np.isfinite(base_test.logloss)
                                       and best_test.logloss < base_test.logloss),
@@ -318,4 +331,9 @@ def report(out: dict) -> str:
     for d in out.get("decay_sweep", []):
         name = "kapalı" if d["half_life"] is None else f"{d['half_life']:g} yıl"
         lines.append(f"    {name:<11} {d['validation']:.5f}   {d['test']:.5f}")
+    if out.get("penalty_sweep"):
+        lines += ["", "  KARŞILAŞTIRILAMAYAN KATEGORİ NE DEĞER (0 = düşür ve yeniden normalize et)",
+                  "    ceza        doğrulama      test"]
+        for d in out["penalty_sweep"]:
+            lines.append(f"    {d['missing_penalty']:<11g} {d['validation']:.5f}   {d['test']:.5f}")
     return "\n".join(lines)
