@@ -472,3 +472,104 @@ def test_nothing_survives_when_the_price_is_always_right():
     res = discovery.discover(pool, min_n=100, patterns=[engine.Pattern(form=f, side="home") for f in ("WWWWW", "LLL")])
     assert res["stages"]["survived_test"] == 0
     assert "Hiçbir desen üç pencereden de geçemedi." in discovery.report(res)
+
+
+# --------------------------------------------------------------------------- time decay and tuning
+from src.patterns import tune  # noqa: E402
+
+
+def test_time_decay_makes_an_old_twin_count_for_less():
+    """A twin from twelve years ago is still a twin; its evidence is simply worth less."""
+    old, new = np.datetime64("2014-01-01"), np.datetime64("2025-01-01")
+    w = twins.decay_weights(np.array([old, new]), pd.Timestamp("2026-01-01"), half_life=5.0)
+    assert w[1] > w[0] > 0
+    assert round(float(w[0] / w[1]), 3) == round(float(0.5 ** (11 / 5)), 3)   # eleven years apart
+    flat = twins.decay_weights(np.array([old, new]), pd.Timestamp("2026-01-01"), half_life=None)
+    assert list(flat) == [1.0, 1.0]                                          # the pre-decay behaviour
+
+
+def test_decayed_outcomes_move_towards_the_recent_twins_and_shrink_the_sample():
+    """Half the twins say one thing in 2013 and the other half the opposite in 2025."""
+    rows = []
+    for d, ftr in [("2013-01-01", "H"), ("2013-02-01", "H"), ("2025-01-01", "A"), ("2025-02-01", "A")]:
+        rows.append({**_twin_row(d, "WWDLW", "LDWDL"), "ftr": ftr})
+    rows.append(_twin_row("2026-01-01", "WWDLW", "LDWDL"))
+    pool = _twin_pool(rows)
+    q, as_of = pool.iloc[4], pool.iloc[4]["date"]
+
+    flat = twins.TwinIndex(pool).query(q, k=4, as_of=as_of)
+    decayed = twins.TwinIndex(pool, half_life=3.0).query(q, k=4, as_of=as_of)
+
+    assert flat.outcomes["win"]["actual"] == 50.0                            # two of four, unweighted
+    assert decayed.outcomes["win"]["actual"] < 20.0                          # the 2013 pair barely counts
+    assert decayed.diagnostics["n_eff"] < flat.diagnostics["n_eff"] == 4.0   # and it says so
+    assert decayed.outcomes["win"]["n"] == 4                                 # the raw count is unchanged
+    assert decayed.outcomes["win"]["n_eff"] < 4.0
+
+
+def test_a_decayed_sample_carries_a_wider_interval_at_the_same_rate():
+    """Compared at an unchanged rate — otherwise the interval moves because p moved, not because the
+    evidence thinned."""
+    rows = [{**_twin_row(d, "WWDLW", "LDWDL"), "ftr": "H"}
+            for d in ("2013-01-01", "2013-02-01", "2025-01-01", "2025-02-01")]
+    pool = _twin_pool(rows + [_twin_row("2026-01-01", "WWDLW", "LDWDL")])
+    q, as_of = pool.iloc[4], pool.iloc[4]["date"]
+    flat = twins.TwinIndex(pool).query(q, k=4, as_of=as_of).outcomes["win"]
+    decayed = twins.TwinIndex(pool, half_life=3.0).query(q, k=4, as_of=as_of).outcomes["win"]
+    assert flat["actual"] == decayed["actual"] == 100.0
+    assert decayed["ci"][0] < flat["ci"][0]                                   # same rate, less certainty
+
+
+def test_the_batch_scorer_reproduces_the_live_query():
+    """`tune` re-weights cached category scores instead of running a query per configuration; if the
+    two ever disagree the search would be tuning something the site does not run."""
+    rows = [_twin_row(f"2026-01-{d:02d}", "WWDLW" if d % 2 else "LLDWW", "LDWDL", p_home=0.3 + d / 100)
+            for d in range(1, 16)]
+    pool = _twin_pool(rows).sort_values(["date", "match_id"]).reset_index(drop=True)
+    idx = twins.TwinIndex(pool)
+    q = pool.iloc[[14]]
+    cfg = tune._Scored(twins.Weights(), None)
+    batch = tune._probs_for_configs(idx, q, [cfg], k=6, log_every=0)[0, 0]
+
+    res = idx.query(pool.iloc[14], k=6, as_of=pool.iloc[14]["date"])
+    ftr = res.rows["ftr"].astype(str).to_numpy()
+    assert np.allclose(batch, [(ftr == "H").mean(), (ftr == "D").mean(), (ftr == "A").mean()], atol=1e-6)
+
+
+def test_a_category_at_weight_zero_is_absent_rather_than_scored_fifty():
+    """Zero weight must drop the category out of both sums; counting it as `missing` at 50 would let
+    a switched-off category still push the score around."""
+    pool = _twin_pool([_twin_row("2026-01-01", "WWDLW", "LDWDL", p_home=0.20),
+                       _twin_row("2026-01-02", "WWDLW", "LDWDL", p_home=0.50)])
+    w = twins.Weights(market=0.0, strength=1.0, opponent=1.0, gap=1.0, form=1.0, goals=1.0, movement=1.0)
+    res = twins.TwinIndex(pool, weights=w).query(pool.iloc[1], k=2)
+    assert res.rows.iloc[0]["twin_score"] == 100.0        # identical everywhere except the ignored price
+
+
+def test_a_tuned_mix_that_loses_on_the_test_window_is_not_adopted(tmp_path):
+    """The third window is not decoration: a configuration that only looked good while being chosen
+    must never reach the live engine."""
+    import json
+
+    (tmp_path / "backtest").mkdir()
+    payload = {"chosen": {"weights": {"market": 9.0, "strength": 0.0, "opponent": 0.0, "gap": 0.0,
+                                      "form": 0.0, "goals": 0.0, "movement": 0.0}, "half_life": 3.0},
+               "beats_default_on_test": False, "test": {}}
+    p = tmp_path / "backtest" / "twin_weights.json"
+    p.write_text(json.dumps(payload), encoding="utf-8")
+
+    w, hl, meta = twins.load_weights(tmp_path)
+    assert w.as_dict() == twins.Weights().as_dict() and hl is None
+    assert meta["source"] == "varsayılan" and "geçemedi" in meta["reason"]
+
+    p.write_text(json.dumps({**payload, "beats_default_on_test": True}), encoding="utf-8")
+    w, hl, meta = twins.load_weights(tmp_path)
+    assert w.market == 9.0 and w.form == 0.0 and hl == 3.0 and meta["source"] == "ayarlanmış"
+
+
+def test_tuning_never_scores_a_configuration_on_the_window_that_chose_it():
+    """The windows must not overlap — otherwise `test` is just more validation."""
+    v_lo, v_hi = tune.DEFAULT_WINDOWS.validation
+    t_lo, t_hi = tune.DEFAULT_WINDOWS.test
+    assert pd.Timestamp(v_hi) <= pd.Timestamp(t_lo)
+    assert pd.Timestamp(tune.DEFAULT_WINDOWS.train[1]) <= pd.Timestamp(v_lo)

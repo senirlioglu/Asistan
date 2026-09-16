@@ -1,0 +1,805 @@
+{
+  "generated_at": "2026-09-16T11:26:32.717814+00:00",
+  "windows": {
+    "validation": [
+      "2018-07-01",
+      "2021-07-01"
+    ],
+    "test": [
+      "2021-07-01",
+      "2027-07-01"
+    ]
+  },
+  "k": 100,
+  "prior_for_adjusted": 200.0,
+  "n_configs": 79,
+  "seconds": 468,
+  "chosen": {
+    "weights": {
+      "market": 6.0,
+      "strength": 2.0,
+      "opponent": 2.0,
+      "gap": 2.0,
+      "form": 1.5,
+      "goals": 4.0,
+      "movement": 1.0
+    },
+    "half_life": null,
+    "n": 500,
+    "logloss": 1.00572,
+    "brier": 0.6029,
+    "logloss_adj": 1.00357,
+    "brier_adj": 0.60154
+  },
+  "default_on_validation": {
+    "weights": {
+      "market": 3.0,
+      "strength": 2.0,
+      "opponent": 2.0,
+      "gap": 2.0,
+      "form": 1.5,
+      "goals": 1.0,
+      "movement": 1.0
+    },
+    "half_life": null,
+    "n": 500,
+    "logloss": 1.01361,
+    "brier": 0.60823,
+    "logloss_adj": 1.00618,
+    "brier_adj": 0.60333,
+    "base": true
+  },
+  "decay_sweep": [
+    {
+      "half_life": null,
+      "validation": 1.00572,
+      "test": 0.9853
+    },
+    {
+      "half_life": 3.0,
+      "validation": 1.00915,
+      "test": 0.98821
+    },
+    {
+      "half_life": 5.0,
+      "validation": 1.00711,
+      "test": 0.98561
+    },
+    {
+      "half_life": 8.0,
+      "validation": 1.00636,
+      "test": 0.98487
+    },
+    {
+      "half_life": 12.0,
+      "validation": 1.00606,
+      "test": 0.98476
+    }
+  ],
+  "test": {
+    "chosen": {
+      "weights": {
+        "market": 6.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 1000,
+      "logloss": 0.9853,
+      "brier": 0.58826,
+      "logloss_adj": 0.98214,
+      "brier_adj": 0.58543
+    },
+    "default": {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 1000,
+      "logloss": 0.99403,
+      "brier": 0.59246,
+      "logloss_adj": 0.98465,
+      "brier_adj": 0.58676
+    },
+    "market": {
+      "logloss": 0.98398,
+      "brier": 0.58619
+    }
+  },
+  "beats_default_on_test": true,
+  "beats_market_on_test": false,
+  "tried": [
+    {
+      "weights": {
+        "market": 6.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00572,
+      "brier": 0.6029,
+      "logloss_adj": 1.00357,
+      "brier_adj": 0.60154
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 4.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00633,
+      "brier": 0.60339,
+      "logloss_adj": 1.00375,
+      "brier_adj": 0.60156
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 2.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00704,
+      "brier": 0.60349,
+      "logloss_adj": 1.00375,
+      "brier_adj": 0.60161
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 3.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00725,
+      "brier": 0.60336,
+      "logloss_adj": 1.00363,
+      "brier_adj": 0.60158
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 0.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00734,
+      "brier": 0.60351,
+      "logloss_adj": 1.00388,
+      "brier_adj": 0.60164
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.0075,
+      "brier": 0.60359,
+      "logloss_adj": 1.00395,
+      "brier_adj": 0.60168
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": 12.0,
+      "n": 500,
+      "logloss": 1.00759,
+      "brier": 0.60351,
+      "logloss_adj": 1.00393,
+      "brier_adj": 0.60163
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 0.5
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00765,
+      "brier": 0.60355,
+      "logloss_adj": 1.00396,
+      "brier_adj": 0.60165
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": 8.0,
+      "n": 500,
+      "logloss": 1.00776,
+      "brier": 0.60354,
+      "logloss_adj": 1.00393,
+      "brier_adj": 0.60161
+    },
+    {
+      "weights": {
+        "market": 4.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00794,
+      "brier": 0.60419,
+      "logloss_adj": 1.00424,
+      "brier_adj": 0.60195
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 4.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00811,
+      "brier": 0.60411,
+      "logloss_adj": 1.00383,
+      "brier_adj": 0.6018
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.0,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00815,
+      "brier": 0.60395,
+      "logloss_adj": 1.00412,
+      "brier_adj": 0.60187
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": 5.0,
+      "n": 500,
+      "logloss": 1.00829,
+      "brier": 0.60372,
+      "logloss_adj": 1.00394,
+      "brier_adj": 0.60159
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 0.0,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00878,
+      "brier": 0.60344,
+      "logloss_adj": 1.00426,
+      "brier_adj": 0.60158
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 4.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.0089,
+      "brier": 0.60451,
+      "logloss_adj": 1.00411,
+      "brier_adj": 0.60198
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 3.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00951,
+      "brier": 0.60475,
+      "logloss_adj": 1.00443,
+      "brier_adj": 0.60203
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 3.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00957,
+      "brier": 0.60566,
+      "logloss_adj": 1.00466,
+      "brier_adj": 0.6024
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 1.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.0096,
+      "brier": 0.60556,
+      "logloss_adj": 1.00473,
+      "brier_adj": 0.60231
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 3.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00963,
+      "brier": 0.60468,
+      "logloss_adj": 1.00446,
+      "brier_adj": 0.60203
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 0.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00967,
+      "brier": 0.60409,
+      "logloss_adj": 1.00443,
+      "brier_adj": 0.60186
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 3.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.00995,
+      "brier": 0.60563,
+      "logloss_adj": 1.00488,
+      "brier_adj": 0.60235
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": 3.0,
+      "n": 500,
+      "logloss": 1.01,
+      "brier": 0.60449,
+      "logloss_adj": 1.00406,
+      "brier_adj": 0.6016
+    },
+    {
+      "weights": {
+        "market": 6.0,
+        "strength": 2.0,
+        "opponent": 3.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 4.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01025,
+      "brier": 0.60502,
+      "logloss_adj": 1.00498,
+      "brier_adj": 0.60227,
+      "combined": true
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 0.5,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.0104,
+      "brier": 0.60619,
+      "logloss_adj": 1.00513,
+      "brier_adj": 0.60263
+    },
+    {
+      "weights": {
+        "market": 6.0,
+        "strength": 2.0,
+        "opponent": 3.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 4.0
+      },
+      "half_life": 12.0,
+      "n": 500,
+      "logloss": 1.0105,
+      "brier": 0.60508,
+      "logloss_adj": 1.00507,
+      "brier_adj": 0.60229,
+      "combined": true
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 0.5,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01074,
+      "brier": 0.6069,
+      "logloss_adj": 1.00517,
+      "brier_adj": 0.60283
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 1.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01095,
+      "brier": 0.60684,
+      "logloss_adj": 1.00522,
+      "brier_adj": 0.60275
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 1.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01154,
+      "brier": 0.6067,
+      "logloss_adj": 1.00535,
+      "brier_adj": 0.60276
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 4.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.0116,
+      "brier": 0.60741,
+      "logloss_adj": 1.00549,
+      "brier_adj": 0.60301
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 0.5,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01175,
+      "brier": 0.60706,
+      "logloss_adj": 1.00544,
+      "brier_adj": 0.60283
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 1.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01182,
+      "brier": 0.60684,
+      "logloss_adj": 1.00555,
+      "brier_adj": 0.60282
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 0.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01203,
+      "brier": 0.60749,
+      "logloss_adj": 1.00566,
+      "brier_adj": 0.60307
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 1.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01218,
+      "brier": 0.60799,
+      "logloss_adj": 1.00577,
+      "brier_adj": 0.60321
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 0.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01225,
+      "brier": 0.60707,
+      "logloss_adj": 1.00572,
+      "brier_adj": 0.60293
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 0.5
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01233,
+      "brier": 0.60757,
+      "logloss_adj": 1.00576,
+      "brier_adj": 0.6031
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 0.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01235,
+      "brier": 0.60695,
+      "logloss_adj": 1.00566,
+      "brier_adj": 0.60287
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 0.0,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01236,
+      "brier": 0.60727,
+      "logloss_adj": 1.00586,
+      "brier_adj": 0.60295
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.0,
+        "goals": 1.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01237,
+      "brier": 0.60781,
+      "logloss_adj": 1.00579,
+      "brier_adj": 0.60319
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 2.0,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 1.0,
+        "movement": 3.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01284,
+      "brier": 0.60717,
+      "logloss_adj": 1.00583,
+      "brier_adj": 0.6029
+    },
+    {
+      "weights": {
+        "market": 3.0,
+        "strength": 2.0,
+        "opponent": 0.5,
+        "gap": 2.0,
+        "form": 1.5,
+        "goals": 4.0,
+        "movement": 1.0
+      },
+      "half_life": null,
+      "n": 500,
+      "logloss": 1.01302,
+      "brier": 0.60761,
+      "logloss_adj": 1.00584,
+      "brier_adj": 0.60304
+    }
+  ]
+}

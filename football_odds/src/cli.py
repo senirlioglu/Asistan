@@ -5,6 +5,7 @@
     python -m src.cli build               # processed Parquet database + data quality report
     python -m src.cli state               # match state table (form, goals, table, TSI) next to it
     python -m src.cli notes               # re-measure the notebook notes against price-matched history
+    python -m src.cli tune-twins          # choose the twin weights + time decay on validation, report on test
     python -m src.cli models              # walk-forward comparison: market vs similarity / pattern / twin
     python -m src.cli discover            # scan the pattern grid: discovery -> validation -> untouched test
     python -m src.cli backtest            # walk-forward backtest, model comparison, ROI, buckets
@@ -52,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("discover", help="scan the candidate pattern grid through train / validation / test windows")
     p.add_argument("--min-n", type=int, default=200, help="smallest sample a claim may be made on (default 200)")
     p.add_argument("--min-edge", type=float, default=1.0, help="points of edge worth following up (default 1.0)")
+
+    p = sub.add_parser("tune-twins", help="choose the twin category weights + time decay on a validation window")
+    p.add_argument("--val", type=int, default=600, help="validation matches the search is scored on (default 600)")
+    p.add_argument("--test", type=int, default=1200, help="test matches the winner is reported on (default 1200)")
+    p.add_argument("--k", type=int, default=100, help="twins per query (default 100)")
 
     p = sub.add_parser("models", help="walk-forward comparison of market / similarity / pattern / twin models")
     p.add_argument("--sample", type=int, default=1000, help="test matches per season (default 1000)")
@@ -148,6 +154,16 @@ def main(argv: list[str] | None = None) -> int:
                    "confirmed": [] if not len(res["confirmed"]) else res["confirmed"].drop(columns=["pattern"]).to_dict("records")}
         out.write_text(json.dumps(payload, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
         log.info("wrote %s", out)
+        return 0
+
+    if args.command == "tune-twins":
+        from .patterns import tune
+        try:
+            out = tune.run(settings, n_val=args.val, n_test=args.test, k=args.k)
+        except FileNotFoundError as exc:
+            log.error("%s", exc)
+            return 1
+        print("\n" + tune.report(out))
         return 0
 
     if args.command == "models":

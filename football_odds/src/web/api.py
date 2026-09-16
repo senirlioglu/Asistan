@@ -581,6 +581,20 @@ def twins(match_id: str, k: int = Query(50, ge=5, le=500), side: str = Query("ho
     return out
 
 
+@app.get("/api/patterns/{match_id}")
+def patterns(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
+             approx: int = Query(0, ge=0, le=2)) -> dict:
+    """What happened after this same form pattern — for this club, for everybody, and for teams that
+    were of comparable strength at the time. `approx` lets that many of the five results differ, so
+    the exact and the near count can be read next to each other."""
+    from ..patterns import service
+
+    out = service.patterns_for(settings, match_id, side=side, approx=approx)
+    if out is None:
+        raise HTTPException(404, "bu maç için durum tablosu ya da form dizisi hazır değil")
+    return out
+
+
 @app.get("/api/research")
 def research() -> dict:
     """The offline research results: the notebook notes, the model comparison, the pattern scan."""

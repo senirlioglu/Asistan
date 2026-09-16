@@ -222,40 +222,53 @@ def fdr(pvals: list[float | None], q: float = 0.05) -> list[float | None]:
     return out
 
 
-def measure(sub: pd.DataFrame, side: str, outcome: str, ref: float | None = None) -> dict:
+def measure(sub: pd.DataFrame, side: str, outcome: str, ref: float | None = None,
+            w: np.ndarray | None = None) -> dict:
     """Hit rate, the market's own average expectation, and the paired difference with its interval.
 
     `ref` is the pool-wide rate of the same outcome, used for the markets Football-Data does not
     price (half-time results, reversals, 6+ goals). There the comparison is against how often the
     thing happens in general — weaker than a price, and labelled as such — with the one-sample
     interval around it. Matches whose half-time score is unknown (the extra-league files) drop out
-    of the count rather than being guessed."""
+    of the count rather than being guessed.
+
+    `w` is an optional per-match weight (the twin engine's time decay). Rates become weighted means
+    and every interval is computed from Kish's effective sample size rather than the raw count, so
+    ten half-weighted matches cannot buy the confidence of ten full ones. `n` stays the raw count —
+    it is what the reader counts — and `n_eff` carries what the statistics actually used."""
     hit, market = outcome_columns(sub, side, outcome)
     known = np.isfinite(hit)
     hit, market = hit[known], market[known]
+    ws = np.ones(len(hit)) if w is None else np.asarray(w, dtype=float)[known]
     n = int(len(hit))
-    if n == 0:
-        return {"n": 0, "actual": None, "market": None, "diff": None, "ci": [None, None], "diff_ci": [None, None],
-                "n_market": 0, "ref": None, "vs_ref": None, "vs_ref_ci": [None, None], "p": None}
-    actual = float(np.mean(hit))
-    lo, hi = wilson_interval(actual, n)
+    if n == 0 or ws.sum() <= 0:
+        return {"n": 0, "n_eff": 0.0, "actual": None, "market": None, "diff": None, "ci": [None, None],
+                "diff_ci": [None, None], "n_market": 0, "ref": None, "vs_ref": None,
+                "vs_ref_ci": [None, None], "p": None}
+    n_eff = float(ws.sum() ** 2 / np.sum(ws ** 2))
+    actual = float(np.average(hit, weights=ws))
+    lo, hi = wilson_interval(actual, n_eff)
     ok = np.isfinite(market)
-    out = {"n": n, "actual": round(100 * actual, 1), "ci": [round(100 * lo, 1), round(100 * hi, 1)],
+    out = {"n": n, "n_eff": round(n_eff, 1), "actual": round(100 * actual, 1),
+           "ci": [round(100 * lo, 1), round(100 * hi, 1)],
            "market": None, "diff": None, "diff_ci": [None, None], "n_market": int(ok.sum()),
            "ref": None, "vs_ref": None, "vs_ref_ci": [None, None], "p": None}
     if ref is not None and 0 < ref < 1:
-        se_ref = float(np.sqrt(ref * (1 - ref) / n))
+        se_ref = float(np.sqrt(ref * (1 - ref) / n_eff))
         out["ref"] = round(100 * ref, 1)
         out["vs_ref"] = round(100 * (actual - ref), 1)
         out["vs_ref_ci"] = [round(100 * (actual - ref - 1.96 * se_ref), 1), round(100 * (actual - ref + 1.96 * se_ref), 1)]
         out["p"] = _two_sided((actual - ref) / se_ref) if se_ref > 0 else None
     if ok.sum() >= 2:
-        d = hit[ok] - market[ok]
-        se = float(np.std(d, ddof=1) / np.sqrt(ok.sum()))
-        out["market"] = round(100 * float(np.mean(market[ok])), 1)
-        out["diff"] = round(100 * float(np.mean(d)), 1)
-        out["diff_ci"] = [round(100 * (float(np.mean(d)) - 1.96 * se), 1), round(100 * (float(np.mean(d)) + 1.96 * se), 1)]
-        out["p"] = _two_sided(float(np.mean(d)) / se) if se > 0 else None
+        d, wd = hit[ok] - market[ok], ws[ok]
+        mean = float(np.average(d, weights=wd))
+        eff = float(wd.sum() ** 2 / np.sum(wd ** 2))
+        var = float(np.average((d - mean) ** 2, weights=wd)) * (eff / max(eff - 1.0, 1e-9))
+        se = float(np.sqrt(var / eff))
+        out["market"] = round(100 * float(np.average(market[ok], weights=wd)), 1)
+        out["diff"] = round(100 * mean, 1)
+        out["diff_ci"] = [round(100 * (mean - 1.96 * se), 1), round(100 * (mean + 1.96 * se), 1)]
+        out["p"] = _two_sided(mean / se) if se > 0 else None
     return out
 
 

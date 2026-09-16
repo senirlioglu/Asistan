@@ -173,6 +173,7 @@ def research_client(client, tmp_path, monkeypatch):
     df["total_goals"] = df["fthg"] + df["ftag"]
     state.build(web.settings, df)
     service._cached.cache_clear()
+    service._POOL_STATS.clear()
     return client
 
 
@@ -194,3 +195,34 @@ def test_research_endpoint_reports_the_pool_and_the_missing_pieces(research_clie
     assert d["state"]["matches"] == 60 and d["state"]["from"] == "2026-01-01"
     # the offline artefacts are absent in this temporary results dir, and that is said rather than faked
     assert d["notes"] is None and d["models"] is None and d["discovery"] is None
+
+
+def test_the_match_carries_the_state_table_reading_the_engines_run_on(research_client):
+    """Strength, venue form, goals and rest were computed for every match and then dropped on the
+    way to the page, which made every engine below look like it ran on the price alone."""
+    q = research_client.get("/api/twins/s59?k=10").json()["match"]
+    for key in ("h_tsi_pct", "a_tsi_pct", "gap", "h_form_venue", "a_form_venue",
+                "h_gf5", "h_ga5", "a_gf5", "a_ga5", "h_rest_days", "a_rest_days"):
+        assert key in q, key
+    assert q["h_tsi_pct"] is not None and q["h_form_venue"] != ""
+
+
+def test_twins_report_which_weights_and_decay_they_ran_with(research_client):
+    d = research_client.get("/api/twins/s59?k=10").json()
+    assert d["config"]["source"] in ("varsayılan", "ayarlanmış")
+    assert set(d["config"]["weights"]) == set(d["weights"])
+    assert "half_life" in d["diagnostics"] and "n_eff" in d["diagnostics"]
+    assert d["outcomes"]["win"]["n_eff"] > 0
+
+
+def test_pattern_endpoint_answers_at_three_levels_with_both_match_counts(research_client):
+    d = research_client.get("/api/patterns/s59").json()
+    assert d["match"]["id"] == "s59" and d["match"]["form"]
+    assert set(d["levels"]) <= {"all", "same_team", "similar"} and "all" in d["levels"]
+    assert d["n_exact"] >= 0 and d["approx"] == 0
+    win = d["levels"]["all"]["outcomes"]["win"]
+    assert "actual" in win and "diff_ci" in win            # never a hit rate on its own
+    loose = research_client.get("/api/patterns/s59?approx=2").json()
+    assert loose["levels"]["all"]["n"] >= d["levels"]["all"]["n"]   # slack can only widen the net
+    assert research_client.get("/api/patterns/yok").status_code == 404
+    assert research_client.get("/api/patterns/s59?approx=9").status_code == 422

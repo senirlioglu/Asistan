@@ -19,6 +19,11 @@ the categories that both matches actually have — a 2014 match has no closing l
 movement category is simply absent rather than invented. `Weights` is a plain dataclass, so the
 mix is configurable, and `missing_penalty` controls how much an absent category costs.
 
+Two things are configurable and both are chosen by `tune.py` on a validation window, never by
+taste: the category weights, and `half_life` — the time decay that says how fast a twin's evidence
+goes stale. The decay weights what a twin is *worth*, not whether it is a twin, and every rate and
+interval downstream then runs on Kish's effective sample size instead of the raw count.
+
 What comes back is not only the list: `diagnostics` reports how far the K-th twin actually is, the
 spec's own worry ("the 100th match may not resemble today's at all"), and `outcomes` reports what
 happened in the twins **next to what the market thought of those same twins** — the rule the whole
@@ -42,6 +47,9 @@ FORM_N = 5
 MIN_SLOTS = {"form": 3, "goals": 2}     # fewer comparable slots than this -> not comparable at all
 
 
+CATEGORIES = ("market", "strength", "opponent", "gap", "form", "goals", "movement")
+
+
 @dataclass
 class Weights:
     market: float = 3.0
@@ -54,7 +62,51 @@ class Weights:
     missing_penalty: float = 0.5     # a category the pair cannot compare counts at half weight, at 50
 
     def as_dict(self) -> dict[str, float]:
-        return {k: v for k, v in self.__dict__.items() if k != "missing_penalty"}
+        return {k: getattr(self, k) for k in CATEGORIES}
+
+    def replace(self, **kw) -> "Weights":
+        return Weights(**{**{k: getattr(self, k) for k in CATEGORIES},
+                          "missing_penalty": self.missing_penalty, **kw})
+
+
+def load_weights(results_dir) -> tuple[Weights, float | None, dict]:
+    """The tuned mix if `cli tune-twins` has produced one, otherwise the hand-set defaults.
+
+    The tuner writes the winner AND what it scored on the untouched test window. A configuration
+    that lost to the defaults there is not adopted, however good it looked while being chosen —
+    that is the whole point of keeping a third window."""
+    import json
+
+    path = results_dir / "backtest" / "twin_weights.json"
+    if not path.exists():
+        return Weights(), None, {"source": "varsayılan", "reason": "ayarlama çalıştırılmadı"}
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+        chosen = d["chosen"]
+    except (json.JSONDecodeError, OSError, KeyError):
+        return Weights(), None, {"source": "varsayılan", "reason": "twin_weights.json okunamadı"}
+    if not d.get("beats_default_on_test"):
+        return Weights(), None, {"source": "varsayılan", "reason": "ayarlanan mix test penceresinde varsayılanı geçemedi",
+                                 "tuned": chosen, "test": d.get("test")}
+    w = Weights(**{k: float(v) for k, v in chosen["weights"].items()})
+    return w, chosen.get("half_life"), {"source": "ayarlanmış", "generated_at": d.get("generated_at"),
+                                        "test": d.get("test")}
+
+
+def decay_weights(twin_dates: np.ndarray, as_of, half_life: float | None) -> np.ndarray:
+    """exp(-ln2 * age_years / half_life) — a twin from 2012 counts less than one from last season.
+
+    The same decay the similarity engine has always had (`models/time_weights`), reused rather than
+    re-derived so the two engines cannot drift apart on what a half life means. `half_life=None`
+    returns ones, which is what this engine did before the decay existed.
+
+    The decay weights what a twin is *worth*, never which twins are chosen: a 2012 match with the
+    same DNA IS a twin, it is only weaker evidence about today."""
+    from ..models.time_weights import time_weights, years_between
+
+    if half_life is None:
+        return np.ones(len(twin_dates))
+    return time_weights(years_between(pd.Timestamp(as_of), twin_dates), half_life)
 
 
 @dataclass
@@ -126,16 +178,25 @@ def _per_slot_score(pool: np.ndarray, q: np.ndarray, scale: float, min_slots: in
 class TwinIndex:
     """A pool of matches prepared once, queried many times."""
 
-    def __init__(self, frame: pd.DataFrame, side: str = "home", weights: Weights | None = None):
+    def __init__(self, frame: pd.DataFrame, side: str = "home", weights: Weights | None = None,
+                 half_life: float | None = None):
         self.frame = frame.reset_index(drop=True)
         self.side = side
         self.weights = weights or Weights()
+        self.half_life = half_life
         self.features = _features(self.frame, side)
         self.dates = self.frame["date"].to_numpy(dtype="datetime64[ns]")
 
     def _query_features(self, row: pd.Series) -> dict[str, np.ndarray]:
         one = _features(pd.DataFrame([row]), self.side)
         return {k: (v[0] if v.ndim > 1 else v[0]) for k, v in one.items()}
+
+    def category_scores(self, row: pd.Series) -> dict[str, np.ndarray]:
+        """Every category's 0-100 score against one query row, before any weighting.
+
+        The expensive half of a query, and the half that does not depend on the weights — which is
+        what lets `tune.py` try fifty mixes for the price of one."""
+        return _category_scores(self.features, self._query_features(row))
 
     def query(self, row: pd.Series, k: int = 100, as_of: pd.Timestamp | None = None,
               min_score: float = 0.0) -> TwinResult:
@@ -166,24 +227,38 @@ class TwinIndex:
         rows["twin_score"] = np.round(overall[idx], 1)
         for name in w:
             rows[f"sim_{name}"] = np.round(cats[name][idx], 1)
+        ref_date = as_of if as_of is not None else row.get("date")
+        tw = decay_weights(self.dates[idx], ref_date, self.half_life) if ref_date is not None else np.ones(len(idx))
+        rows["twin_weight"] = np.round(tw, 3)
         scores = overall[idx]
         diag = {"k": int(len(idx)), "asked": k, "best": _r(scores.max() if len(scores) else None),
                 "worst": _r(scores.min() if len(scores) else None), "mean": _r(scores.mean() if len(scores) else None),
                 "median": _r(np.median(scores) if len(scores) else None),
                 "n_candidates": int(ok.sum()), "n_above_90": int((scores >= 90).sum()),
-                "categories": {name: _r(np.nanmean(cats[name][idx]) if len(idx) else None) for name in w}}
-        return TwinResult(rows=rows, diagnostics=diag, outcomes=self._outcomes(rows), weights=w)
+                "half_life": self.half_life,
+                "n_eff": _r(float(tw.sum() ** 2 / np.sum(tw ** 2)) if len(tw) else None),
+                "categories": {name: _r(_nanmean(cats[name][idx])) for name in w}}
+        return TwinResult(rows=rows, diagnostics=diag, outcomes=self._outcomes(rows, tw), weights=w)
 
-    def _outcomes(self, rows: pd.DataFrame) -> dict:
+    def _outcomes(self, rows: pd.DataFrame, tw: np.ndarray | None = None) -> dict:
         """What happened in the twins, next to what the market said about those same twins."""
         from . import engine
 
         out = {}
         for o in ("win", "draw", "loss", "over25", "btts", "reversal", "ht_draw"):
-            m = engine.measure(rows, self.side, o)
+            m = engine.measure(rows, self.side, o, w=tw)
             if m["n"]:
                 out[o] = m
         return out
+
+
+def _nanmean(a: np.ndarray) -> float | None:
+    """The mean of the comparable entries, or None when the category is comparable nowhere.
+
+    A category that no twin can be scored on (movement, before there are closing lines) is reported
+    as absent rather than as a warning and a NaN."""
+    ok = np.isfinite(a)
+    return float(a[ok].mean()) if ok.any() else None
 
 
 def _r(v) -> float | None:

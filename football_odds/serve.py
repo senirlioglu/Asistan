@@ -90,7 +90,8 @@ def seed_state_dir(settings) -> None:
     # research results are produced offline and shipped in the repo, never written here, so a newer
     # one in the image always wins. The directory copy above only fires on an empty volume, which is
     # why these are named one by one: the volume's `backtest/` already exists by now.
-    for name in ("notes_measured.json", "backtest/models.json", "backtest/discovery.json"):
+    for name in ("notes_measured.json", "backtest/models.json", "backtest/discovery.json",
+                 "backtest/twin_weights.json"):
         s, d = src_results / name, dst / name
         if s.exists() and (not d.exists() or s.stat().st_mtime > d.stat().st_mtime):
             d.parent.mkdir(parents=True, exist_ok=True)

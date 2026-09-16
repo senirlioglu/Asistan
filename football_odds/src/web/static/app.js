@@ -126,16 +126,19 @@
 
     $("#rs-models").innerHTML = sum.length
       ? `<div class="table-wrap"><table><thead><tr><th>Model</th><th class="num">Brier</th><th class="num">Fark</th>
-         <th class="num hide-sm">Kalibrasyon</th><th class="num">ROI</th><th class="num hide-sm">İsabet</th>
+         <th class="num hide-sm">Kalibrasyon</th><th class="num">ROI</th><th class="num">CLV</th><th class="num hide-sm">İsabet</th>
          <th class="num hide-sm">Kazandığı sezon</th></tr></thead><tbody>
          ${sum.map((r) => `<tr><td class="wrap">${esc(r.model)}</td><td class="num">${num(r.brier, 5)}</td>
            <td class="num ${r.brier_diff > 0 ? "res-A" : ""}">${r.brier_diff == null ? "–" : pp1(1000 * r.brier_diff) + " ‰"}</td>
            <td class="num hide-sm">${num(r.calib_err, 4)}</td><td class="num">${pp1(r.roi)}%</td>
+           <td class="num ${r.clv > 0 ? "yes" : ""}">${r.clv == null ? "–" : pp1(r.clv) + "%"}</td>
            <td class="num hide-sm">%${num(r.hit_rate, 1)}</td>
            <td class="num hide-sm">${r.seasons_better == null ? "–" : r.seasons_better + " / 5"}</td></tr>`).join("")}
          </tbody></table></div>
          <p class="note">A piyasa · B bugün sitede çalışan benzerlik · C form desenleri · D çok boyutlu ikiz · E hepsi birlikte.
-         Fark binde Brier cinsinden; artı = piyasadan kötü.</p>`
+         Fark binde Brier cinsinden; artı = piyasadan kötü. <b>CLV</b> = seçilen oranın kapanış oranına göre değeri
+         (2019/20'den beri kapanış oranı olan maçlarda); artı CLV, bahsin girildiği anda piyasadan iyi fiyat alındığı anlamına gelir
+         ve uzun vadede kârın tek güvenilir erken göstergesidir.</p>`
       : `<p class="note">Model karşılaştırması henüz çalıştırılmadı (<code>cli models</code>).</p>`;
 
     const dc = d.discovery || {};
@@ -1152,7 +1155,11 @@
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
       ${tol ? `<section><h3>Tolerans eşleşmesi</h3><p class="note">Üç ihtimalin hepsi bu kadar yakın olan geçmiş maç sayısı: ${tol}</p></section>` : ""}
-      <section><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3><div data-twins>Yükleniyor…</div></section>
+      <section><h3>Maç künyesi <small class="muted">(maç öncesi bilinenler)</small></h3><div data-dna>Yükleniyor…</div></section>
+      <section><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3>
+        <div class="kseg" data-twink>${[25, 50, 100, 250].map((k) => `<button type="button" data-k="${k}" class="${k === 50 ? "is-on" : ""}">${k}</button>`).join("")}</div>
+        <div data-twins>Yükleniyor…</div></section>
+      <section><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3><div data-patterns>Yükleniyor…</div></section>
       <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
       <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" data-kseg>${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div data-analogues>Yükleniyor…</div></section>`;
@@ -1167,21 +1174,63 @@
         loadAnalogues(m, Number(b.dataset.k), root);
       };
     });
+    root.querySelectorAll("[data-twink] button").forEach((b) => {
+      b.onclick = () => {
+        root.querySelectorAll("[data-twink] button").forEach((x) => x.classList.toggle("is-on", x === b));
+        loadTwins(m, root, Number(b.dataset.k));
+      };
+    });
     loadAnalogues(m, 25, root);
     loadTeams(m, root);
     loadNesineFor(m, root);
-    loadTwins(m, root);
+    loadTwins(m, root, 50);
+    loadPatterns(m, root);
+  }
+
+  /** The state table's own numbers for this match: strength, form, goals, rest — what the twin and
+      pattern engines actually read. They were computed and then never shown, which made every
+      engine below look like it ran on the price alone. */
+  function dnaHTML(q) {
+    if (!q) return `<p class="note">Bu maç için durum tablosu henüz hazır değil.</p>`;
+    // the state table keeps ten results; the row says five, so it shows five — the most recent ones
+    const formChips = (f) => String(f || "").slice(-5).split("").map((c) => `<span class="fchip f-${c}">${c === "W" ? "G" : c === "D" ? "B" : "M"}</span>`).join("") || "–";
+    const tsi = (v) => (v == null ? "–" : `%${num(v, 0)} <small class="muted">lig içi</small>`);
+    return `<div class="dna">
+      <div class="dna-row"><span class="dna-k">Güç sırası (TSI)</span>
+        <span class="dna-v">${tsi(q.h_tsi_pct)}</span><span class="dna-v">${tsi(q.a_tsi_pct)}</span></div>
+      <div class="dna-row"><span class="dna-k">Son 5 (genel)</span>
+        <span class="dna-v">${formChips(q.h_form)}</span><span class="dna-v">${formChips(q.a_form)}</span></div>
+      <div class="dna-row"><span class="dna-k">Son 5 (kendi sahasında / deplasmanda)</span>
+        <span class="dna-v">${formChips(q.h_form_venue)}</span><span class="dna-v">${formChips(q.a_form_venue)}</span></div>
+      <div class="dna-row"><span class="dna-k">Son 5'te attığı – yediği</span>
+        <span class="dna-v">${q.h_gf5 == null ? "–" : `${num(q.h_gf5, 0)} – ${num(q.h_ga5, 0)}`}</span>
+        <span class="dna-v">${q.a_gf5 == null ? "–" : `${num(q.a_gf5, 0)} – ${num(q.a_ga5, 0)}`}</span></div>
+      <div class="dna-row"><span class="dna-k">Dinlenme (gün)</span>
+        <span class="dna-v">${q.h_rest_days == null ? "–" : num(q.h_rest_days, 0)}</span>
+        <span class="dna-v">${q.a_rest_days == null ? "–" : num(q.a_rest_days, 0)}</span></div>
+      <div class="dna-row"><span class="dna-k">Güç farkı</span><span class="dna-v" colspan="2">${q.gap == null ? "–" : (q.gap > 0 ? "+" : "") + num(q.gap, 0) + " puan (ev lehine)"}</span></div>
+      </div>
+      <p class="note">TSI = piyasadan türetilmiş güç göstergesi (sonuçtan değil, o maça verilen fiyattan öğrenir — bu yüzden
+      sonucu bilme sızıntısı taşımaz), lig içi yüzdelik olarak. Bu satırlar aşağıdaki iki motorun girdisidir.</p>`;
   }
 
   /** The twin engine: similarity on form, strength and price rather than price alone. Research only —
       the model comparison says turning it into a prediction does not beat the market, and it says so here. */
-  async function loadTwins(m, root) {
+  async function loadTwins(m, root, k = 50) {
     const box = root.querySelector("[data-twins]");
+    const dna = root.querySelector("[data-dna]");
     if (!box) return;
-    if (m.source === "nesine") { box.innerHTML = `<p class="note">Bu bölüm bizim veritabanımızdaki maçlar için çalışır; nesine üzerinden açılan maçlarda yok.</p>`; return; }
+    if (m.source === "nesine") {
+      box.innerHTML = `<p class="note">Bu bölüm bizim veritabanımızdaki maçlar için çalışır; nesine üzerinden açılan maçlarda yok.</p>`;
+      if (dna) dna.innerHTML = `<p class="note">Durum tablosu 38 ligin veritabanı üzerinden kurulur; nesine üzerinden açılan maçlarda yok.</p>`;
+      return;
+    }
+    box.innerHTML = `<p class="note">Yükleniyor…</p>`;
     try {
-      const d = m._twins !== undefined ? m._twins : await api(`/api/twins/${encodeURIComponent(m.id)}?k=50`);
-      m._twins = d;
+      m._twins = m._twins || {};
+      const d = m._twins[k] !== undefined ? m._twins[k] : await api(`/api/twins/${encodeURIComponent(m.id)}?k=${k}`);
+      m._twins[k] = d;
+      if (dna) dna.innerHTML = dnaHTML(d.match);
       const g = d.diagnostics, w = d.outcomes?.win;
       const rows = d.twins.map((t) => `<tr><td class="num">${fmtShort(t.date)}</td><td class="wrap">${esc(t.home_team)} – ${esc(t.away_team)}</td>
         <td class="num"><b>${num(t.twin_score, 1)}</b></td><td class="num hide-sm">${num(t.sim_market, 0)}</td>
@@ -1194,17 +1243,79 @@
             .map(([k, v]) => `<div class="rs-step"><span class="v num">${v == null ? "–" : v}</span><small>${k}</small></div>`).join("")}
         </div>
         ${w && w.market != null
-          ? `<p class="sentence">Bu ${w.n} ikizde ev sahibi <b>${pct(w.actual, 1)}</b> kazanmış; <b>o maçların kendi fiyatı</b>
-             ${pct(w.market, 1)} diyordu (fark ${pp1(w.diff)} puan). Bugünün piyasası ${pct(m.market.h, 1)}.</p>`
+          ? `<p class="sentence">Bu ${w.n} ikizde ev sahibi <b>${pct(w.actual, 1)}</b> kazanmış
+             <span class="muted">(%95 aralık ${pct(w.ci[0], 1)}–${pct(w.ci[1], 1)})</span>; <b>o maçların kendi fiyatı</b>
+             ${pct(w.market, 1)} diyordu. Fark <b>${pp1(w.diff)}</b> puan
+             <span class="muted">[${pp1(w.diff_ci[0])}, ${pp1(w.diff_ci[1])}]</span> —
+             ${w.diff_ci[0] > 0 || w.diff_ci[1] < 0 ? "aralık sıfırı içermiyor" : "<b>aralık sıfırı içeriyor, yani piyasadan ayırt edilemez</b>"}.
+             Bugünün piyasası ${pct(m.market.h, 1)}.</p>`
           : ""}
         <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Maç</th><th class="num">Skor</th>
           <th class="num hide-sm">Piyasa</th><th class="num hide-sm">Form</th><th class="num hide-sm">Güç farkı</th>
           <th class="num">Sonuç</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="note">Ağırlıklar ${d.config?.source === "ayarlanmış"
+            ? "doğrulama penceresinde <b>ölçülerek</b> seçildi"
+            : "el ile konmuş varsayılanlar" + (d.config?.reason ? ` (${esc(d.config.reason)})` : "")}${
+            g.half_life ? `; zaman ağırlığı açık, yarı ömür ${g.half_life} yıl (etkin örneklem ${num(g.n_eff, 1)})`
+                        : "; zaman ağırlığı <b>kapalı</b> — ölçüldü ve açmak sonucu iyileştirmedi"}.</p>
         <p class="note">Bu bölüm araştırma içindir: aynı motoru tahmine çevirdiğimizde 5.000 maçlık ileriye dönük testte
           piyasayı geçemedi (Araştırma sekmesi). "Benzer maçlarda şu oldu" cümlesi, "bu maçta şu olur" demek değildir.</p>`;
     } catch (e) {
       const msg = String(e.message || "");
       box.innerHTML = `<p class="note">${msg.startsWith("404") ? "Bu maç için durum tablosu henüz hazır değil; günlük güncellemeden sonra görünür." : "İkizler yüklenemedi: " + esc(msg)}</p>`;
+    }
+  }
+
+  const PATTERN_OUT = { win: "Kazanır", draw: "Berabere", loss: "Kaybeder", over25: "2.5 üstü",
+    btts: "Karşılıklı gol", over15: "1.5 üstü", over35: "3.5 üstü", ht_draw: "İY berabere", ht_win: "İY önde" };
+  const LEVEL_TR = { same_team: "Bu takım", all: "Tüm takımlar", similar: "Benzer güçteki takımlar" };
+
+  /** The pattern engine at its three levels. The number to read is never the hit rate: it is the
+      difference from what the market charged for those same matches, after the pool-wide offset. */
+  async function loadPatterns(m, root, approx = 0) {
+    const box = root.querySelector("[data-patterns]");
+    if (!box) return;
+    if (m.source === "nesine") { box.innerHTML = `<p class="note">Desen motoru veritabanımızdaki maçlar için çalışır; nesine üzerinden açılan maçlarda yok.</p>`; return; }
+    box.innerHTML = `<p class="note">Yükleniyor…</p>`;
+    try {
+      m._pat = m._pat || {};
+      const d = m._pat[approx] !== undefined ? m._pat[approx] : await api(`/api/patterns/${encodeURIComponent(m.id)}?approx=${approx}`);
+      m._pat[approx] = d;
+      const q = d.match;
+      const near = d.levels.all?.n ?? 0;
+      const lvOrder = ["same_team", "all", "similar"].filter((k) => d.levels[k]);
+      const body = d.outcomes.map((o) => {
+        const cells = lvOrder.map((lv) => {
+          const x = d.levels[lv].outcomes[o];
+          if (!x || !x.n) return `<td class="num">–</td>`;
+          const edge = x.edge != null ? x.edge : x.vs_ref;
+          const ci = x.edge_ci || x.vs_ref_ci;
+          const solid = ci && ci[0] != null && (ci[0] > 0 || ci[1] < 0);
+          return `<td class="num"><b>%${num(x.actual, 1)}</b>
+            <small class="muted">/ %${num(x.market != null ? x.market : x.ref, 1)}</small><br>
+            <span class="${solid ? "yes" : "muted"}">${edge == null ? "–" : pp1(edge)}</span>
+            ${ci && ci[0] != null ? `<small class="muted">[${pp1(ci[0])}, ${pp1(ci[1])}]</small>` : ""}</td>`;
+        }).join("");
+        return `<tr><td>${PATTERN_OUT[o] || o}</td>${cells}</tr>`;
+      }).join("");
+      box.innerHTML = `<p class="sentence"><b>${esc(q.team)}</b> bu maça <span class="fseq">${esc(q.form)}</span> dizisiyle geldi
+          (${q.side === "home" ? "ev sahibi" : "deplasman"} tarafı, lig içi güç sırası %${num(q.tsi_pct, 0)}, rakip %${num(q.opp_tsi_pct, 0)}).
+          Aynı dizinin geçmişte ne getirdiği üç ayrı havuzda ölçüldü.</p>
+        <div class="kseg" data-approx>${[0, 1, 2].map((a) => `<button type="button" data-a="${a}" class="${a === approx ? "is-on" : ""}">${a === 0 ? "birebir" : `±${a} maç`}</button>`).join("")}</div>
+        <p class="note">Birebir eşleşme: <b>${d.n_exact}</b> maç${approx ? ` · ±${approx} toleransla: <b>${near}</b> maç` : ""}.</p>
+        <div class="table-wrap"><table><thead><tr><th>Sonuç</th>
+          ${lvOrder.map((lv) => `<th class="num">${LEVEL_TR[lv]}<br><small class="muted">${d.levels[lv].n} maç</small></th>`).join("")}
+          </tr></thead><tbody>${body}</tbody></table></div>
+        <p class="note">Her hücrede üst satır <b>gerçekleşen / o maçların kendi fiyatı</b>, alt satır ikisinin farkı ve %95 aralığı.
+          Fark, havuz geneli sapma çıkarıldıktan sonradır — ev sahibi galibiyetleri fiyatın 0,6 puan üstünde geldiği için,
+          bu düzeltme olmasa her ev deseni bedava 0,6 puan kazanmış görünürdü. <b>Aralık sıfırı içeriyorsa desen, piyasanın
+          zaten bildiği bir şeyi söylüyor.</b> "Bu takım" seviyesindeki N tek haneliyse hiçbir şey ifade etmez.</p>`;
+      box.querySelectorAll("[data-approx] button").forEach((b) => {
+        b.onclick = () => loadPatterns(m, root, Number(b.dataset.a));
+      });
+    } catch (e) {
+      const msg = String(e.message || "");
+      box.innerHTML = `<p class="note">${msg.startsWith("404") ? "Bu maç için durum tablosu ya da form dizisi hazır değil (takımın yeterli geçmişi olmayabilir)." : "Desenler yüklenemedi: " + esc(msg)}</p>`;
     }
   }
 

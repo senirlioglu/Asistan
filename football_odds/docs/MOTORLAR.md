@@ -306,8 +306,36 @@ Fiyatın ötesinde benzerlik. Yedi kategori, ağırlıklı:
   demek yeterli değil.
 - `k_sweep()` ile K'nın sonucu ne kadar değiştirdiği ölçülebilir.
 
-**Yapmaz:** zaman ağırlığı **yok** — 2011 maçı 2025 maçıyla eşit sayılıyor (bilinen eksik).
-`movement` kategorisi şu an her maçta boş: oran hareketi arşivi 15 Eylül 2026'da başladı.
+**Ağırlıklar artık tahmin değil, ölçüm.** `patterns/tune.py` doğrulama penceresinde 79 yapılandırma
+denedi ve kazananı dokunulmamış test penceresinde bir kez ölçtü:
+
+| | market | güç | rakip | fark | form | gol | hareket |
+|---|---|---|---|---|---|---|---|
+| eski (elle) | 3,0 | 2,0 | 2,0 | 2,0 | 1,5 | 1,0 | 1,0 |
+| **ayarlanmış** | **6,0** | 2,0 | 2,0 | 2,0 | 1,5 | **4,0** | 1,0 |
+
+Log loss: doğrulama 1,01361 → 1,00572; **test 0,99403 → 0,98530** (piyasa 0,98398). Kazanç test
+penceresinde doğrulamadakinden *büyük* çıktı — yani aşırı öğrenme değil, gerçek bir iyileşme.
+Piyasayı yine geçmiyor, ama aradaki fark 0,010'dan 0,0013'e indi.
+
+**Zaman ağırlığı: yapıldı, ölçüldü, reddedildi.** `half_life` parametresi var ve çalışıyor
+(`decay_weights`, `models/time_weights` ile aynı formül). Seçilen ağırlıklarla yarı ömür taraması:
+
+| yarı ömür | doğrulama | test |
+|---|---|---|
+| **kapalı** | **1,00572** | 0,98530 |
+| 3 yıl | 1,00915 | 0,98821 |
+| 5 yıl | 1,00711 | 0,98561 |
+| 8 yıl | 1,00636 | 0,98487 |
+| 12 yıl | 1,00606 | 0,98476 |
+
+Yarı ömür kısaldıkça sonuç **tek yönlü kötüleşiyor**; 12 yıl (neredeyse "kapalı") en iyiye en yakın.
+Yani 2012 maçı 2025 maçı kadar bilgilendirici — futbolda eskimeyen şey, fiyatın kendisi. Motor
+kapalı çalışıyor; açmak isteyen `twin_weights.json`'daki `half_life` ile açabilir.
+
+⚠️ `beats_default_on_test` yanlışsa ayarlanan mix **canlıya alınmaz** — üçüncü pencere dekor değil.
+
+**Yapmaz:** `movement` kategorisi şu an her maçta boş: oran hareketi arşivi 15 Eylül 2026'da başladı.
 
 ### 8d. Keşif motoru — `patterns/discovery.py`
 
@@ -346,7 +374,22 @@ Defterdeki 16 el yazısı notu pattern motoruyla yeniden ölçer.
 - 1, 5, 6, 7, 12, 13, 15 numaralı notlar bu veriyle **ölçülemez** (korner, ilk gol, İY skor gibi
   marketler Football-Data'da yok). Bunlar için nesine arşivi birikmeyi bekliyor.
 
-### 8f. Servis katmanı — `patterns/service.py`
+### 8f. Ayar motoru — `patterns/tune.py`
+
+`Weights`'teki sayılar birinin yazdığı makul sayılardı — ve sorun tam olarak buydu: **test
+edilmemiş makul sayı, laboratuvar önlüğü giymiş varsayımdır.** Bu modül onları ölçerek seçer.
+
+- Puanlama: ikizlerin kendi 1X2 oranlarının **log loss**'u (küçültülmüş hâli değil — 200'lük prior
+  her yapılandırmayı piyasaya yapıştırır, arama yuvarlama gürültüsünü kıyaslamaya başlar).
+- Arama: mevcut en iyinin etrafında birer birer değişim, **tek geçişte**. Kategori skorları ağırlıktan
+  bağımsız olduğu için maç başına bir kez hesaplanıp 79 yapılandırma için yeniden ağırlıklandırılır —
+  `W @ A` matris çarpımı. 79 yapılandırma, birinin maliyetine yakın.
+- Pencereler: doğrulamada seç, **teste bir kez** bak.
+
+**Yapmaz:** global arama değil, açgözlü. 6⁷ = 280.000 kombinasyonu denemez. Ve testte varsayılanı
+geçemeyen bir mix'i **canlıya almaz** (`load_weights` reddeder).
+
+### 8g. Servis katmanı — `patterns/service.py`
 
 Web süreci 223 MB'lık tam tabloyu taşıyamaz. Bu modül sadece okunan 40 kolonu alır, sayıları
 float32'ye, tekrar eden metinleri kategoriye çevirir: **38 MB, 0,3 s indeksleme, sorgu başına
@@ -391,7 +434,9 @@ geldiğinde listeler. Nesine bülteni ise her maçı ve **çok daha fazla market
 ```
 /api/day/{date}            günün maçları + analiz
 /api/match/{match_id}      tek maçın her şeyi (analiz + nesine özeti)
-/api/twins/{match_id}      ikiz motoru (k, side parametreli)
+/api/twins/{match_id}      ikiz motoru (k, side parametreli) + maç künyesi (TSI, form, gol, dinlenme)
+/api/patterns/{match_id}   desen motoru üç seviyede (bu takım / tüm takımlar / benzer güçtekiler),
+                           `approx` ile birebir vs yaklaşık eşleşme
 /api/research              notlar + modeller + keşif sonuçları + durum tablosu
 /api/notlar                nesine notları + oran hareketi
 /api/nesine-analiz         nesine maçında kendi analizimiz
@@ -405,6 +450,12 @@ geldiğinde listeler. Nesine bülteni ise her maçı ve **çok daha fazla market
 Site sekmeleri: **Maçlar** (oynanmış/devam eden/oynanacak filtresi) · **Oyun** (kupon + maç başına
 açılır bilgi paneli) · **Sanal oyun** · **Karne** · **Notlar** · **Araştırma**.
 
+Maç detayında sırasıyla: yorum · üç ihtimal (piyasa/geçmiş/düzeltilmiş + %95 aralık + adil oran) ·
+İY-MS · gol dağılımı · skorlar · havuz karşılaştırması · **maç künyesi** (TSI, saha formu, gol
+dengesi, dinlenme, güç farkı) · **çok boyutlu ikizler** (K seçilebilir: 25/50/100/250) · **desen
+motoru** (üç seviye, birebir/±1/±2 eşleşme) · nesine oranları + defter notları · aynı takımlar ·
+en benzer geçmiş maçlar.
+
 ---
 
 ## 11. Hangi soru hangi motora gider
@@ -414,6 +465,7 @@ açılır bilgi paneli) · **Sanal oyun** · **Karne** · **Notlar** · **Araşt
 | "Bu maçın adil oranı ne?" | `features/odds` → `models/similarity` → `models/stats` |
 | "Fiyatı buna benzeyen maçlarda ne olmuş?" | `models/similarity` |
 | "Durumu buna benzeyen maçlarda ne olmuş?" | `patterns/twins` |
+| "Bu takımın gücü/formu/dinlenmesi ne?" | `patterns/state` → `/api/twins` künyesi |
 | "Bu form dizisinden sonra ne oluyor?" | `patterns/engine` |
 | "Bu desen gerçek mi, gürültü mü?" | `patterns/discovery` (üç pencere + FDR) |
 | "Defterimdeki not doğru mu?" | `patterns/notes` |
@@ -439,16 +491,29 @@ Bu bölüm motor listesi kadar önemlidir.
 
 ## 13. Bilinen eksikler (şartnameden yapılmayanlar)
 
+Üç ayrı durumu karıştırmamak gerekiyor — "yok", "var ama görünmüyor" ve "yapıldı, ölçüldü,
+reddedildi" aynı şey değil.
+
+**Hâlâ yok:**
+
 | # | eksik | neden |
 |---|---|---|
-| 1 | Oran hız pencereleri + hareket sınıflandırması (STEAM / DRIFT / LATE STEAM / REVERSAL / ACCELERATING) | Arşiv 15 Eyl 2026'da başladı; yeterli geçmiş yok. ~2-3 hafta gerek |
-| 2 | İkiz motorunda zaman ağırlığı | Yapılmadı; 2011 ile 2025 eşit sayılıyor |
-| 3 | Lig segmentasyonu çalışması | Yapılmadı |
-| 4 | H2H'in ağırlıklı/test edilmiş benzerlik özelliği olması | Şu an sadece sayı olarak duruyor |
-| 5 | Motivasyon / bölge (küme düşme, şampiyonluk) özellikleri | Yapılmadı |
-| 6 | İkiz ağırlıklarının validation üzerinde ayarlanması | Ağırlıklar elle konmuş, optimize edilmedi |
-| 7 | Sadece nesine'de olan notların (1, 5, 6, 7, 12, 13, 15) ileriye dönük ölçümü | Arşiv birikmesini bekliyor |
+| 1 | Oran hız pencereleri (15dk/30dk/1sa/3sa) + hareket sınıflandırması (STEAM / DRIFT / LATE STEAM / REVERSAL / ACCELERATING) | Arşiv 15 Eyl 2026'da başladı; yeterli geçmiş yok. ~2-3 hafta gerek. Not: `backtest/movement.py` açılış→kapanış steam/drift'i **araştırma olarak** ölçüyor; eksik olan maç başına canlı sınıflandırma |
+| 2 | Lig segmentasyonu çalışması | Yapılmadı (`buckets.cluster_leagues` lig kümelerini çıkarıyor ama ikiz/desen motorlarına bağlanmadı) |
+| 3 | H2H'in ağırlıklı/test edilmiş benzerlik özelliği olması | `h2h_n` durum tablosunda var, ikiz skoruna girmiyor |
+| 4 | Motivasyon / bölge (küme düşme, şampiyonluk) özellikleri | Yapılmadı. Tablo sırası (`h_pos`) var, "ne uğruna oynuyor" yok |
+| 5 | İki takımlı birleşik desen (Takım A + Takım B) | `Pattern.team` tek takım filtreliyor; ikili kombinasyon yok |
+| 6 | Sadece nesine'de olan notların (1, 5, 6, 7, 12, 13, 15) ileriye dönük ölçümü | Arşiv birikmesini bekliyor |
 | — | Avrupa / kupa fikstür bağlamı | **Yapılamaz** — o maçlar veri setinde hiç yok |
+
+**Yapıldı, ölçüldü, veri "kullanma" dedi** (eksik değil, sonuç):
+
+| konu | ölçüm | karar |
+|---|---|---|
+| İkiz zaman ağırlığı | yarı ömür taraması, §8c | kapalı — kısaldıkça tek yönlü kötüleşiyor |
+| İkiz ağırlıkları | 79 yapılandırma, doğrulama + test | **ayarlandı**, market 3→6 / gol 1→4, testte doğrulandı |
+| Piyasayı yenen model | A–E yarışı + walk-forward backtest | yok — sistem bu yüzden STRONG sinyal üretmiyor |
+| 26 not iddiası | fiyat eşlemeli + FDR | 24'ü piyasadan ayırt edilemez |
 
 ---
 
@@ -463,6 +528,7 @@ python -m src.cli backtest     # walk-forward doğrulama → selected_params.jso
 python -m src.cli notes        # defter notlarını yeniden ölç → notes_measured.json
 python -m src.cli models       # A–E model yarışı → backtest/models.json
 python -m src.cli discover     # desen taraması + eleme → backtest/discovery.json
+python -m src.cli tune-twins   # ikiz ağırlıkları + zaman ağırlığı → backtest/twin_weights.json
 python -m src.cli today        # günün maçlarını analiz et
 python -m src.cli web          # FastAPI + zamanlayıcı (canlı dağıtımın çalıştırdığı)
 python -m pytest               # 60+ test
@@ -478,6 +544,7 @@ python -m pytest               # 60+ test
 | `results/backtest/selected_params.json` | üretim parametreleri + `backtest_ok` |
 | `results/backtest/models.json` | A–E karşılaştırması |
 | `results/backtest/discovery.json` | keşif hunisi sonucu |
+| `results/backtest/twin_weights.json` | ayarlanmış ikiz ağırlıkları + yarı ömür taraması |
 | `results/notes_measured.json` | not ölçümleri |
 | `results/*_predictions.csv` + `_details.json` | günlük analiz çıktısı |
 | `results/coupons.json` | kullanıcı kuponları |
