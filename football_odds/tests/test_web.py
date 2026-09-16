@@ -293,3 +293,20 @@ def test_the_pattern_explorer_answers_a_typed_query_against_the_price(research_c
 
     assert research_client.get("/api/desen?form=WWW&approx=9").status_code == 422
     assert research_client.get("/api/desen?form=WWW&p_lo=2").status_code == 422
+
+
+def test_fixture_context_lists_past_meetings_and_carries_its_own_verdict(research_client):
+    """The "same fixture sequence repeated" graphics are checkable here — and the check has to come
+    with what the whole database says about the claim, which is that context shrinks the sample
+    rather than sharpening the effect."""
+    d = research_client.get("/api/fikstur/s59").json()
+    q = d["match"]
+    assert q["home"] and q["away"] and "h_prev_opp" in q and "h_next_opp" in q
+    assert d["meetings"] >= 0 and isinstance(d["shown"], list)
+    for r in d["shown"]:
+        assert r["date"] < q["date"]                       # only earlier meetings
+        assert 0 <= r["n_same"] <= 4
+    v = d["verdict"]
+    assert v["none"]["n"] > v["prev_only"]["n"] > v["full"]["n"]     # context only ever narrows
+    assert v["full"]["ci"][0] < 0 < v["full"]["ci"][1]               # and the full context says nothing
+    assert research_client.get("/api/fikstur/yok").status_code == 404

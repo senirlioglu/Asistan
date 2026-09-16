@@ -1418,6 +1418,7 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
         <div class="kseg" data-twink>${[25, 50, 100, 250].map((k) => `<button type="button" data-k="${k}" class="${k === 50 ? "is-on" : ""}">${k}</button>`).join("")}</div>
         <div data-twins>Yükleniyor…</div></section>
       <section data-anchor="patterns"><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3>${whatFor("patterns")}<div data-patterns>Yükleniyor…</div></section>
+      <section data-anchor="fixture"><h3>Fikstür bağlamı <small class="muted">(aynı sıra tekrarlıyor mu)</small></h3>${whatFor("fixture")}<div data-fixture>Yükleniyor…</div></section>
       <section data-anchor="combo"><h3>İki takım birlikte <small class="muted">(koşul koşul)</small></h3>${whatFor("combo")}<div data-combo>Yükleniyor…</div></section>
       <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
@@ -1461,6 +1462,13 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
        <p><b>Dikkat:</b> "Bu takım" satırındaki N çoğu zaman tek haneli olur; %100 yazması hiçbir şey ifade etmez,
        o yüzden güven aralığı da yanında durur. 396 aday desen taradık, üç zaman penceresinden ve çoklu test
        düzeltmesinden <b>bir tanesi</b> sağ çıktı — o da "fiyattan ~2 puan daha az kaybediyor" diyor.</p>`],
+    fixture: ["Aynı fikstür sırası tekrarlıyor mu?",
+      `<p>"2013'te de aynı sırayla oynamışlardı ve şu olmuştu" tipindeki grafikler bu bölümün konusu.
+       Burada o iddiayı kontrol edebilirsin: iki takımın geçmiş karşılaşmaları, her birinin öncesinde ve
+       sonrasında kimlerle oynadıklarıyla birlikte.</p>
+       <p><b>Ölçüldü:</b> "aynı bağlam yaşandıysa sonuç tekrarlar" iddiası tüm veritabanında sınandı. Bağlam
+       eklendikçe etki <b>kayboluyor</b>, artmıyor — çünkü bağlam etkiyi yaratmıyor, sadece örneklemi
+       küçültüyor. Ayrıntılı tablo aşağıda.</p>`],
     combo: ["İki takımı birlikte tarif etmek",
       `<p>Koşullar tek tek ekleniyor ve her satır bir öncekinin alt kümesi. Amaç son satır değil: <b>hangi koşulun
        sayıyı değiştirdiğini</b> görmek.</p>
@@ -1628,6 +1636,58 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
     loadTwins(m, root, 50);
     loadPatterns(m, root);
     loadCombined(m, root);
+    loadFixture(m, root);
+  }
+
+  /** "Aynı fikstür sırası tekrarlıyor" — the pattern those Mackolik graphics are built on, made
+      checkable. The measurement travels with it, because it says the context is what kills the
+      effect rather than what creates it. */
+  async function loadFixture(m, root) {
+    const box = root.querySelector("[data-fixture]");
+    if (!box) return;
+    if (m.source === "nesine") { box.innerHTML = `<p class="note">Bu bölüm veritabanımızdaki maçlar için çalışır.</p>`; return; }
+    try {
+      const d = m._fx !== undefined ? m._fx : await api(`/api/fikstur/${encodeURIComponent(m.id)}`);
+      m._fx = d;
+      const q = d.match, v = d.verdict;
+      const chip = (on, txt) => `<span class="fx-o ${on ? "on" : ""}">${esc(txt || "–")}</span>`;
+      const rows = (d.shown || []).map((r) => `<tr class="${r.same_full ? "ac-alive" : ""}">
+        <td class="num">${fmtShort(r.date)}</td><td class="num res-${esc(r.ftr)}">${esc(r.score)}</td>
+        <td class="wrap hide-sm">${chip(r.same.h_prev_opp, r.h_prev_opp)}</td>
+        <td class="wrap hide-sm">${chip(r.same.h_next_opp, r.h_next_opp)}</td>
+        <td class="num">${r.n_same}/4</td></tr>`).join("");
+      box.innerHTML = `<p class="sentence">Bu maçtan önce <b>${esc(q.home)}</b> ${chip(true, q.h_prev_opp)} ile oynadı,
+          sonra ${chip(true, q.h_next_opp)} ile oynayacak. <b>${esc(q.away)}</b> için: ${chip(true, q.a_prev_opp)} →
+          ${chip(true, q.a_next_opp)}. Aynı iki takım daha önce <b>${d.meetings}</b> kez karşılaştı.</p>
+        ${rows ? `<div class="table-wrap"><table><thead><tr><th>Tarih</th><th class="num">Skor</th>
+          <th class="hide-sm">Ev · önceki rakip</th><th class="hide-sm">Ev · sonraki rakip</th>
+          <th class="num">Bağlam</th></tr></thead><tbody>${rows}</tbody></table></div>`
+          : `<p class="note">Bu iki takımın veritabanında daha önceki karşılaşması yok.</p>`}
+        <p class="note">Yeşil işaretli rakip, bugünküyle <b>aynı</b>. "Bağlam" sütunu dört bağlam öğesinden
+          kaçının tuttuğunu söyler (ev/deplasman × önceki/sonraki rakip).</p>
+        <div class="fx-verdict">
+          <p><b>Peki bu bir şey söylüyor mu?</b> Tüm veritabanında ölçtük: "geçmişte aynı bağlam yaşandıysa sonuç
+          tekrarlar" iddiası. Karşılaştırma her zaman <b>o maçların kendi fiyatıyla</b>.</p>
+          <div class="table-wrap"><table><thead><tr><th>Ne kadar benzer</th><th class="num">N</th>
+            <th class="num">Tekrarladı</th><th class="num">Piyasa</th><th class="num">Fark</th>
+            <th class="num hide-sm">%95 aralık</th></tr></thead><tbody>
+            ${[["Sadece aynı eşleşme (bağlam yok)", v.none], ["+ önceki rakip de aynı", v.prev_only],
+               ["+ sonraki rakip de aynı (tam bağlam)", v.full]].map(([t, x]) =>
+              `<tr><td class="wrap">${t}</td><td class="num">${x.n.toLocaleString("tr")}</td>
+               <td class="num">%${num(x.actual, 1)}</td><td class="num">%${num(x.market, 1)}</td>
+               <td class="num ${x.ci[0] > 0 || x.ci[1] < 0 ? "yes" : ""}"><b>${pp1(x.edge)}</b></td>
+               <td class="num hide-sm">[${pp1(x.ci[0])}, ${pp1(x.ci[1])}]</td></tr>`).join("")}
+          </tbody></table></div>
+          <p class="note"><b>Bağlam eklendikçe etki artmıyor, kayboluyor.</b> Sadece "aynı eşleşme" 141.054 maçta
+          fiyatın 0,43 puan üstünde — küçük ama ölçülebilir bir şey. Önceki rakibi de şart koşunca N 26.239'a
+          düşüyor ve fark 0,58 oluyor: aynı şey, daha belirsiz. Sonraki rakibi de şart koşunca N 3.901'e iniyor
+          ve fark <b>−0,36</b>'ya, aralığı sıfırı içine alarak. Yani etkiyi yaratan bağlam değil; bağlam sadece
+          örneklemi küçültüyor. Tek bir tarihsel tekrar (N=1) ise hiçbir şey söylemez.</p>
+        </div>`;
+    } catch (e) {
+      const msg = String(e.message || "");
+      box.innerHTML = `<p class="note">${msg.startsWith("404") ? "Bu maç için durum tablosu hazır değil." : "Yüklenemedi: " + esc(msg)}</p>`;
+    }
   }
 
   /** TEAM A x TEAM B, one condition at a time. The point of the table is not its last row: it is

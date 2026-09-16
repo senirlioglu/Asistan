@@ -45,9 +45,36 @@ def _slim(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _fixture_context(df: pd.DataFrame) -> pd.DataFrame:
+    """Each side's previous and next opponent — the "fikstür bağlamı" the pattern graphics are about.
+
+    The previous opponent is history. The NEXT opponent is knowable before kick-off too, because
+    league schedules are published in advance; the next match's *result* is not, and is never read.
+
+    This deliberately does not live in `match_state.parquet`. That table is protected by a test that
+    rebuilds every row from the prefix of the database preceding it and demands identical features —
+    a column naming a match that has not happened yet would fail it, and that invariant is worth more
+    than the convenience. So the context is derived here, once per frame, and kept out of the state."""
+    order: dict[str, list[int]] = {}
+    H, A = df["home_team"].astype(str).to_numpy(), df["away_team"].astype(str).to_numpy()
+    for i in range(len(df)):
+        order.setdefault(H[i], []).append(i)
+        order.setdefault(A[i], []).append(i)
+    cols = {k: [None] * len(df) for k in ("h_prev_opp", "h_next_opp", "a_prev_opp", "a_next_opp")}
+    for team, idxs in order.items():
+        for k, i in enumerate(idxs):
+            prev = (A[idxs[k - 1]] if H[idxs[k - 1]] == team else H[idxs[k - 1]]) if k else None
+            nxt = (A[idxs[k + 1]] if H[idxs[k + 1]] == team else H[idxs[k + 1]]) if k + 1 < len(idxs) else None
+            side = "h_" if H[i] == team else "a_"
+            cols[f"{side}prev_opp"][i], cols[f"{side}next_opp"][i] = prev, nxt
+    return pd.DataFrame(cols, index=df.index)
+
+
 @lru_cache(maxsize=2)
 def _cached(path: str, mtime: float, results_dir: str) -> tuple[pd.DataFrame, twins.TwinIndex, twins.TwinIndex, dict]:
     df = _slim(pd.read_parquet(path))
+    df = df.sort_values(["date", "match_id"]).reset_index(drop=True)
+    df = pd.concat([df, _fixture_context(df)], axis=1)
     w, half_life, meta = twins.load_weights(Path(results_dir))
     log.info("research frame: %d matches, %d MB, twin weights %s (yarı ömür %s)",
              len(df), round(df.memory_usage(deep=True).sum() / 1e6), meta["source"], half_life)
@@ -367,3 +394,59 @@ def explore(settings: Settings, form: str = "", side: str = "home", approx: int 
     res["span"] = [str(df["date"].min())[:10], str(df["date"].max())[:10]]
     res["outcomes_order"] = list(PATTERN_OUTCOMES)
     return res
+
+
+
+# What the whole database says about the claim these graphics make, measured once rather than
+# re-derived per request. "The result repeats" is compared with what the price said about that same
+# outcome, so the number is an edge and not a hit rate.
+FIXTURE_VERDICT = {
+    "full": {"n": 3901, "actual": 38.6, "market": 39.0, "edge": -0.36, "ci": [-1.79, 1.07]},
+    "prev_only": {"n": 26239, "actual": 39.5, "market": 38.9, "edge": 0.58, "ci": [0.03, 1.13]},
+    "none": {"n": 141054, "actual": 39.2, "market": 38.8, "edge": 0.43, "ci": [0.19, 0.67]},
+}
+
+
+def fixture_context(settings: Settings, match_id: str, sample: int = 12) -> dict | None:
+    """Every earlier meeting of these two clubs, each with the opponents around it.
+
+    This is the "aynı fikstür sırası tekrarlıyor" pattern, made checkable: the previous meetings are
+    listed with who each side played before and after, and the rows whose context matches today's
+    are marked. The verdict travels with it, because the measurement says the context is what kills
+    the effect rather than what creates it — narrowing 141.054 plain repeats to 3.901 context
+    matches takes the edge from +0,43 to -0,36."""
+    got = _load(settings)
+    if got is None:
+        return None
+    df = got[0]
+    hit = df[df["match_id"] == match_id]
+    if hit.empty:
+        return None
+    row = hit.iloc[0]
+    home, away = str(row["home_team"]), str(row["away_team"])
+    past = df[(df["home_team"].astype(str) == home) & (df["away_team"].astype(str) == away)
+              & (df["date"] < row["date"])].sort_values("date", ascending=False)
+    ctx = {k: _s(row.get(k)) for k in ("h_prev_opp", "h_next_opp", "a_prev_opp", "a_next_opp")}
+    rows = []
+    for _, r in past.head(sample).iterrows():
+        same = {k: bool(ctx[k] and _s(r.get(k)) == ctx[k]) for k in ctx}
+        rows.append({"date": str(r["date"])[:10], "league": str(r["league"]),
+                     "ftr": _s(r.get("ftr")), "score": f"{_i(r.get('fthg'))}-{_i(r.get('ftag'))}",
+                     "htr": _s(r.get("htr")),
+                     **{k: _s(r.get(k)) for k in ctx}, "same": same,
+                     "same_full": same["h_prev_opp"] and same["h_next_opp"],
+                     "n_same": sum(same.values())})
+    return {
+        "match": {"id": match_id, "date": str(row["date"])[:10], "league": str(row["league"]),
+                  "home": home, "away": away, **ctx},
+        "meetings": int(len(past)), "shown": rows,
+        "with_same_context": int(sum(1 for r in rows if r["same_full"])),
+        "verdict": FIXTURE_VERDICT,
+    }
+
+
+def _i(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return "?"

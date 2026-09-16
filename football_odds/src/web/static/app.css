@@ -515,3 +515,9 @@ tr.thin td { color: var(--ink-3); }          /* under 200 matches: visible, but 
 .ac-filters select { font: inherit; font-size: 0.85rem; padding: 4px 7px; border: 1px solid var(--line-strong);
   border-radius: var(--radius-s); background: var(--ground); color: var(--ink); }
 tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
+.fx-o { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--surface-2);
+  font-size: 0.8rem; border: 1px solid var(--line); }
+.fx-o.on { background: #dcefe2; color: var(--good); border-color: var(--good); }
+:root[data-theme="dark"] .fx-o.on { background: #1d3a27; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fx-o.on { background: #1d3a27; } }
+.fx-verdict { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }

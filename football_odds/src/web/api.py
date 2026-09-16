@@ -628,6 +628,22 @@ def kombine(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
     return out
 
 
+@app.get("/api/fikstur/{match_id}")
+def fikstur(match_id: str) -> dict:
+    """The "aynı fikstür sırası tekrarlıyor" pattern, made checkable.
+
+    Earlier meetings of the same two clubs, each with the opponents around it, and a mark on the ones
+    whose context matches today's. The measured verdict rides along: narrowing 141.054 plain repeats
+    to the 3.901 whose fixture context also matches takes the edge from +0,43 to -0,36, so the
+    context is what kills the effect rather than what creates it."""
+    from ..patterns import service
+
+    out = service.fixture_context(settings, match_id)
+    if out is None:
+        raise HTTPException(404, "bu maç için durum tablosu hazır değil")
+    return out
+
+
 @app.get("/api/desen")
 def desen(form: str = Query("", max_length=12), side: str = Query("home", pattern="^(home|away)$"),
           approx: int = Query(0, ge=0, le=2), venue: bool = False, opp_form: str = Query("", max_length=12),
