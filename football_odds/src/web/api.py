@@ -608,6 +608,24 @@ def patterns(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
     return out
 
 
+@app.get("/api/kombine/{match_id}")
+def kombine(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
+            approx: int = Query(1, ge=0, le=2), length: int = Query(3, ge=2, le=5)) -> dict:
+    """TEAM A x TEAM B: both teams' states at once, one condition at a time.
+
+    Each row adds a condition to the row above it and reports the outcome against what the market
+    charged for those same matches, so the reader can see which condition moved the number and which
+    only shrank the sample. The defaults (three results, one allowed to differ) were measured: with
+    exact five-match sequences on both sides the median sample reaches zero before the opponent is
+    even described."""
+    from ..patterns import service
+
+    out = service.combined_for(settings, match_id, side=side, approx=approx, length=length)
+    if out is None:
+        raise HTTPException(404, "bu maç için durum tablosu ya da form dizisi hazır değil")
+    return out
+
+
 @app.get("/api/research")
 def research() -> dict:
     """The offline research results: the notebook notes, the model comparison, the pattern scan."""

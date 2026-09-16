@@ -441,3 +441,4 @@ td.num.yes, .sentence .yes, p .yes { color: var(--good); font-weight: 600; }
   :root:not([data-theme="light"]) .mv-verdict.up { background: #1d3a27; }
   :root:not([data-theme="light"]) .mv-verdict.down { background: #4a2a1b; }
 }
+tr.thin td { color: var(--ink-3); }          /* under 200 matches: visible, but visibly not evidence */

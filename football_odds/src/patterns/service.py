@@ -12,6 +12,7 @@ rewrite the table underneath a running process and the next request picks it up.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 
@@ -176,6 +177,107 @@ def patterns_for(settings: Settings, match_id: str, side: str = "home", approx: 
         "approx": approx, "n_exact": int(len(exact)),
         "levels": out, "outcomes": list(PATTERN_OUTCOMES),
     }
+
+
+COMBINED_LENGTH, COMBINED_APPROX = 3, 1
+
+
+def combined_for(settings: Settings, match_id: str, side: str = "home", approx: int = COMBINED_APPROX,
+                 length: int = COMBINED_LENGTH, band: float = 10.0, gap_band: float = 60.0) -> dict | None:
+    """TEAM A x TEAM B: this match's two states at once, one condition at a time.
+
+    The pattern engine has always been able to describe one side. A match is two sides, and the
+    claim "a team on WWWWW wins 67 %" is a different claim from "a team on WWWWW hosting a team on
+    LLLLL wins 67 %" — only the second one is about a fixture. The cascade adds the conditions in
+    the order they get specific and reports every row against the market, so the reader can see
+    which condition actually moved the number and which merely shrank the sample.
+
+    Strength is always a band around this match's own value, never a team name: a 2014 side at the
+    81st percentile of its league belongs in the same bucket as a 2026 side at the 84th, and asking
+    for "teams like Galatasaray" would instead ask for a name that meant something different in
+    every season it appears.
+
+    The defaults are three results with one allowed to differ, and they were measured rather than
+    chosen. Over 180.000 matches, the median sample surviving each condition is:
+
+        length 5 exact    881 ->    10 ->     0 ->    0
+        length 5, ±1     9368 ->   767 ->    46 ->    5
+        length 4 exact   2465 ->    49 ->     1 ->    0
+        length 3 exact   6578 ->   527 ->    27 ->    3
+        length 3, ±1    46111 -> 18124 ->  4686 -> 2066
+
+    Only the last row still holds a measurable sample once both teams are described, so anything
+    stricter answers "no such match has ever been played" — which is true, and useless. The tighter
+    settings stay available because watching the count collapse is itself the finding: two exact
+    five-match sequences are very nearly a unique key, and a pattern that identifies one historical
+    fixture predicts nothing.
+    """
+    from . import engine
+
+    got = _load(settings)
+    if got is None:
+        return None
+    df = got[0]
+    hit = df[df["match_id"] == match_id]
+    if hit.empty:
+        return None
+    row = hit.iloc[0]
+    p, o = ("h_", "a_") if side == "home" else ("a_", "h_")
+    form, venue = _tail(row.get(f"{p}form"), length), _tail(row.get(f"{p}form_venue"), length)
+    opp_form, opp_venue = _tail(row.get(f"{o}form"), length), _tail(row.get(f"{o}form_venue"), length)
+    if not form:
+        return None
+    tsi, opp_tsi = _f(row.get(f"{p}tsi_pct")), _f(row.get(f"{o}tsi_pct"))
+    gap = _f(row.get("strength_gap"))
+    sign = 1 if side == "home" else -1
+    as_of = row["date"]
+    pool = df[df["date"] < as_of]
+    sp = state.state_path(settings)
+    base, refs = _pool_stats(df, (str(sp), sp.stat().st_mtime), side, int(pd.Timestamp(as_of).year))
+
+    at = engine.Pattern(form=form, side=side, approx=approx)
+    steps: list[tuple[str, object]] = [(f"{_who(side)} formu {form}", at)]
+    if venue:
+        at = replace(at, venue_form=venue)
+        steps.append((f"+ {'ev' if side == 'home' else 'deplasman'} formu {venue}", at))
+    if tsi is not None:
+        at = replace(at, tsi_pct=(max(0.0, tsi - band), min(100.0, tsi + band)))
+        steps.append((f"+ benzer güç (%{tsi:g} ± {band:g})", at))
+    if opp_form:
+        at = replace(at, opp_form=opp_form)
+        steps.append((f"+ rakip formu {opp_form}", at))
+    if opp_venue:
+        at = replace(at, opp_venue_form=opp_venue)
+        steps.append((f"+ rakip saha formu {opp_venue}", at))
+    if opp_tsi is not None:
+        at = replace(at, opp_tsi_pct=(max(0.0, opp_tsi - band), min(100.0, opp_tsi + band)))
+        steps.append((f"+ benzer rakip gücü (%{opp_tsi:g} ± {band:g})", at))
+    if gap is not None:
+        lo, hi = sign * gap - gap_band, sign * gap + gap_band
+        at = replace(at, gap=(round(lo, 1), round(hi, 1)))
+        steps.append((f"+ güç farkı {sign * gap:+.0f} ± {gap_band:g}", at))
+
+    rows = engine.cascade(pool, steps, as_of=as_of, outcomes=PATTERN_OUTCOMES, base=base, refs=refs)
+    return {
+        "match": {"id": match_id, "date": str(row["date"])[:10], "league": str(row["league"]),
+                  "home": str(row["home_team"]), "away": str(row["away_team"]), "side": side,
+                  "team": str(row["home_team" if side == "home" else "away_team"]),
+                  "opponent": str(row["away_team" if side == "home" else "home_team"]),
+                  "form": form, "venue_form": venue, "opp_form": opp_form, "opp_venue_form": opp_venue,
+                  "tsi_pct": tsi, "opp_tsi_pct": opp_tsi, "gap": gap,
+                  "gf5": _f(row.get(f"{p}gf5")), "ga5": _f(row.get(f"{p}ga5")),
+                  "opp_gf5": _f(row.get(f"{o}gf5")), "opp_ga5": _f(row.get(f"{o}ga5")),
+                  "band": band, "gap_band": gap_band},
+        "approx": approx, "length": length, "outcomes": list(PATTERN_OUTCOMES), "rows": rows,
+    }
+
+
+def _who(side: str) -> str:
+    return "Ev sahibi" if side == "home" else "Deplasman"
+
+
+def _tail(v, n: int = 5) -> str:
+    return "" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)[-n:]
 
 
 def research_files(settings: Settings) -> dict:

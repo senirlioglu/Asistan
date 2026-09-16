@@ -573,3 +573,85 @@ def test_tuning_never_scores_a_configuration_on_the_window_that_chose_it():
     t_lo, t_hi = tune.DEFAULT_WINDOWS.test
     assert pd.Timestamp(v_hi) <= pd.Timestamp(t_lo)
     assert pd.Timestamp(tune.DEFAULT_WINDOWS.train[1]) <= pd.Timestamp(v_lo)
+
+
+# --------------------------------------------------------------------------- team A x team B
+
+def _row(date, home, away, **kw):
+    """One prepared row with the columns the combined queries read; everything else defaults."""
+    return {"date": date, "home_team": home, "away_team": away,
+            "p_home": 0.45, "p_draw": 0.27, "p_away": 0.28, **kw}
+
+
+def test_a_pattern_can_describe_both_teams_at_once():
+    """"A side on WWW" and "a side on WWW facing a side on LLL" are different claims, and only the
+    second one is about a fixture."""
+    pool = _pool([
+        _row("2026-01-01", "H", "A", h_form="WWW", a_form="LLL", ftr="H"),
+        _row("2026-01-02", "H", "B", h_form="WWW", a_form="WWW", ftr="A"),
+        _row("2026-01-03", "H", "C", h_form="WWW", a_form="LLL", ftr="D"),
+        _row("2026-01-04", "H", "D", h_form="LLL", a_form="LLL", ftr="H"),
+    ])
+    one_side = engine.select(pool, engine.Pattern(form="WWW", side="home"))
+    both = engine.select(pool, engine.Pattern(form="WWW", opp_form="LLL", side="home"))
+    assert len(one_side) == 3 and len(both) == 2
+    assert set(both["away_team"]) == {"A", "C"}
+    # read from the away side the roles swap: the opponent is now the home team
+    flipped = engine.select(pool, engine.Pattern(form="LLL", opp_form="WWW", side="away"))
+    assert set(flipped["away_team"]) == {"A", "C"}
+
+
+def test_the_opponent_gets_its_own_tolerance_and_shows_up_in_the_label():
+    pool = _pool([
+        _row("2026-01-01", "H", "A", h_form="WWW", a_form="LLL", ftr="H"),
+        _row("2026-01-02", "H", "B", h_form="WWW", a_form="LDL", ftr="H"),
+    ])
+    strict = engine.Pattern(form="WWW", opp_form="LLL", side="home")
+    loose = engine.Pattern(form="WWW", opp_form="LLL", side="home", opp_approx=1)
+    assert len(engine.select(pool, strict)) == 1 and len(engine.select(pool, loose)) == 2
+    assert "rakip LLL" in strict.label() and "rakip LLL (±1)" in loose.label()
+    assert "saha formu" in engine.Pattern(form="WW", venue_form="WW", side="home").label()
+
+
+def test_the_venue_form_narrows_alongside_the_overall_form_not_instead_of_it():
+    """`form_venue=True` swaps which column `form` reads; `venue_form` is a second condition. The
+    two must not be confused — stacking both sequences is what collapses the sample."""
+    pool = _pool([
+        _row("2026-01-01", "H", "A", h_form="WWW", h_form_venue="LLL", ftr="H"),
+        _row("2026-01-02", "H", "B", h_form="WWW", h_form_venue="WWW", ftr="H"),
+    ])
+    assert len(engine.select(pool, engine.Pattern(form="WWW", side="home"))) == 2
+    assert len(engine.select(pool, engine.Pattern(form="WWW", form_venue=True, side="home"))) == 1
+    assert len(engine.select(pool, engine.Pattern(form="WWW", venue_form="WWW", side="home"))) == 1
+
+
+def test_the_cascade_only_ever_narrows_and_says_what_each_step_cost():
+    pool = _pool([_row(f"2026-01-{d:02d}", "H", f"T{d}", h_form="WWW" if d % 2 else "LLL",
+                       a_form="LLL" if d % 3 else "WWW", h_tsi_pct=50.0 + d, ftr="H" if d % 2 else "A")
+                  for d in range(1, 25)])
+    steps = [
+        ("form", engine.Pattern(form="WWW", side="home")),
+        ("+ güç", engine.Pattern(form="WWW", side="home", tsi_pct=(50, 70))),
+        ("+ rakip", engine.Pattern(form="WWW", side="home", tsi_pct=(50, 70), opp_form="LLL")),
+    ]
+    rows = engine.cascade(pool, steps, outcomes=("win",))
+    assert [r["step"] for r in rows] == ["form", "+ güç", "+ rakip"]
+    ns = [r["n"] for r in rows]
+    assert ns == sorted(ns, reverse=True)                     # a condition can only remove matches
+    assert rows[0]["n_lost"] is None and rows[1]["n_lost"] == ns[0] - ns[1]
+    assert rows[2]["n_before"] == ns[1]
+    # running each step against the whole pool must give the same counts as the nested walk
+    assert ns == [len(engine.select(pool, p)) for _, p in steps]
+
+
+def test_the_combined_engine_never_reads_a_later_match():
+    """Spec 25, as a test: every historical row a query may see must predate the query's own date."""
+    pool = _pool([_row(f"2026-01-{d:02d}", "H", f"T{d}", h_form="WWW", a_form="LLL", ftr="H")
+                  for d in range(1, 21)])
+    cut = pd.Timestamp("2026-01-10")
+    rows = engine.cascade(pool, [("form", engine.Pattern(form="WWW", side="home")),
+                                 ("+ rakip", engine.Pattern(form="WWW", opp_form="LLL", side="home"))],
+                          as_of=cut, outcomes=("win",))
+    assert all(r["n"] == 9 for r in rows)                     # the 1st to the 9th, never the 10th on
+    seen = engine.select(pool, engine.Pattern(form="WWW", opp_form="LLL", side="home"), as_of=cut)
+    assert seen["date"].max() < cut

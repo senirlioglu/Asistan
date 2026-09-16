@@ -1171,6 +1171,7 @@
         <div class="kseg" data-twink>${[25, 50, 100, 250].map((k) => `<button type="button" data-k="${k}" class="${k === 50 ? "is-on" : ""}">${k}</button>`).join("")}</div>
         <div data-twins>Yükleniyor…</div></section>
       <section><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3><div data-patterns>Yükleniyor…</div></section>
+      <section><h3>İki takım birlikte <small class="muted">(koşul koşul)</small></h3><div data-combo>Yükleniyor…</div></section>
       <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
       <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" data-kseg>${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div data-analogues>Yükleniyor…</div></section>`;
@@ -1197,6 +1198,61 @@
     Promise.resolve(loadNesineFor(m, root)).then(() => loadMovement(m, root));
     loadTwins(m, root, 50);
     loadPatterns(m, root);
+    loadCombined(m, root);
+  }
+
+  /** TEAM A x TEAM B, one condition at a time. The point of the table is not its last row: it is
+      which condition moved the number, and which only made the sample smaller. */
+  async function loadCombined(m, root, opts = {}) {
+    const box = root.querySelector("[data-combo]");
+    if (!box) return;
+    if (m.source === "nesine") { box.innerHTML = `<p class="note">Bu bölüm veritabanımızdaki maçlar için çalışır.</p>`; return; }
+    const length = opts.length ?? 3, approx = opts.approx ?? 1, key = `${length}:${approx}`;
+    box.innerHTML = `<p class="note">Yükleniyor…</p>`;
+    try {
+      m._combo = m._combo || {};
+      const d = m._combo[key] !== undefined ? m._combo[key]
+        : await api(`/api/kombine/${encodeURIComponent(m.id)}?length=${length}&approx=${approx}`);
+      m._combo[key] = d;
+      const q = d.match;
+      const oc = opts.outcome || "win";
+      const rows = d.rows.map((r) => {
+        const x = r.outcomes[oc] || {};
+        const edge = x.edge != null ? x.edge : x.vs_ref;
+        const ci = x.edge_ci || x.vs_ref_ci || [null, null];
+        const solid = ci[0] != null && (ci[0] > 0 || ci[1] < 0);
+        const thin = x.n != null && x.n < 200;
+        return `<tr class="${thin ? "thin" : ""}"><td class="wrap">${esc(r.step)}</td>
+          <td class="num">${r.n}${r.n_lost ? `<br><small class="muted">−${r.n_lost}</small>` : ""}</td>
+          <td class="num">${x.actual == null ? "–" : "%" + num(x.actual, 1)}</td>
+          <td class="num">${(x.market ?? x.ref) == null ? "–" : "%" + num(x.market ?? x.ref, 1)}</td>
+          <td class="num ${solid ? "yes" : ""}">${edge == null ? "–" : pp1(edge)}</td>
+          <td class="num hide-sm">${ci[0] == null ? "–" : `[${pp1(ci[0])}, ${pp1(ci[1])}]`}</td></tr>`;
+      }).join("");
+      box.innerHTML = `<p class="sentence"><b>${esc(q.team)}</b> <span class="fseq">${esc(q.form)}</span>
+          (sahasında <span class="fseq">${esc(q.venue_form || "–")}</span>, güç %${num(q.tsi_pct, 0)}) —
+          <b>${esc(q.opponent)}</b> <span class="fseq">${esc(q.opp_form || "–")}</span>
+          (<span class="fseq">${esc(q.opp_venue_form || "–")}</span>, güç %${num(q.opp_tsi_pct, 0)}).
+          Koşullar tek tek ekleniyor; her satır bir öncekinin alt kümesi.</p>
+        <div class="kseg" data-combolen>${[3, 4, 5].map((n) => `<button type="button" data-n="${n}" class="${n === length ? "is-on" : ""}">${n}'li dizi</button>`).join("")}</div>
+        <div class="kseg" data-comboap>${[0, 1, 2].map((a) => `<button type="button" data-a="${a}" class="${a === approx ? "is-on" : ""}">${a === 0 ? "birebir" : `±${a}`}</button>`).join("")}</div>
+        <div class="kseg" data-comboout>${[["win", "Kazanır"], ["over25", "2.5 üst"], ["btts", "KG"], ["ht_draw", "İY berabere"]]
+          .map(([k, t]) => `<button type="button" data-o="${k}" class="${k === oc ? "is-on" : ""}">${t}</button>`).join("")}</div>
+        <div class="table-wrap"><table><thead><tr><th>Koşul</th><th class="num">N</th><th class="num">Gerçekleşen</th>
+          <th class="num">Piyasa</th><th class="num">Fark</th><th class="num hide-sm">%95 aralık</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
+        <p class="note">Varsayılan 3'lü dizi ve ±1 <b>ölçülerek</b> seçildi: birebir 5'li diziyle iki tarafı birden
+          tarif ettiğinizde 180 bin maçta ortanca örneklem rakip daha tarif edilmeden <b>sıfıra</b> iniyor
+          (881 → 10 → 0). Daha sıkı ayarları deneyebilirsiniz; N'in çöküşünü görmek de bir bulgudur —
+          iki tane birebir 5 maçlık dizi neredeyse tekil anahtardır ve tek bir tarihsel maçı tarif eden desen
+          hiçbir şey öngörmez. <b>Gri satırlar 200 maçın altında</b>, okunmamalı.</p>`;
+      box.querySelectorAll("[data-combolen] button").forEach((b) => (b.onclick = () => loadCombined(m, root, { ...opts, length: Number(b.dataset.n), approx })));
+      box.querySelectorAll("[data-comboap] button").forEach((b) => (b.onclick = () => loadCombined(m, root, { ...opts, length, approx: Number(b.dataset.a) })));
+      box.querySelectorAll("[data-comboout] button").forEach((b) => (b.onclick = () => loadCombined(m, root, { ...opts, length, approx, outcome: b.dataset.o })));
+    } catch (e) {
+      const msg = String(e.message || "");
+      box.innerHTML = `<p class="note">${msg.startsWith("404") ? "Bu maç için durum tablosu hazır değil." : "Yüklenemedi: " + esc(msg)}</p>`;
+    }
   }
 
   const MOVE_TR = {

@@ -31,7 +31,7 @@ from the pool that was played on or after the day being analysed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 import pandas as pd
@@ -57,9 +57,16 @@ class Pattern:
     """What to look for. Every field is optional; the empty pattern matches the whole database."""
 
     form: str | None = None                 # "WWW-D-WWW", "?WW" — the side's own last results
-    form_venue: bool = False                # read the venue form (home team's home matches) instead
+    form_venue: bool = False                # read `form` off the venue column instead of the overall one
     approx: int = 0                         # how many characters of the form may differ
     side: str = "home"                      # "home" | "away"
+    # The opponent's state. `form` above describes one team; a pattern that describes BOTH is a
+    # different question -- "a side on WWWWW" and "a side on WWWWW facing a side on LLLLL" are not
+    # the same claim, and only the second one is about the match.
+    venue_form: str | None = None           # the side's venue form, ALONGSIDE `form` rather than instead
+    opp_form: str | None = None             # the opponent's overall form
+    opp_venue_form: str | None = None       # the opponent's venue form
+    opp_approx: int | None = None           # slack on the opponent's sequences (defaults to `approx`)
     tsi_pct: tuple[float, float] | None = None       # the side's strength percentile in its league
     opp_tsi_pct: tuple[float, float] | None = None
     gap: tuple[float, float] | None = None           # rating gap, side minus opponent
@@ -72,8 +79,15 @@ class Pattern:
 
     def label(self) -> str:
         bits = []
+        slack = self.approx if self.opp_approx is None else self.opp_approx
         if self.form:
             bits.append(f"form {self.form}" + (f" (±{self.approx})" if self.approx else "") + (" [saha]" if self.form_venue else ""))
+        if self.venue_form:
+            bits.append(f"saha formu {self.venue_form}" + (f" (±{self.approx})" if self.approx else ""))
+        if self.opp_form:
+            bits.append(f"rakip {self.opp_form}" + (f" (±{slack})" if slack else ""))
+        if self.opp_venue_form:
+            bits.append(f"rakip saha formu {self.opp_venue_form}" + (f" (±{slack})" if slack else ""))
         for name, rng in (("TSI%", self.tsi_pct), ("rakip TSI%", self.opp_tsi_pct), ("güç farkı", self.gap),
                           ("piyasa", self.market), ("dinlenme", self.rest_days), ("sıra", self.pos)):
             if rng:
@@ -133,9 +147,13 @@ def select(frame: pd.DataFrame, pattern: Pattern, as_of: pd.Timestamp | None = N
     mask = np.ones(len(frame), dtype=bool)
     if as_of is not None:
         mask &= (frame["date"] < pd.Timestamp(as_of)).to_numpy()
-    if pattern.form:
-        col = f"{p}form_venue" if pattern.form_venue else f"{p}form"
-        mask &= _form_mask(frame[col].astype("string"), pattern.form, pattern.approx)
+    slack = pattern.approx if pattern.opp_approx is None else pattern.opp_approx
+    for col, seq, tol in ((f"{p}form_venue" if pattern.form_venue else f"{p}form", pattern.form, pattern.approx),
+                          (f"{p}form_venue", pattern.venue_form, pattern.approx),
+                          (f"{o}form", pattern.opp_form, slack),
+                          (f"{o}form_venue", pattern.opp_venue_form, slack)):
+        if seq and col in frame:
+            mask &= _form_mask(frame[col].astype("string"), seq, tol)
     if pattern.team:
         side_team = "home_team" if pattern.side == "home" else "away_team"
         mask &= (frame[side_team] == pattern.team).to_numpy()
@@ -363,6 +381,38 @@ def run(frame: pd.DataFrame, pattern: Pattern, outcomes: tuple[str, ...] = ("win
         cols = [c for c in ("date", "league", "home_team", "away_team", "ftr", "fthg", "ftag", "h_form", "a_form") if c in sub]
         res["sample"] = sub.sort_values("date", ascending=False).head(sample)[cols].to_dict("records")
     return res
+
+
+def cascade(frame: pd.DataFrame, steps: list[tuple[str, Pattern]], as_of: pd.Timestamp | None = None,
+            **kw) -> list[dict]:
+    """The same measurement under a widening set of conditions, one row per condition added.
+
+    A single number ("this pattern wins 69 %") hides the only thing worth knowing: which condition
+    moved it. Adding the opponent's form and watching the edge go from +3.3 to +4.2 while N falls
+    from 394 to 218 is the shape of the evidence; the last row on its own is not.
+
+    Rows carry `n_lost`, how many matches the condition removed, because a step that halves the
+    sample to move the edge by 0.1 points has told us nothing except that the sample got smaller.
+
+    The steps MUST be nested — each one may only add constraints to the one before it — because
+    that is what lets every step after the first run on the previous step's matches instead of on
+    the whole database. Over 180.000 rows and seven steps that is the difference between six
+    seconds and one.
+    """
+    out, previous, pool = [], None, frame
+    for label, pattern in steps:
+        sub = select(pool, pattern, as_of=as_of)
+        res = run(sub, replace(pattern, form=None, venue_form=None, opp_form=None, opp_venue_form=None,
+                               tsi_pct=None, opp_tsi_pct=None, gap=None, market=None, rest_days=None,
+                               pos=None, team=None, leagues=None, extra={}),
+                  as_of=as_of, **kw)
+        res["label"] = pattern.label()
+        res["step"] = label
+        res["n_lost"] = None if previous is None else previous - res["n"]
+        res["n_before"] = previous
+        previous, pool = res["n"], sub
+        out.append(res)
+    return out
 
 
 def levels(frame: pd.DataFrame, pattern: Pattern, team: str | None, tsi_pct: float | None, band: float = 10.0,

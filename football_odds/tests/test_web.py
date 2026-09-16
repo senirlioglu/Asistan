@@ -260,3 +260,17 @@ def test_movement_endpoint_answers_in_probability_and_admits_what_it_lacks(clien
     assert s["quality"]["snapshots"] == 3 and s["quality"]["runs"] >= 3
     assert "config" in d and d["config"]["movement_min_pp"] > 0    # thresholds are data, not code
     assert client.get("/api/hareket/91?days=99").status_code == 422
+
+
+def test_combined_endpoint_cascades_and_never_widens(research_client):
+    d = research_client.get("/api/kombine/s59?length=3&approx=1").json()
+    assert d["match"]["team"] and d["match"]["opponent"] and d["length"] == 3
+    ns = [r["n"] for r in d["rows"]]
+    assert ns == sorted(ns, reverse=True)                      # each condition can only remove matches
+    assert d["rows"][0]["n_lost"] is None and all("step" in r for r in d["rows"])
+    win = d["rows"][0]["outcomes"]["win"]
+    assert "actual" in win and "diff_ci" in win                # never a hit rate on its own
+    tight = research_client.get("/api/kombine/s59?length=5&approx=0").json()
+    assert tight["rows"][-1]["n"] <= d["rows"][-1]["n"]        # stricter cannot find more
+    assert research_client.get("/api/kombine/yok").status_code == 404
+    assert research_client.get("/api/kombine/s59?length=9").status_code == 422
