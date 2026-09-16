@@ -65,6 +65,7 @@ class MovementConfig:
     movement_min_pp: float = 1.5       # at least this much to be called steam or drift
     direction_consistency: float = 0.70  # |net| / path length; below it the move wandered
     reversal_min_pp: float = 1.5       # both legs of a reversal must clear this
+    reversal_min_share: float = 0.5    # ...and the leg back must undo this much of the leg out
     late_move_share: float = 0.60      # share of the move inside late_window_min => LATE_*
     late_window_min: int = 60
     accel_ratio: float = 1.5           # late velocity over early velocity
@@ -335,7 +336,13 @@ def reversal(points: list[Point], cfg: MovementConfig = DEFAULT_CONFIG) -> dict 
     """The size of the move out and the size of the move back, not a boolean.
 
     OPEN 1.85 -> LOW 1.70 -> CLOSE 1.91 is one thing at a 6 pp swing and another at 0.4 pp; both
-    legs have to clear `reversal_min_pp` before the word is used at all."""
+    legs have to clear `reversal_min_pp` before the word is used at all.
+
+    They also have to be comparable. A 10 pp move that ticks 1.6 pp back has not reversed, it has
+    paused — but the absolute test alone called it a REVERSAL, and because the check runs before
+    STEAM/DRIFT it swallowed those categories whole: the first sixteen matches frozen in production
+    came out 8 REVERSAL and 0 STEAM. `reversal_min_share` is what the spec meant by a *strong* turn
+    back: the leg back must undo at least this much of the leg out."""
     ps = [_p(p) for p in points if p.prob is not None]
     if len(ps) < 3:
         return None
@@ -350,6 +357,8 @@ def reversal(points: list[Point], cfg: MovementConfig = DEFAULT_CONFIG) -> dict 
             continue                                   # not a turn: both legs go the same way
         if abs(initial) < cfg.reversal_min_pp or abs(back) < cfg.reversal_min_pp:
             continue
+        if abs(back) / abs(initial) < cfg.reversal_min_share:
+            continue          # a pullback is not a reversal: the spec asks for a STRONG turn back
         cand = {"initial_pp": round(initial, 2), "reversal_pp": round(back, 2),
                 "recovery_pct": round(100 * min(abs(back) / abs(initial), 9.99), 1),
                 "peak_p": round(ps[turn], 2), "at_index": turn}

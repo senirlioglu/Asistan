@@ -330,3 +330,30 @@ def test_settling_records_our_own_match_id_so_the_join_is_possible(arch):
     from src.nesine.history import COLS
 
     assert "match_id" in COLS
+
+
+def test_a_pullback_is_not_a_reversal_and_does_not_swallow_steam(arch):
+    """Found in production: the first sixteen frozen matches came out 8 REVERSAL and 0 STEAM.
+    The reversal check runs before STEAM/DRIFT, and the absolute test alone let a 10 pp move that
+    ticked 1.6 pp back qualify — so every moving price became a reversal and the steam/drift
+    categories were never reachable. The spec asks for a STRONG turn back, not any turn back."""
+    def series(ps):
+        s = mv.Series(code=1, group="ms", selection="1", kickoff=KO)
+        s.points = [mv.Point(ts=KO - dt.timedelta(minutes=m), minutes=m, odds=2.0, prob=p / 100, changed=True)
+                    for m, p in ps]
+        return s
+
+    pause = series([(300, 45.0), (200, 50.0), (100, 55.0), (30, 53.4)])      # 10 pp up, 1.6 pp back
+    got = mv.classify(pause)
+    assert got["type"] == "STEAM" and got["reversal"] is None
+    assert got["consistency"] > 0.7
+
+    real = series([(300, 50.0), (200, 58.0), (100, 56.0), (30, 46.0)])       # 8 pp up, 12 pp back
+    assert mv.classify(real)["type"] == "REVERSAL"
+
+    half = series([(300, 45.0), (150, 55.0), (30, 50.0)])                    # exactly half undone
+    assert mv.classify(half)["type"] == "REVERSAL"
+
+    # and the share is a threshold like every other one, not a number in the code
+    loose = mv.MovementConfig(reversal_min_share=0.1)
+    assert mv.classify(pause, loose)["type"] == "REVERSAL"
