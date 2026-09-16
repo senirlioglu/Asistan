@@ -111,6 +111,7 @@ def freeze_due(settings: Settings, matches: list[dict], now: dt.datetime | None 
             ocp = mv.open_current_close(s, started=False)
             sel[path] = {
                 "movement": mv.classify(s, cfg, windows=w),
+                "features": mv.features_for(s, cfg, windows=w),   # spec 27, as stored, not derived later
                 "open_p": (ocp["open"] or {}).get("p"), "now_p": (ocp["current"] or {}).get("p"),
                 "odds": (ocp["current"] or {}).get("odds"),
                 "windows": {k: w[k].get("delta_p") for k, _ in mv.WINDOWS},
@@ -220,3 +221,29 @@ def summary(settings: Settings, cfg: mv.MovementConfig | None = None) -> dict:
                                                     "research": cfg.min_research_n,
                                                     "validation": cfg.min_validation_n},
             "n_frozen": len(frozen), "n_settled": len(results)}
+
+
+def to_frame(settings: Settings, path: str = "ms.1"):
+    """The forward store as a frame the state table can be merged with, once there is enough of it.
+
+    One row per settled match: our `match_id`, the movement features frozen before kick-off, and the
+    result. This is the join that turns "the price moved like this" into "and then this happened" —
+    and it stays empty until matches have actually been frozen and settled, which is the honest
+    state of it today rather than something to paper over.
+    """
+    import pandas as pd
+
+    frozen = {int(r["code"]): r for r in load(settings, "freeze")}
+    rows = []
+    for r in load(settings, "settle"):
+        f = frozen.get(int(r["code"]))
+        if not f or not r.get("match_id"):
+            continue
+        sel = (f.get("sel") or {}).get(path) or {}
+        feats = sel.get("features") or {}
+        if not feats:
+            continue
+        rows.append({"match_id": r["match_id"], "code": int(r["code"]), "path": path,
+                     "frozen_at": f.get("ts"), "kickoff": f.get("kickoff"), "ftr": r.get("ftr"),
+                     **{k: feats.get(k) for k in mv.FEATURES}})
+    return pd.DataFrame(rows, columns=["match_id", "code", "path", "frozen_at", "kickoff", "ftr", *mv.FEATURES])

@@ -428,6 +428,35 @@ def velocities(windows: dict) -> dict[str, float | None]:
     return {f"velocity_{name}": (windows.get(name) or {}).get("velocity") for name in VELOCITY_WINDOWS}
 
 
+# the feature names the twin engine will compare on once the archive has history. Kept in one place
+# so the storage, the frame and the similarity cannot drift apart on spelling.
+FEATURES = ("mv_type", "mv_total_pp", "mv_3h", "mv_1h", "mv_30m", "mv_15m",
+            "mv_velocity_1h", "mv_consistency", "mv_reversal_pp")
+
+
+def features_for(s: Series, cfg: MovementConfig = DEFAULT_CONFIG, windows: dict | None = None) -> dict:
+    """One selection's movement as a flat feature row — spec 27's list, and nothing more.
+
+    This is the shape the twin engine will read and the forward store already writes. Every value is
+    None when the archive cannot support it, because a movement feature defaulted to zero is a claim
+    that the price held, which is the one thing a missing measurement does not tell you."""
+    w = windows if windows is not None else window_features(s, cfg)
+    verdict = classify(s, cfg, windows=w)
+    rev = verdict.get("reversal") or {}
+    return {
+        "mv_type": verdict.get("type"),
+        "mv_total_pp": verdict.get("total_pp"),
+        "mv_3h": (w.get("3h") or {}).get("delta_p"),
+        "mv_1h": (w.get("1h") or {}).get("delta_p"),
+        "mv_30m": (w.get("30m") or {}).get("delta_p"),
+        "mv_15m": (w.get("15m") or {}).get("delta_p"),
+        "mv_velocity_1h": (w.get("1h") or {}).get("velocity"),
+        "mv_consistency": verdict.get("consistency"),
+        "mv_reversal_pp": rev.get("reversal_pp"),
+        "mv_confidence": verdict.get("confidence"),
+    }
+
+
 # --------------------------------------------------------------------------- data quality
 
 def coverage(settings: Settings, s: Series, as_of: dt.datetime | None = None, days: int = 4) -> dict:

@@ -50,6 +50,11 @@ GRID = {                                  # the values each category weight may 
     "form": (0.0, 0.5, 1.0, 1.5, 2.5, 4.0),
     "goals": (0.0, 0.5, 1.0, 2.0, 3.0, 4.0),
     "movement": (0.0, 0.5, 1.0, 2.0, 3.0, 4.0),
+    # What a category the pair cannot compare is worth. 0.0 drops it and renormalises over the rest
+    # (a 2014 match has no closing line; penalising it for that is penalising the archive's age, not
+    # the match's dissimilarity). 1.0 counts it at full weight as a flat 50. This was a hand-set
+    # 0.5 until the search was allowed an opinion.
+    "missing_penalty": (0.0, 0.25, 0.5, 0.75, 1.0),
 }
 HALF_LIVES = (None, 3.0, 5.0, 8.0, 12.0)
 K = 100
@@ -68,10 +73,11 @@ class _Scored:
         self.n = 0
 
     def key(self) -> tuple:
-        return (tuple(self.weights.as_dict().items()), self.half_life)
+        return (tuple(self.weights.as_dict().items()), self.weights.missing_penalty, self.half_life)
 
     def as_dict(self) -> dict:
-        return {"weights": self.weights.as_dict(), "half_life": self.half_life, "n": self.n,
+        return {"weights": self.weights.as_dict(), "missing_penalty": self.weights.missing_penalty,
+                "half_life": self.half_life, "n": self.n,
                 "logloss": round(self.logloss, 5), "brier": round(self.brier, 5),
                 "logloss_adj": round(self.logloss_adj, 5), "brier_adj": round(self.brier_adj, 5)}
 
@@ -95,22 +101,28 @@ def _probs_for_configs(index: twins.TwinIndex, rows: pd.DataFrame, configs: list
     ftr_pool = index.frame["ftr"].astype(str).to_numpy()
     ids = index.frame["match_id"].to_numpy() if "match_id" in index.frame else None
     names = list(twins.CATEGORIES)
-    penalty = configs[0].weights.missing_penalty
     W = np.array([[cfg.weights.as_dict()[n] for n in names] for cfg in configs], dtype=np.float32)
+    pen = np.array([cfg.weights.missing_penalty for cfg in configs], dtype=np.float32)[:, None]
     for i, (_, row) in enumerate(rows.iterrows()):
         if log_every and i and i % log_every == 0:
             log.info("  %d / %d matches", i, len(rows))
         cats = index.category_scores(row)
-        # the weighted mean is linear in the weights, so the per-category parts are built once and
-        # every configuration is then one row of a matrix product rather than its own pass
-        A = np.empty((len(names), len(index.frame)), dtype=np.float32)
-        B = np.empty_like(A)
+        # The weighted mean is linear in the weights AND in the missing penalty, so both come out of
+        # the per-match work: build the known/unknown parts once, then every configuration is three
+        # matrix products and a scalar combination rather than its own pass over the pool.
+        #   num = W·(known·score)  +  50·π·W·(unknown)
+        #   den = W·(known)        +     π·W·(unknown)
+        SC = np.empty((len(names), len(index.frame)), dtype=np.float32)  # the score where comparable
+        UN = np.empty_like(SC)                                           # 1 where not comparable
+        KN = np.empty_like(SC)                                           # 1 where comparable
         for j, name in enumerate(names):
-            s = cats[name]
-            known = np.isfinite(s)
-            A[j] = np.where(known, s, penalty * 50.0)
-            B[j] = np.where(known, 1.0, penalty)
-        num, den = W @ A, W @ B
+            sc = cats[name]
+            known = np.isfinite(sc)
+            SC[j] = np.where(known, sc, 0.0)
+            KN[j] = known
+            UN[j] = ~known
+        wk, wu, wn = W @ SC, W @ UN, W @ KN
+        num, den = wk + 50.0 * pen * wu, wn + pen * wu
         allowed = index.dates < np.datetime64(pd.Timestamp(row["date"]))
         if ids is not None and "match_id" in row:
             allowed &= ids != row["match_id"]

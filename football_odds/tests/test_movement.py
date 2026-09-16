@@ -288,3 +288,45 @@ def test_the_forward_summary_refuses_to_quote_a_rate_on_a_handful(arch):
     assert steam["n_settled"] == 1 and steam["enough"] is False
     assert steam["actual"] is None and steam["market"] is None    # a rate on one match is not a rate
     assert out["floors"]["display"] >= 30
+
+
+def test_the_feature_row_is_none_where_the_archive_cannot_support_it(arch):
+    """Spec 27's list, and a zero is never used to stand in for a missing measurement: a movement
+    feature defaulted to 0 claims the price held, which is exactly what we do not know."""
+    write(arch, [(100, "ms.1", 2.05), (100, "ms.X", 3.4), (100, "ms.2", 4.0),
+                 (15, "ms.1", 1.76), (15, "ms.X", 3.4), (15, "ms.2", 5.0)])
+    f = mv.features_for(mv.trajectory(arch, 55, as_of=KO)["ms.1"])
+    assert set(mv.FEATURES) <= set(f)
+    assert f["mv_3h"] is None                      # the 3h window's start was never seen
+    assert f["mv_15m"] is not None and f["mv_total_pp"] is not None
+
+
+def test_the_forward_store_turns_into_a_frame_only_once_matches_are_settled(arch):
+    import datetime as dt
+
+    import pandas as pd
+
+    from src.nesine import forward
+
+    write(arch, steam_rows())
+    assert forward.to_frame(arch).empty                       # nothing frozen yet
+    forward.freeze_due(arch, [META], now=KO - dt.timedelta(minutes=10))
+    assert forward.to_frame(arch).empty                       # frozen, but no result yet
+
+    df = pd.DataFrame([{"match_id": "abc123", "date": pd.Timestamp(KO.date()), "home_team": "A",
+                        "away_team": "B", "fthg": 2, "ftag": 0, "ftr": "H", "htr": "H", "hthg": 1,
+                        "htag": 0, "league": "L", "season": "2627", "cons_h": 1.8, "cons_d": 3.5,
+                        "cons_a": 4.2}])
+    forward.settle(arch, df=df, now=KO + dt.timedelta(hours=4))
+    out = forward.to_frame(arch)
+    assert len(out) == 1 and out.iloc[0]["ftr"] == "H"
+    assert out.iloc[0]["mv_type"] == "STEAM" and out.iloc[0]["mv_total_pp"] > 0
+    assert list(out.columns)[-len(mv.FEATURES):] == list(mv.FEATURES)
+
+
+def test_settling_records_our_own_match_id_so_the_join_is_possible(arch):
+    """It used not to: history.load_history never read the match_id column, so every settled row
+    carried an empty id and the forward frame could only ever come back empty."""
+    from src.nesine.history import COLS
+
+    assert "match_id" in COLS

@@ -88,9 +88,12 @@ def load_weights(results_dir) -> tuple[Weights, float | None, dict]:
     if not d.get("beats_default_on_test"):
         return Weights(), None, {"source": "varsayılan", "reason": "ayarlanan mix test penceresinde varsayılanı geçemedi",
                                  "tuned": chosen, "test": d.get("test")}
-    w = Weights(**{k: float(v) for k, v in chosen["weights"].items()})
+    kw = {k: float(v) for k, v in chosen["weights"].items()}
+    if chosen.get("missing_penalty") is not None:
+        kw["missing_penalty"] = float(chosen["missing_penalty"])
+    w = Weights(**kw)
     return w, chosen.get("half_life"), {"source": "ayarlanmış", "generated_at": d.get("generated_at"),
-                                        "test": d.get("test")}
+                                        "missing_penalty": w.missing_penalty, "test": d.get("test")}
 
 
 def decay_weights(twin_dates: np.ndarray, as_of, half_life: float | None) -> np.ndarray:

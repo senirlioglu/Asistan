@@ -31,7 +31,7 @@ NTH_AFTER = 7
 # nesine marks women's, youth and reserve teams with a suffix; those are different clubs from the ones
 # we store, and "EC Bahia BA (K)" must not resolve to Bahia
 _NOT_THE_SAME_CLUB = re.compile(r"\((k|kad[ıi]n)\)|\b(u\s?1[5-9]|u\s?2[0-3]|kad[ıi]n|women|res\.?|reserve|b\s?tak[ıi]m|ii)\b", re.IGNORECASE)
-COLS = ["league", "date", "home_team", "away_team", "fthg", "ftag", "ftr", "hthg", "htag", "htr", "cons_h", "cons_d", "cons_a", "season"]
+COLS = ["match_id", "league", "date", "home_team", "away_team", "fthg", "ftag", "ftr", "hthg", "htag", "htr", "cons_h", "cons_d", "cons_a", "season"]
 
 
 def load_history(settings: Settings) -> pd.DataFrame | None:
