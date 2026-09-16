@@ -389,7 +389,32 @@ edilmemiş makul sayı, laboratuvar önlüğü giymiş varsayımdır.** Bu modü
 **Yapmaz:** global arama değil, açgözlü. 6⁷ = 280.000 kombinasyonu denemez. Ve testte varsayılanı
 geçemeyen bir mix'i **canlıya almaz** (`load_weights` reddeder).
 
-### 8g. Servis katmanı — `patterns/service.py`
+### 8g. Birleşik desen — iki takım aynı anda (`engine.cascade`)
+
+`Pattern` yalnız bir tarafı tarif edebiliyordu. `opp_form`, `opp_venue_form`, `venue_form` ve
+`opp_approx` alanlarıyla artık maçı tarif ediyor — "WWW gelen takım" ile "WWW gelen takımın LLL
+gelen takımı ağırlaması" farklı iddialardır ve yalnız ikincisi bir fikstür hakkındadır.
+
+`cascade()` koşulları tek tek ekleyip her satırı piyasayla karşılaştırır. Son satır tablonun en
+az ilginç yeri; **hangi koşulun sayıyı değiştirdiği** bulgudur. Adımlar iç içe olmak zorunda,
+çünkü her adım bir öncekinin sonucu üzerinde çalışıyor — 180 bin satırda yedi adım 6,1 s yerine
+0,6 s.
+
+**Varsayılan ölçüldü, seçilmedi.** Koşul başına hayatta kalan ortanca örneklem:
+
+| dizi | form | +saha | +rakip | +rakip saha |
+|---|---|---|---|---|
+| 5, birebir | 881 | 10 | **0** | 0 |
+| 5, ±1 | 9368 | 767 | 46 | 5 |
+| 4, birebir | 2465 | 49 | 1 | 0 |
+| 3, birebir | 6578 | 527 | 27 | 3 |
+| **3, ±1** | 46111 | 18124 | 4686 | **2066** |
+
+Asıl düşüşü rakip değil, **genel form ile saha formunu birebir üst üste koymak** yapıyor
+(881 → 10): saha formu zaten aynı geçmişten türeyen bir alt dizi, ikisi birlikte neredeyse tekil
+anahtar. Sıkı ayarlar arayüzde duruyor çünkü N'in çöküşünü görmek de bulgudur.
+
+### 8h. Servis katmanı — `patterns/service.py`
 
 Web süreci 223 MB'lık tam tabloyu taşıyamaz. Bu modül sadece okunan 40 kolonu alır, sayıları
 float32'ye, tekrar eden metinleri kategoriye çevirir: **38 MB, 0,3 s indeksleme, sorgu başına
@@ -397,6 +422,50 @@ float32'ye, tekrar eden metinleri kategoriye çevirir: **38 MB, 0,3 s indeksleme
 değiştirse bile sonraki istek yenisini alır.
 
 ---
+
+## 8i. Oran hareketi motoru — `nesine/movement.py`
+
+Arşiv 15 Eylül 2026'dan beri her nesine fiyatını saklıyordu ama kimse geri okumuyordu: sayfada bir
+ok vardı, o da fiyatın oynadığını söylüyor, nasıl/ne zaman/ne hızda oynadığı hakkında hiçbir şey
+söylemiyordu.
+
+| ne | nasıl |
+|---|---|
+| **Trajectory** | Arşiv satırları → seçim başına adım fonksiyonu, market bazında ileri doldurma |
+| **Marjsız olasılık** | Mevcut `remove_margin` ile. Market **tamamen** izlenmiyorsa (29 skor sonucunun 4'ü) marj atılmaz, `novig: false` denir |
+| **Açılış / şimdi / kapanış** | Maç başlamadıysa kapanış `None` — elimizdeki son fiyat kapanış fiyatı değildir |
+| **Pencereler** | 24s/12s/6s/3s/1s/30dk/15dk × başlangıç, bitiş, delta, değişim sayısı, max, min, volatilite, hız |
+| **Velocity** | Puan/saat, beş pencerede |
+| **Acceleration** | Geç/erken hız oranı, etiket olarak |
+| **Direction consistency** | \|net\| / yol uzunluğu — aynı yere varan düz yolu dolambaçlıdan ayırır |
+| **Reversal** | Boolean değil: iki bacak + geri dönüş yüzdesi |
+| **Sınıflandırma** | STEAM / DRIFT / LATE_* / REVERSAL / STABLE / NOISY + ACCELERATING / DECELERATING |
+
+**Hiçbir eşik kodda gömülü değil** — hepsi `MovementConfig`'de, `FO_MOVE_<ALAN>` ile deploy'suz
+değiştirilebilir.
+
+**Hiçbir şey uydurulmuyor:** başlangıç fiyatını görmediğimiz pencere `insufficient` döner, iki
+değişimden az olan seçim hiç sınıflandırılmaz, ve her karar snapshot sayısı, ilk/son kayıt ve
+**izleyicinin son 24 saatin ne kadarında çalıştığı** ile birlikte gösterilir.
+
+⚠️ **Üretimin ilk gününde bir hata yakalandı.** İlk 16 donmuş maç 8 REVERSAL / 0 STEAM geldi.
+İçinde hiç steam olmayan dağılım bulgu değil, hatadır: REVERSAL kontrolü STEAM/DRIFT'ten önce
+çalışıyor ve yalnız mutlak bacak büyüklüğüne bakıyordu, böylece 10 puanlık yükselişin sonundaki
+1,6 puanlık geri tepme (%16) REVERSAL sayılıp steam kategorisini yutuyordu. `reversal_min_share`
+artık geri bacağın gidenin en az yarısını geri almasını istiyor.
+
+## 8j. İleri test — `nesine/forward.py`
+
+Hareket sınıflandırması, maç başladıktan sonra tamamlanan bir yörüngeyi okur; yani geçmişe
+uydurma imkânı verinin içine gömülüdür. Bu modül o imkânı kaldırır: karar kick-off'tan ~25 dakika
+**önce** dondurulup sadece-ekleyen dosyaya yazılır, sonuç geldiğinde **ayrı satır** olarak eklenir,
+donmuş satıra dokunulmaz.
+
+Kaçırılan dondurma telafi edilemez — kick-off'u donmadan geçen maç, ne kadar veri birikirse
+biriksin bir daha ileri test edilemez. Bu yüzden arşiv heartbeat'i gibi öncelikli yapıldı.
+
+Örneklem eşikleri (`MovementConfig`): gösterim 30, araştırma 100, doğrulama 300 maç. Altında
+**oran gösterilmez** — 14 maçta gelen %71, aynı yöne düşen 14 yazı turadır.
 
 ## 9. Nesine katmanı
 

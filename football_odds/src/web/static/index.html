@@ -247,6 +247,35 @@
 
     <div class="verdict" id="rs-verdict">Yükleniyor…</div>
 
+    <details class="howto" id="rs-purpose">
+      <summary><b>Bu motorlar karar vermeme yardım ediyor mu?</b></summary>
+      <div>
+        <p><b>Kısa cevap: kazanan seçmene yardım etmiyor. Yanlış fikri elemene yardım ediyor.</b></p>
+        <p>Beş motoru aynı maçlarda, ileriye doğru, piyasayla yarıştırdık. Hiçbiri geçemedi. Bu bir başarısızlık
+        değil — ölçüm altyapısının çalıştığının kanıtı. Aynı taramayı fiyat eşlemesi, üç zaman penceresi ve
+        çoklu test düzeltmesi olmadan yapsaydık onlarca "keşif" ilan ederdik; hepsi uydurma olurdu.</p>
+        <p>Peki bu sistem ne veriyor:</p>
+        <ul>
+          <li><b>Fikrini ucuza test etme.</b> "Üst üste kazanan takım devam eder", "deplasman favorisi ilk yarıyı
+          önde kapatır" gibi bir sezgin varsa, saniyeler içinde 180 bin maçta ölçebilir ve <b>fiyatın yanında</b>
+          görebilirsin. Defterdeki 26 iddiadan 24'ü bu şekilde elendi — gerçekleşme oranları yüksekti, ama
+          piyasanın söylediğinden farklı değildi.</li>
+          <li><b>Belirsizliğin boyutunu görme.</b> Her sayının yanında %95 aralığı var. "Bu takım bu formla %100
+          kazanmış" cümlesi N=3 ise aralığı ±90 puandır. Sistem bunu saklamak yerine yazar.</li>
+          <li><b>Kendi kuponunu aynı ölçüye tabi tutma.</b> Oyun sekmesinde senin seçimin, geçmişin seçimi ve
+          piyasanın seçimi yan yana puanlanır.</li>
+          <li><b>Piyasanın ne öğrendiğini izleme.</b> Oran hareketi bloğu, kick-off'a doğru fiyatın ne yaptığını
+          gösterir. Bu, <i>neyi</i> öğrendiğini söylemez — ama bir şey öğrendiğini söyler.</li>
+        </ul>
+        <p><b>Ne vermiyor:</b> "şuna oyna" demiyor ve diyemez. Sistem kendini bu konuda kısıtlıyor: doğrulama
+        testinden geçemediği için <b>hiç "güçlü sinyal" üretmiyor</b>, ve donmuş oran hareketi kararları yeterli
+        sayıya ulaşmadan hiçbir oran gösterilmiyor. Bir yerde büyük bir iddia görmüyorsan sebebi budur.</p>
+        <p class="note">Bahis, marjı yüksek bir oyundur — nesine'de alt liglerde oranların toplam ihtimali %117'ye
+        çıkabiliyor. Piyasayı geçemeyen bir model bu marjı da geçemez. Bu sekmedeki her sayı, o gerçeğin altında
+        okunmalıdır.</p>
+      </div>
+    </details>
+
     <section class="rs-block">
       <h3 class="rs-h">Modeller: yeni motorlar fiyata bir şey ekliyor mu?</h3>
       <p class="note">Aynı maçlarda, ileriye doğru (her tahmin yalnızca o maçtan önce bilinenle). Artı işareti

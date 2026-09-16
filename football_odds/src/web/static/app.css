@@ -442,3 +442,14 @@ td.num.yes, .sentence .yes, p .yes { color: var(--good); font-weight: 600; }
   :root:not([data-theme="light"]) .mv-verdict.down { background: #4a2a1b; }
 }
 tr.thin td { color: var(--ink-3); }          /* under 200 matches: visible, but visibly not evidence */
+
+/* "what is this for" — folded away by default so it never competes with the numbers, but present
+   in the place the reader meets each engine. A table of historical rates with no such line reads
+   as a tip sheet whatever the footnotes say. */
+.whatfor { margin: 0 0 10px; border-left: 2px solid var(--line-strong); padding-left: 10px; }
+.whatfor > summary { cursor: pointer; color: var(--ink-2); font-size: 0.82rem; padding: 2px 0; }
+.whatfor > div { font-size: 0.84rem; color: var(--ink-2); }
+.whatfor p { margin: 6px 0; }
+#rs-purpose { margin: 0 0 16px; }
+#rs-purpose ul { margin: 8px 0; padding-left: 18px; }
+#rs-purpose li { margin: 6px 0; }

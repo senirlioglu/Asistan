@@ -1189,16 +1189,68 @@
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
       ${tol ? `<section><h3>Tolerans eşleşmesi</h3><p class="note">Üç ihtimalin hepsi bu kadar yakın olan geçmiş maç sayısı: ${tol}</p></section>` : ""}
-      <section><h3>Oran hareketi <small class="muted">(nesine, kick-off'a doğru)</small></h3><div data-move>Yükleniyor…</div></section>
-      <section><h3>Maç künyesi <small class="muted">(maç öncesi bilinenler)</small></h3><div data-dna>Yükleniyor…</div></section>
-      <section><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3>
+      <section><h3>Oran hareketi <small class="muted">(nesine, kick-off'a doğru)</small></h3>${whatFor("move")}<div data-move>Yükleniyor…</div></section>
+      <section><h3>Maç künyesi <small class="muted">(maç öncesi bilinenler)</small></h3>${whatFor("dna")}<div data-dna>Yükleniyor…</div></section>
+      <section><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3>${whatFor("twins")}
         <div class="kseg" data-twink>${[25, 50, 100, 250].map((k) => `<button type="button" data-k="${k}" class="${k === 50 ? "is-on" : ""}">${k}</button>`).join("")}</div>
         <div data-twins>Yükleniyor…</div></section>
-      <section><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3><div data-patterns>Yükleniyor…</div></section>
-      <section><h3>İki takım birlikte <small class="muted">(koşul koşul)</small></h3><div data-combo>Yükleniyor…</div></section>
+      <section><h3>Bu form dizisinden sonra <small class="muted">(desen motoru)</small></h3>${whatFor("patterns")}<div data-patterns>Yükleniyor…</div></section>
+      <section><h3>İki takım birlikte <small class="muted">(koşul koşul)</small></h3>${whatFor("combo")}<div data-combo>Yükleniyor…</div></section>
       <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
       <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" data-kseg>${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div data-analogues>Yükleniyor…</div></section>`;
+  }
+
+
+  /** What each engine is FOR, in the place the reader meets it. Written to answer the question a
+      user actually has — "does this help me decide?" — and the measured answer to that is no, not
+      in the sense of picking winners. Saying so where the numbers are is the whole point: a table
+      of historical rates with no such line reads as a tip sheet whatever the footnotes say. */
+  const WHAT_FOR = {
+    move: ["Fiyat kick-off'a doğru ne yaptı?",
+      `<p>Oran, bahis girdikçe ve haber geldikçe oynar. Bu blok o hareketi <b>marjsız olasılık</b> cinsinden ölçer —
+       çünkü 1,80'den 1,65'e düşmek ile 6,00'dan 5,50'ye düşmek aynı miktarda bilgi değildir, üstelik ham oran
+       nesine'nin payını da taşır (alt liglerde %17'ye kadar).</p>
+       <p><b>Ne işe yarar:</b> "bu maçta fiyat oynadı mı, ne kadar, ne kadar hızlı ve tek yönlü mü" sorusuna sayı verir.
+       Kapanışa yakın tek yönlü sert hareket, piyasanın yeni bir şey öğrendiğinin işaretidir — <i>ne öğrendiğini</i> söylemez.</p>
+       <p><b>Ne işe yaramaz:</b> "STEAM var, o zaman oynanır" demeye. Bunu iddia edebilmek için hareket sınıfının
+       sonuçları fiyattan daha iyi öngördüğünü ölçmüş olmamız gerekir. Arşiv 15 Eylül 2026'da başladı; o ölçüm
+       henüz yapılamıyor ve yapılana kadar burada ROI iddiası göremeyeceksiniz.</p>`],
+    dna: ["Maçın maç öncesi künyesi",
+      `<p>Bu satırlar motorların <b>girdisi</b>. Güç göstergesi (TSI) sonuçtan değil, piyasanın o maça verdiği
+       fiyattan öğrenir — bu yüzden "sonucu bilme" sızıntısı taşımaz.</p>
+       <p><b>Ne işe yarar:</b> aşağıdaki iki motorun neye bakarak benzerlik kurduğunu görmeye. Bir ikiz listesi
+       beklemediğiniz maçlar getiriyorsa sebebi genelde buradadır.</p>`],
+    twins: ["Benzer maçlarda ne olmuş?",
+      `<p>Bu maça yalnız fiyatıyla değil, yedi başlıkta birden benzeyen geçmiş maçları bulur ve o maçlarda ne
+       olduğunu gösterir — <b>her zaman o maçların kendi fiyatının yanında</b>.</p>
+       <p><b>Asıl okunacak satır budur:</b> "50 ikizde %69 kazanmış" tek başına hiçbir şey demez. O maçların fiyatı
+       da %68 diyorsa piyasa zaten biliyordu. Fark satırına ve onun %95 aralığına bakın; <b>aralık sıfırı
+       içeriyorsa ortada bulgu yok</b>.</p>
+       <p><b>Ölçülmüş sonuç:</b> bu motoru tahmine çevirip 5.000 maçlık ileriye dönük testte piyasayla yarıştırdık.
+       Geçemedi (Araştırma sekmesi). Yani karar verirken kullanacağınız şey "ikizler şunu diyor" değil,
+       "ikizler piyasadan farklı bir şey söylemiyor" olmalı — ki bu da bir bilgidir: fikrinizi eleyen bilgi.</p>`],
+    patterns: ["Bu form dizisinden sonra ne oluyor?",
+      `<p>Aynı form dizisiyle gelen takımların geçmişte ne yaptığını üç havuzda ölçer: bu takım, tüm takımlar,
+       ve <b>o tarihte benzer güçte</b> olan takımlar (isimle değil, güç bandıyla).</p>
+       <p><b>Ne işe yarar:</b> "WWWWW gelen takım kazanır" türü sezgileri <b>elemeye</b>. Böyle bir takım gerçekten
+       daha sık kazanır — ve piyasa bunu zaten fiyatlar. Tablo bunu yan yana koyar.</p>
+       <p><b>Dikkat:</b> "Bu takım" satırındaki N çoğu zaman tek haneli olur; %100 yazması hiçbir şey ifade etmez,
+       o yüzden güven aralığı da yanında durur. 396 aday desen taradık, üç zaman penceresinden ve çoklu test
+       düzeltmesinden <b>bir tanesi</b> sağ çıktı — o da "fiyattan ~2 puan daha az kaybediyor" diyor.</p>`],
+    combo: ["İki takımı birlikte tarif etmek",
+      `<p>Koşullar tek tek ekleniyor ve her satır bir öncekinin alt kümesi. Amaç son satır değil: <b>hangi koşulun
+       sayıyı değiştirdiğini</b> görmek.</p>
+       <p><b>Ne işe yarar:</b> bir koşul eklediğinizde fark büyüyor ama N düşüyorsa, aralığın ne kadar açıldığına
+       bakın. Genelde fark büyümez — sadece belirsizleşir. Bu tabloyu okumanın doğru yolu budur.</p>
+       <p><b>Neden 3'lü dizi varsayılan:</b> ölçtük. Birebir 5'li diziyle iki tarafı birden tarif ettiğinizde
+       180 bin maçta ortanca örneklem rakip daha tarif edilmeden <b>sıfıra</b> iniyor. Tek bir tarihsel maçı
+       tarif eden desen hiçbir şey öngörmez.</p>`],
+  };
+
+  function whatFor(key) {
+    const x = WHAT_FOR[key];
+    return x ? `<details class="whatfor"><summary>Bu bölüm ne işe yarar?</summary><div>${x[1]}</div></details>` : "";
   }
 
   /** Put that body into `root` and start the three lazy parts inside it. */
