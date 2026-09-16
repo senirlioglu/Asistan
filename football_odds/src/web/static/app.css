@@ -477,15 +477,36 @@ tr.thin td { color: var(--ink-3); }          /* under 200 matches: visible, but 
   border-bottom: 1px dotted var(--line-strong); cursor: pointer; }
 .decide-tbl .jump:hover { color: var(--market); }
 
-/* Kendi desenini sor: the control the research tab had always claimed to offer. */
-.ex-form { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin: 10px 0; }
-.ex-form label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: var(--ink-3); }
-.ex-form input[type="text"], .ex-form input[type="number"], .ex-form select {
-  font: inherit; font-size: 0.88rem; padding: 4px 7px; border: 1px solid var(--line-strong);
-  border-radius: var(--radius-s); background: var(--ground); color: var(--ink); }
-.ex-form input[type="text"] { width: 96px; text-transform: uppercase; }
-.ex-form input[type="number"] { width: 62px; }
-.ex-pair { display: flex; gap: 4px; }
-.ex-check { flex-direction: row; align-items: center; gap: 5px; padding-bottom: 6px; }
-.ex-warn { border-left: 3px solid var(--hist); background: var(--surface-2); padding: 8px 10px;
-  border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.84rem; margin: 10px 0 0; }
+
+/* Kendi desenini sor — read on a phone, so the sequence is tapped and every control is a full row. */
+.ex-lbl { margin: 14px 0 6px; font-size: 0.82rem; font-weight: 600; color: var(--ink-2); }
+.ex-lbl:first-child { margin-top: 0; }
+.ex-presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.ex-card { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; background: var(--surface); }
+.seg { display: flex; gap: 0; border: 1px solid var(--line-strong); border-radius: 999px; overflow: hidden; width: fit-content; }
+.seg button { border: 0; background: var(--ground); color: var(--ink-2); padding: 7px 18px; font: inherit; font-size: 0.88rem; }
+.seg button.is-on { background: var(--ink); color: var(--ground); }
+.ex-seq { display: flex; gap: 4px; align-items: center; min-height: 30px; padding: 4px 0; font-size: 0.85rem; }
+.ex-seq .fchip { width: 26px; height: 26px; line-height: 26px; font-size: 0.82rem; margin: 0; }
+.ex-keys { display: flex; flex-wrap: wrap; gap: 6px; }
+.ex-keys button { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 62px;
+  border: 1px solid var(--line-strong); background: var(--ground); color: var(--ink);
+  border-radius: var(--radius-s); padding: 7px 10px; font: inherit; font-size: 0.95rem; font-weight: 700; }
+.ex-keys button small { font-weight: 400; font-size: 0.62rem; color: var(--ink-3); }
+.ex-keys .k-w { border-color: var(--good); } .ex-keys .k-l { border-color: var(--hist); }
+.ex-keys .k-del { font-weight: 400; font-size: 0.8rem; min-width: 0; }
+.ex-check { display: flex; align-items: flex-start; gap: 7px; margin: 10px 0 0; font-size: 0.85rem; line-height: 1.35; }
+.ex-check input { margin-top: 3px; flex: none; }
+.ex-more { margin: 14px 0 0; border-top: 1px solid var(--line); padding-top: 10px; }
+.ex-more > summary { cursor: pointer; font-size: 0.85rem; color: var(--ink-2); }
+.ex-more-body { padding-top: 4px; }
+.ex-pair { display: flex; gap: 8px; align-items: center; }
+.ex-pair input { font: inherit; font-size: 0.95rem; padding: 7px 9px; width: 110px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--ground); color: var(--ink); }
+.ex-q { margin: 14px 0 10px; padding: 9px 11px; background: var(--surface-2); border-radius: var(--radius-s);
+  font-size: 0.88rem; line-height: 1.45; }
+.ex-go { width: 100%; padding: 11px; font-size: 1rem; }
+.ex-warn { border-left: 3px solid var(--hist); background: var(--surface-2); padding: 9px 11px;
+  border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.84rem; line-height: 1.5; margin: 12px 0 0; }
+.ex-check > span { line-height: 1.35; }
+.ex-check .muted { font-size: 0.76rem; }

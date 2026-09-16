@@ -286,24 +286,59 @@
     <section class="rs-block">
       <h3 class="rs-h">Kendi desenini sor</h3>
       <p class="note">Aklındaki fikri 179.545 maçta ölç. Sonuç her zaman <b>o maçların kendi fiyatının yanında</b>
-      ve havuz geneli sapma çıkarılmış olarak gelir. Form dizisi sondan okunur: <code>WWW</code> = son üç maçı
-      kazanmış, <code>W?L</code> = kazandı · farketmez · kaybetti.</p>
-      <form id="ex-form" class="ex-form">
-        <label>Form dizisi <input id="ex-form-seq" type="text" maxlength="8" placeholder="WWW" value="WWW" autocomplete="off"></label>
-        <label>Taraf
-          <select id="ex-side"><option value="home">Ev sahibi</option><option value="away">Deplasman</option></select></label>
-        <label>Tolerans
-          <select id="ex-approx"><option value="0">birebir</option><option value="1">±1</option><option value="2">±2</option></select></label>
-        <label class="ex-check"><input id="ex-venue" type="checkbox"> Saha formu</label>
-        <label>Rakibin formu <input id="ex-opp" type="text" maxlength="8" placeholder="(boş)" autocomplete="off"></label>
-        <label>Güç yüzdeliği
-          <span class="ex-pair"><input id="ex-tsi-lo" type="number" min="0" max="100" placeholder="alt">
-          <input id="ex-tsi-hi" type="number" min="0" max="100" placeholder="üst"></span></label>
-        <label>Fiyat bandı (0–1)
-          <span class="ex-pair"><input id="ex-p-lo" type="number" min="0" max="1" step="0.05" placeholder="alt">
-          <input id="ex-p-hi" type="number" min="0" max="1" step="0.05" placeholder="üst"></span></label>
-        <button class="btn" type="submit">Ölç</button>
-      </form>
+      ve havuz geneli sapma çıkarılmış olarak gelir.</p>
+
+      <p class="ex-lbl">Hazır sorular — dokun, ölç</p>
+      <div class="ex-presets" id="ex-presets"></div>
+
+      <div class="ex-card">
+        <p class="ex-lbl">1 · Kim?</p>
+        <div class="seg" id="ex-side-seg">
+          <button type="button" data-v="home" class="is-on">Ev sahibi</button>
+          <button type="button" data-v="away">Deplasman</button>
+        </div>
+
+        <p class="ex-lbl">2 · Son maçları nasıl geçti? <span class="muted">(soldan sağa: eskiden yeniye)</span></p>
+        <div class="ex-seq" id="ex-seq" aria-live="polite"></div>
+        <div class="ex-keys">
+          <button type="button" data-k="W" class="k-w">G <small>galibiyet</small></button>
+          <button type="button" data-k="D" class="k-d">B <small>beraberlik</small></button>
+          <button type="button" data-k="L" class="k-l">M <small>mağlubiyet</small></button>
+          <button type="button" data-k="?" class="k-x">? <small>farketmez</small></button>
+          <button type="button" data-k="del" class="k-del">← sil</button>
+        </div>
+        <label class="ex-check"><input id="ex-venue" type="checkbox">
+          <span>Sadece kendi sahasındaki maçları say<br><span class="muted">deplasman seçiliyse deplasman maçları</span></span></label>
+        <label class="ex-check"><input id="ex-slack" type="checkbox">
+          <span>Bir maç tutmasa da olsun<br><span class="muted">dizideki bir sonuç farklı olabilir</span></span></label>
+
+        <details class="ex-more">
+          <summary>3 · Daraltmak ister misin? <span class="muted">(isteğe bağlı)</span></summary>
+          <div class="ex-more-body">
+            <p class="ex-lbl">Rakip nasıl geldi?</p>
+            <div class="ex-seq" id="ex-oseq" aria-live="polite"></div>
+            <div class="ex-keys">
+              <button type="button" data-ok="W" class="k-w">G</button>
+              <button type="button" data-ok="D" class="k-d">B</button>
+              <button type="button" data-ok="L" class="k-l">M</button>
+              <button type="button" data-ok="?" class="k-x">?</button>
+              <button type="button" data-ok="del" class="k-del">← sil</button>
+            </div>
+
+            <p class="ex-lbl">Takımın gücü <span class="muted">— ligindeki sıralamada yüzde kaçlık dilimde
+              (100 = ligin en iyisi)</span></p>
+            <div class="ex-pair"><input id="ex-tsi-lo" type="number" min="0" max="100" inputmode="numeric" placeholder="örn. 80">
+              <span>–</span><input id="ex-tsi-hi" type="number" min="0" max="100" inputmode="numeric" placeholder="100"></div>
+
+            <p class="ex-lbl">Oranı bu aralıkta olsun <span class="muted">— bahis oranı olarak</span></p>
+            <div class="ex-pair"><input id="ex-o-lo" type="number" min="1.01" max="50" step="0.05" inputmode="decimal" placeholder="örn. 1,20">
+              <span>–</span><input id="ex-o-hi" type="number" min="1.01" max="50" step="0.05" inputmode="decimal" placeholder="1,80"></div>
+          </div>
+        </details>
+
+        <p class="ex-q" id="ex-q">Soru kuruluyor…</p>
+        <button class="btn ex-go" id="ex-go" type="button">Ölç</button>
+      </div>
       <div id="ex-out"></div>
     </section>
 

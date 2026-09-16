@@ -122,29 +122,124 @@
   const EX_OUT = { win: "Kazanır", draw: "Berabere", loss: "Kaybeder", over25: "2,5 üst", btts: "KG var",
                    over15: "1,5 üst", over35: "3,5 üst", ht_draw: "İY berabere", ht_win: "İY önde" };
 
+  // The form used to demand W/D/L typed into a text box while every other screen shows G/B/M
+  // chips, and asked for a probability band while the reader thinks in odds. Both are now the
+  // reader's own units, the sequence is tapped rather than typed (this is read on a phone), and
+  // the question is written back as a Turkish sentence before it is asked.
+  const EX_LET = { W: "G", D: "B", L: "M", "?": "?" };
+  const EX_WORD = { W: "kazanmış", D: "berabere kalmış", L: "kaybetmiş", "?": "farketmez" };
+  const EX_PRESETS = [
+    ["Üst üste 3 galibiyet", { side: "home", seq: "WWW" }],
+    ["3 maçtır kazanamıyor", { side: "home", seq: "??", seq2: "DL" }],
+    ["Deplasmanda 3 mağlubiyet", { side: "away", seq: "LLL", venue: true }],
+    ["Güçlü favori (oran 1,20–1,50)", { side: "home", seq: "", o_lo: 1.2, o_hi: 1.5 }],
+    ["Ligin en güçlüsü, kötü formda", { side: "home", seq: "LL", tsi_lo: 85, tsi_hi: 100 }],
+  ];
+  state.ex = { asked: 0, cleared: 0, side: "home", seq: "WWW", oseq: "" };
+
   function exWire() {
-    const f = $("#ex-form");
-    if (!f || f._wired) return;
-    f._wired = true;
-    f.onsubmit = async (e) => {
-      e.preventDefault();
-      const v = (id) => ($(id)?.value || "").trim();
-      const num = (id) => (v(id) === "" ? null : Number(v(id)));
-      const q = new URLSearchParams({ form: v("#ex-form-seq"), side: v("#ex-side"), approx: v("#ex-approx") });
-      if ($("#ex-venue")?.checked) q.set("venue", "true");
-      if (v("#ex-opp")) q.set("opp_form", v("#ex-opp"));
-      const pairs = [["tsi_lo", "#ex-tsi-lo"], ["tsi_hi", "#ex-tsi-hi"], ["p_lo", "#ex-p-lo"], ["p_hi", "#ex-p-hi"]];
-      pairs.forEach(([k, id]) => { const n = num(id); if (n != null && !Number.isNaN(n)) q.set(k, String(n)); });
-      const out = $("#ex-out");
-      out.innerHTML = `<p class="note">Ölçülüyor…</p>`;
-      try {
-        const d = await api(`/api/desen?${q}`);
-        state.ex.asked++;
-        renderExplore(d);
-      } catch (err) {
-        out.innerHTML = `<p class="note">Ölçülemedi: ${esc(err.message)}</p>`;
-      }
-    };
+    const card = $("#ex-go");
+    if (!card || card._wired) return;
+    card._wired = true;
+
+    const presets = $("#ex-presets");
+    EX_PRESETS.forEach(([label, cfg]) => {
+      const b = el("button", "chip", label); b.type = "button";
+      b.onclick = () => {
+        state.ex.side = cfg.side || "home";
+        state.ex.seq = (cfg.seq || "") + (cfg.seq2 || "");
+        state.ex.oseq = "";
+        $("#ex-venue").checked = !!cfg.venue;
+        $("#ex-slack").checked = false;
+        $("#ex-tsi-lo").value = cfg.tsi_lo ?? ""; $("#ex-tsi-hi").value = cfg.tsi_hi ?? "";
+        $("#ex-o-lo").value = cfg.o_lo ?? ""; $("#ex-o-hi").value = cfg.o_hi ?? "";
+        $("#ex-side-seg").querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x.dataset.v === state.ex.side));
+        exPaint(); exRun();
+      };
+      presets.appendChild(b);
+    });
+
+    $("#ex-side-seg").querySelectorAll("button").forEach((b) => {
+      b.onclick = () => {
+        state.ex.side = b.dataset.v;
+        $("#ex-side-seg").querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x === b));
+        exPaint();
+      };
+    });
+    const scope = $("#ex-go").closest(".rs-block") || document;
+    scope.querySelectorAll("[data-k]").forEach((b) => {
+      b.onclick = () => {
+        state.ex.seq = b.dataset.k === "del" ? state.ex.seq.slice(0, -1) : (state.ex.seq + b.dataset.k).slice(-6);
+        exPaint();
+      };
+    });
+    scope.querySelectorAll("[data-ok]").forEach((b) => {
+      b.onclick = () => {
+        state.ex.oseq = b.dataset.ok === "del" ? state.ex.oseq.slice(0, -1) : (state.ex.oseq + b.dataset.ok).slice(-6);
+        exPaint();
+      };
+    });
+    ["#ex-venue", "#ex-slack", "#ex-tsi-lo", "#ex-tsi-hi", "#ex-o-lo", "#ex-o-hi"].forEach((id) => {
+      const n = $(id); if (n) n.oninput = n.onchange = exPaint;
+    });
+    $("#ex-go").onclick = exRun;
+    exPaint();
+  }
+
+  function exChips(seq, id) {
+    const box = $(id);
+    if (!box) return;
+    box.innerHTML = seq
+      ? seq.split("").map((c) => `<span class="fchip f-${c}">${EX_LET[c] || c}</span>`).join("")
+      : `<span class="muted">boş — hepsi dahil</span>`;
+  }
+
+  /** The query, written back in Turkish. If this sentence is not what you meant, the answer is not either. */
+  function exSentence() {
+    const who = state.ex.side === "home" ? "Ev sahibi" : "Deplasman";
+    const venue = $("#ex-venue")?.checked;
+    const bits = [];
+    if (state.ex.seq) {
+      const n = state.ex.seq.length;
+      const words = state.ex.seq.split("").map((c) => EX_WORD[c]).join(", ");
+      bits.push(`son ${n} ${venue ? (state.ex.side === "home" ? "iç saha " : "deplasman ") : ""}maçında sırayla ${words}`);
+    }
+    if (state.ex.oseq) bits.push(`rakibi ${state.ex.oseq.split("").map((c) => EX_WORD[c]).join(", ")}`);
+    const lo = $("#ex-tsi-lo")?.value, hi = $("#ex-tsi-hi")?.value;
+    if (lo && hi) bits.push(`ligindeki gücü %${lo}–%${hi} diliminde`);
+    const ol = $("#ex-o-lo")?.value, oh = $("#ex-o-hi")?.value;
+    if (ol && oh) bits.push(`oranı ${ol}–${oh} arasında`);
+    if ($("#ex-slack")?.checked) bits.push("<span class=\"muted\">(bir maç tutmasa da sayılır)</span>");
+    return bits.length
+      ? `<b>Soru:</b> ${who}, ${bits.join(" · ")} olan maçlarda ne olmuş?`
+      : `<b>Soru:</b> hiç koşul yok — veritabanındaki bütün maçlar. Yukarıdan bir şeyler seç.`;
+  }
+
+  function exPaint() {
+    exChips(state.ex.seq, "#ex-seq");
+    exChips(state.ex.oseq, "#ex-oseq");
+    const q = $("#ex-q"); if (q) q.innerHTML = exSentence();
+  }
+
+  async function exRun() {
+    const out = $("#ex-out");
+    const q = new URLSearchParams({ form: state.ex.seq, side: state.ex.side,
+                                    approx: $("#ex-slack")?.checked ? "1" : "0" });
+    if ($("#ex-venue")?.checked) q.set("venue", "true");
+    if (state.ex.oseq) q.set("opp_form", state.ex.oseq);
+    const tl = $("#ex-tsi-lo")?.value, th = $("#ex-tsi-hi")?.value;
+    if (tl && th) { q.set("tsi_lo", tl); q.set("tsi_hi", th); }
+    // the reader thinks in odds; the engine filters on the margin-free probability
+    const ol = Number($("#ex-o-lo")?.value), oh = Number($("#ex-o-hi")?.value);
+    if (ol > 1 && oh > 1) { q.set("p_lo", (1 / Math.max(ol, oh)).toFixed(4)); q.set("p_hi", (1 / Math.min(ol, oh)).toFixed(4)); }
+    out.innerHTML = `<p class="note">Ölçülüyor…</p>`;
+    try {
+      const d = await api(`/api/desen?${q}`);
+      state.ex.asked++;
+      renderExplore(d);
+    } catch (err) {
+      out.innerHTML = `<p class="note">Ölçülemedi: ${esc(err.message)}</p>`;
+    }
   }
 
   function renderExplore(d) {
@@ -155,7 +250,7 @@
       const ci = x.edge_ci || x.vs_ref_ci || [null, null];
       const solid = ci[0] != null && (ci[0] > 0 || ci[1] < 0);
       return `<tr class="${x.n < 200 ? "thin" : ""}"><td>${EX_OUT[o] || o}</td>
-        <td class="num">${x.n}</td><td class="num">%${num(x.actual, 1)}</td>
+        <td class="num hide-sm">${x.n}</td><td class="num">%${num(x.actual, 1)}</td>
         <td class="num">${(x.market ?? x.ref) == null ? "–" : "%" + num(x.market ?? x.ref, 1)}</td>
         <td class="num ${solid ? "yes" : ""}"><b>${edge == null ? "–" : pp1(edge)}</b></td>
         <td class="num hide-sm">${ci[0] == null ? "–" : `[${pp1(ci[0])}, ${pp1(ci[1])}]`}</td>
@@ -167,19 +262,25 @@
     }).length;
     state.ex.cleared += solidN;
     const tests = state.ex.asked * (d.outcomes_order || []).length;
-    $("#ex-out").innerHTML = `<p class="sentence"><b>${esc(d.label)}</b> — ${d.n.toLocaleString("tr")} maç
-        ${d.n_exact !== d.n ? `(birebir ${d.n_exact.toLocaleString("tr")})` : ""} · havuz
-        ${d.pool.toLocaleString("tr")} maç, ${d.span[0]} – ${d.span[1]}.</p>
+    $("#ex-out").innerHTML = `<p class="sentence">${exSentence()}</p>
+      <p class="sentence">Bu tarife uyan <b>${d.n.toLocaleString("tr")} maç</b> bulundu
+${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""} —
+        ${d.pool.toLocaleString("tr")} maçlık havuzda, ${d.span[0]} ile ${d.span[1]} arası.</p>
       ${d.n < 200 ? `<p class="ex-warn">Örneklem 200'ün altında. Bu satırlardan hiçbiri okunmamalı.</p>` : ""}
-      <div class="table-wrap"><table><thead><tr><th>Sonuç</th><th class="num">N</th><th class="num">Gerçekleşen</th>
-        <th class="num">Piyasa/kıyas</th><th class="num">Fark</th><th class="num hide-sm">%95 aralık</th><th>Sıfıra göre</th>
+      <div class="table-wrap"><table><thead><tr><th>Sonuç</th><th class="num hide-sm">N</th><th class="num">Oldu</th>
+        <th class="num">Fiyat</th><th class="num">Fark</th><th class="num hide-sm">%95 aralık</th><th>Sıfıra göre</th>
         </tr></thead><tbody>${rows || `<tr><td colspan="7">Bu desene uyan maç yok.</td></tr>`}</tbody></table></div>
-      <p class="note">Fark, havuz geneli sapma çıkarıldıktan sonradır. <b>Aralık sıfırı içeriyorsa desen,
-        piyasanın zaten bildiği bir şeyi söylüyor.</b></p>
+      <p class="note"><b>Fiyat</b> sütunu: piyasanın fiyatı olan marketlerde (1X2, 2,5 üst) o maçların kendi fiyatı;
+        olmayan marketlerde (İY, 1,5/3,5 üst, KG) <b>aynı fiyattaki maçlarda</b> aynı şeyin ne sıklıkta olduğu —
+        havuz ortalaması değil, çünkü iyi takım seçen her desen havuz ortalamasını zaten geçer.
+        Fark, havuz geneli sapma çıkarıldıktan sonradır. <b>Aralık sıfırı içeriyorsa desen, piyasanın zaten
+        bildiği bir şeyi söylüyor.</b></p>
       <p class="ex-warn">Bu oturumda <b>${state.ex.asked} sorgu</b> çalıştırdın, her biri ${(d.outcomes_order || []).length}
         sonucu ölçtü: <b>${tests} test</b>. %95 aralıkla, hiçbir gerçek desen olmasa bile bunların yaklaşık
         <b>${Math.max(1, Math.round(tests * 0.05))} tanesinin</b> sıfırı dışlaması beklenir — şu ana kadar
-        ${state.ex.cleared} tanesi dışladı. Buradan çıkan bir fikir bulgu değil, <b>adaydır</b>: gerçek sınav
+        ${state.ex.cleared} tanesi dışladı. Üstelik bu dokuz test <b>bağımsız değil</b> — kazanır/berabere/kaybeder
+        birbirini tamamlar, 1,5/2,5/3,5 üst aynı maçın gol sayısına bakar — yani birkaçının birlikte hareket etmesi
+        beklenen bir şeydir, birbirini doğrulamaz. Buradan çıkan bir fikir bulgu değil, <b>adaydır</b>: gerçek sınav
         aşağıdaki üç pencereli tarama ve çoklu test düzeltmesidir.</p>`;
   }
 

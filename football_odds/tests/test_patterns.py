@@ -655,3 +655,29 @@ def test_the_combined_engine_never_reads_a_later_match():
     assert all(r["n"] == 9 for r in rows)                     # the 1st to the 9th, never the 10th on
     seen = engine.select(pool, engine.Pattern(form="WWW", opp_form="LLL", side="home"), as_of=cut)
     assert seen["date"].max() < cut
+
+
+def test_an_unpriced_outcome_is_compared_with_matches_at_the_same_price():
+    """The oldest trap in this project, caught in production on the explorer: a team on WWW leads at
+    half time far more often than the pool average, because it is a better team. Compared with the
+    pool the pattern "discovers" +8.9 points; compared with matches priced the same way it finds
+    nothing. Half-time markets carry no price, so the reference has to be built, not assumed."""
+    rows = []
+    for i in range(400):                       # strong sides: priced high AND lead at half time
+        rows.append(_row(f"2026-01-{1 + i % 28:02d}", "H", f"S{i}", h_form="WWW", ftr="H",
+                         p_home=0.70, p_draw=0.18, p_away=0.12, htr="H" if i % 10 < 7 else "D"))
+    for i in range(400):                       # weak sides: priced low AND rarely lead
+        rows.append(_row(f"2026-02-{1 + i % 28:02d}", "H", f"W{i}", h_form="LLL", ftr="A",
+                         p_home=0.30, p_draw=0.28, p_away=0.42, htr="H" if i % 10 < 2 else "D"))
+    pool = _pool(rows)
+    sub = engine.select(pool, engine.Pattern(form="WWW", side="home"))
+
+    naive = engine.pool_rates(pool, "home", ("ht_win",))["ht_win"]
+    matched = engine.matched_rates(pool, sub, "home", ("ht_win",))["ht_win"]
+    assert round(100 * naive) == 45                       # every match, strong and weak together
+    assert round(100 * matched) == 70                     # only matches priced like these ones
+
+    vs_pool = engine.measure(sub, "home", "ht_win", ref=naive)
+    vs_price = engine.measure(sub, "home", "ht_win", ref=matched)
+    assert vs_pool["vs_ref"] > 20                          # a discovery, made of nothing
+    assert abs(vs_price["vs_ref"]) < 1                     # and it is gone when the price is matched

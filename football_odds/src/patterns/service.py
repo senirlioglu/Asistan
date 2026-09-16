@@ -118,12 +118,17 @@ _POOL_STATS: dict[tuple, tuple[dict, dict]] = {}
 
 
 def _pool_stats(df: pd.DataFrame, key: tuple, side: str, year: int) -> tuple[dict, dict]:
-    """The whole-pool offset and the unpriced markets' base rates, for matches before `year`.
+    """The whole-pool offset for matches before `year`, and the pool's own rate per outcome.
 
-    Both are ~180.000-match estimates that cost three seconds to recompute, and both are the same
-    for every match in a season — so they are cached per year rather than per request. Cutting the
-    pool at 1 January keeps the cache honest: a match in September is never measured against an
-    offset that its own season helped produce."""
+    The offset is a ~180.000-match estimate that costs three seconds to recompute and is the same
+    for every match in a season, so it is cached per year. Cutting the pool at 1 January keeps the
+    cache honest: a match in September is never measured against an offset its own season helped
+    produce.
+
+    The second value is the naive pool rate, kept only as a fallback. It must NOT be used as the
+    reference for a selected group: a team on WWW leads at half time more often than the pool
+    average because it is a better team, and comparing it to that average turns "this side is
+    good" into a discovery. `_refs` below does the comparison properly."""
     from . import engine
 
     ck = (*key, side, year)
@@ -134,6 +139,21 @@ def _pool_stats(df: pd.DataFrame, key: tuple, side: str, year: int) -> tuple[dic
         _POOL_STATS[ck] = (engine.baseline(pool, side, PATTERN_OUTCOMES),
                            engine.pool_rates(pool, side, PATTERN_OUTCOMES))
     return _POOL_STATS[ck]
+
+
+def _refs(frame: pd.DataFrame, sub: pd.DataFrame, side: str, fallback: dict) -> dict:
+    """Price-matched reference rates for the outcomes the market does not quote.
+
+    Half-time results, reversals and 6+ goals carry no price, so they are compared with how often
+    the same thing happened in matches that were priced the same way. Comparing them with the pool
+    average instead is the oldest trap in this project: every pattern that selects good teams then
+    "beats" a baseline built from all teams."""
+    from . import engine
+
+    if sub is None or not len(sub):
+        return dict(fallback)
+    matched = engine.matched_rates(frame, sub, side, PATTERN_OUTCOMES)
+    return {**fallback, **matched}
 
 
 def patterns_for(settings: Settings, match_id: str, side: str = "home", approx: int = 0,
@@ -164,8 +184,9 @@ def patterns_for(settings: Settings, match_id: str, side: str = "home", approx: 
     as_of = row["date"]
     pool = df[df["date"] < as_of]
     p_ = state.state_path(settings)
-    base, refs = _pool_stats(df, (str(p_), p_.stat().st_mtime), side, int(pd.Timestamp(as_of).year))
+    base, naive = _pool_stats(df, (str(p_), p_.stat().st_mtime), side, int(pd.Timestamp(as_of).year))
     pattern = engine.Pattern(form=form, side=side, approx=approx)
+    refs = _refs(pool, engine.select(pool, pattern, as_of=as_of), side, naive)
     out = engine.levels(pool, pattern, team=team, tsi_pct=tsi, band=band, as_of=as_of,
                         outcomes=PATTERN_OUTCOMES, sample=sample, base=base, refs=refs)
     exact = engine.select(pool, engine.Pattern(form=form, side=side, approx=0), as_of=as_of)
@@ -233,7 +254,7 @@ def combined_for(settings: Settings, match_id: str, side: str = "home", approx: 
     as_of = row["date"]
     pool = df[df["date"] < as_of]
     sp = state.state_path(settings)
-    base, refs = _pool_stats(df, (str(sp), sp.stat().st_mtime), side, int(pd.Timestamp(as_of).year))
+    base, naive = _pool_stats(df, (str(sp), sp.stat().st_mtime), side, int(pd.Timestamp(as_of).year))
 
     at = engine.Pattern(form=form, side=side, approx=approx)
     steps: list[tuple[str, object]] = [(f"{_who(side)} formu {form}", at)]
@@ -257,6 +278,7 @@ def combined_for(settings: Settings, match_id: str, side: str = "home", approx: 
         at = replace(at, gap=(round(lo, 1), round(hi, 1)))
         steps.append((f"+ güç farkı {sign * gap:+.0f} ± {gap_band:g}", at))
 
+    refs = _refs(pool, engine.select(pool, steps[0][1], as_of=as_of), side, naive)
     rows = engine.cascade(pool, steps, as_of=as_of, outcomes=PATTERN_OUTCOMES, base=base, refs=refs)
     return {
         "match": {"id": match_id, "date": str(row["date"])[:10], "league": str(row["league"]),
@@ -335,8 +357,10 @@ def explore(settings: Settings, form: str = "", side: str = "home", approx: int 
     )
     sp = state.state_path(settings)
     year = int(pd.Timestamp(df["date"].max()).year) + 1          # the whole pool: nothing is held back
-    base, refs = _pool_stats(df, (str(sp), sp.stat().st_mtime), side, year)
-    res = engine.run(df, pattern, outcomes=PATTERN_OUTCOMES, sample=sample, base=base, refs=refs)
+    base, naive = _pool_stats(df, (str(sp), sp.stat().st_mtime), side, year)
+    sub = engine.select(df, pattern)
+    res = engine.run(df, pattern, outcomes=PATTERN_OUTCOMES, sample=sample, base=base,
+                     refs=_refs(df, sub, side, naive))
     exact = pattern if not approx else engine.Pattern(**{**pattern.__dict__, "approx": 0})
     res["n_exact"] = int(len(engine.select(df, exact))) if form else res["n"]
     res["pool"] = int(len(df))
