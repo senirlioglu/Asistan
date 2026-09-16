@@ -93,10 +93,96 @@
     $("#view-scorecard").hidden = name !== "scorecard";
     $("#view-paper").hidden = name !== "paper";
     $("#view-notes").hidden = name !== "notes";
+    $("#view-research").hidden = name !== "research";
     $("#view-empty").hidden = true;
     if (name === "notes" && !state.nt.data) loadNotes();
+    if (name === "research" && !state.rs) loadResearch();
     if (name === "scorecard" && !state.sc.data) loadScorecard();
     if (name === "paper") { if (!state.pp.data) loadPaper(); if (!state.cp.loaded) { initCouponBuilder(); loadCoupons(); } }
+  }
+
+  // ------------------------------------------------------------------ research (Araştırma)
+  const pp1 = (v) => (v == null ? "–" : `${v > 0 ? "+" : ""}${Number(v).toFixed(1)}`);
+
+  async function loadResearch() {
+    const box = $("#rs-verdict");
+    try {
+      state.rs = await api("/api/research");
+    } catch (e) { box.textContent = "Araştırma sonuçları yüklenemedi: " + e.message; return; }
+    renderResearch();
+  }
+
+  function renderResearch() {
+    const d = state.rs || {};
+    const sum = (d.models?.summary) || [];
+    const market = sum.find((r) => r.model.startsWith("A"));
+    const best = sum.filter((r) => r.brier_diff != null).sort((a, b) => a.brier_diff - b.brier_diff)[0];
+    const st = d.state || {};
+    $("#rs-verdict").innerHTML = market
+      ? `Havuz: <b>${st.matches?.toLocaleString("tr")} maç</b> (${st.from} – ${st.to}). ${market.n.toLocaleString("tr")} maçlık
+         ileriye dönük testte <b>hiçbir motor piyasayı geçemedi</b>; en iyisi ${esc(best?.model || "–")} ve o bile piyasadan
+         ${pp1(1000 * (best?.brier_diff ?? 0))} binde Brier kadar geride. Bu sekmedeki her şey bu cümlenin altında okunmalı.`
+      : `Havuz: <b>${st.matches?.toLocaleString("tr") || "?"} maç</b>. Model karşılaştırması henüz çalıştırılmadı.`;
+
+    $("#rs-models").innerHTML = sum.length
+      ? `<div class="table-wrap"><table><thead><tr><th>Model</th><th class="num">Brier</th><th class="num">Fark</th>
+         <th class="num hide-sm">Kalibrasyon</th><th class="num">ROI</th><th class="num hide-sm">İsabet</th>
+         <th class="num hide-sm">Kazandığı sezon</th></tr></thead><tbody>
+         ${sum.map((r) => `<tr><td class="wrap">${esc(r.model)}</td><td class="num">${num(r.brier, 5)}</td>
+           <td class="num ${r.brier_diff > 0 ? "res-A" : ""}">${r.brier_diff == null ? "–" : pp1(1000 * r.brier_diff) + " ‰"}</td>
+           <td class="num hide-sm">${num(r.calib_err, 4)}</td><td class="num">${pp1(r.roi)}%</td>
+           <td class="num hide-sm">%${num(r.hit_rate, 1)}</td>
+           <td class="num hide-sm">${r.seasons_better == null ? "–" : r.seasons_better + " / 5"}</td></tr>`).join("")}
+         </tbody></table></div>
+         <p class="note">A piyasa · B bugün sitede çalışan benzerlik · C form desenleri · D çok boyutlu ikiz · E hepsi birlikte.
+         Fark binde Brier cinsinden; artı = piyasadan kötü.</p>`
+      : `<p class="note">Model karşılaştırması henüz çalıştırılmadı (<code>cli models</code>).</p>`;
+
+    const dc = d.discovery || {};
+    const s2 = dc.stages || {};
+    $("#rs-discovery").innerHTML = s2.candidates
+      ? `<div class="rs-funnel">
+           ${[["aday desen", s2.candidates], ["ölçülen iddia", s2.claims_scanned], ["keşfi geçen", s2.passed_train],
+              ["doğrulamayı geçen", s2.passed_validation], ["testten sağ çıkan", s2.survived_test]]
+             .map(([k, v]) => `<div class="rs-step"><span class="v num">${v}</span><small>${k}</small></div>`).join("")}
+         </div>
+         ${(dc.survivors || []).length
+            ? `<div class="table-wrap"><table><thead><tr><th>Desen</th><th>Başlık</th><th class="num">N</th>
+               <th class="num">Gerçekleşen</th><th class="num">Kıyas</th><th class="num">Fark</th><th class="num">q</th></tr></thead><tbody>
+               ${dc.survivors.map((r) => `<tr><td class="wrap">${esc(r.side === "home" ? "ev · " : "dep · ")}${esc(r.label)}</td>
+                 <td>${esc(r.outcome)}</td><td class="num">${r.n}</td><td class="num">%${num(r.actual, 1)}</td>
+                 <td class="num">%${num(r.priced ? r.market : r.ref, 1)}</td>
+                 <td class="num"><b>${pp1(r.edge)}</b> <small class="muted">[${pp1(r.lo)}, ${pp1(r.hi)}]</small></td>
+                 <td class="num">${num(r.q, 3)}</td></tr>`).join("")}</tbody></table></div>
+               <p class="note">Sağ kalan desen bile "oyna" demek değildir: aynı deseni bir modele çevirmek yukarıdaki
+               tabloda piyasayı geçmiyor. Bu, "bu tarif edilen durumda fiyat biraz farklı davranmış" demek.</p>`
+            : `<p class="note">Hiçbir desen üç pencereden de geçemedi.</p>`}`
+      : `<p class="note">Tarama henüz çalıştırılmadı (<code>cli discover</code>).</p>`;
+
+    const notes = d.notes || [];
+    $("#rs-notes").innerHTML = notes.length
+      ? notes.map((r) => `<div class="rs-note"><h4>${r.no}. ${esc(r.title)} <small class="muted">· ${esc(r.side)} · N=${r.n}</small></h4>
+          <p class="nt-note">“${esc(r.note)}”</p>
+          <div class="table-wrap"><table><thead><tr><th>İddia</th><th class="num">N</th><th class="num">Gerçekleşen</th>
+            <th class="num">Kıyas</th><th class="num">Fark</th><th>Sonuç</th></tr></thead><tbody>
+            ${r.claims.map((c) => {
+              const bench = c.market != null ? `piyasa %${num(c.market, 1)}` : c.ref != null ? `benzer fiyat %${num(c.ref, 1)}` : "–";
+              const diff = c.edge != null ? c.edge : c.vs_ref;
+              const ci = c.edge != null ? c.edge_ci : c.vs_ref_ci;
+              const good = c.q != null && c.q <= 0.05;
+              return `<tr><td class="wrap">${esc(c.text)}</td><td class="num">${c.n || "–"}</td>
+                <td class="num">${c.actual == null ? "–" : "%" + num(c.actual, 1)}</td><td class="num">${bench}</td>
+                <td class="num">${diff == null ? "–" : `<b>${pp1(diff)}</b> <small class="muted">[${pp1(ci?.[0])}, ${pp1(ci?.[1])}]</small>`}</td>
+                <td class="wrap">${good ? `<span class="yes">${esc(rsVerdict(c))}</span>` : `<span class="no">fark yok</span>`}</td></tr>`;
+            }).join("")}</tbody></table></div>
+          <p class="note"><b>Nasıl ölçüldü:</b> ${esc(r.how)}</p></div>`).join("")
+      : `<p class="note">Notlar henüz ölçülmedi (<code>cli notes</code>).</p>`;
+  }
+
+  function rsVerdict(c) {
+    const d = c.edge != null ? c.edge : c.vs_ref;
+    if (c.edge != null) return d > 0 ? "piyasadan iyi" : "piyasadan kötü";
+    return d > 0 ? "benzer fiyatlılardan yüksek" : "benzer fiyatlılardan düşük";
   }
 
   // ------------------------------------------------------------------ notes over nesine odds (Notlar)
@@ -1066,6 +1152,7 @@
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
       ${tol ? `<section><h3>Tolerans eşleşmesi</h3><p class="note">Üç ihtimalin hepsi bu kadar yakın olan geçmiş maç sayısı: ${tol}</p></section>` : ""}
+      <section><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3><div data-twins>Yükleniyor…</div></section>
       <section><h3>Nesine oranları ve defter notları</h3><div data-nesine>Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div data-teams>Yükleniyor…</div></section>
       <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" data-kseg>${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div data-analogues>Yükleniyor…</div></section>`;
@@ -1083,6 +1170,42 @@
     loadAnalogues(m, 25, root);
     loadTeams(m, root);
     loadNesineFor(m, root);
+    loadTwins(m, root);
+  }
+
+  /** The twin engine: similarity on form, strength and price rather than price alone. Research only —
+      the model comparison says turning it into a prediction does not beat the market, and it says so here. */
+  async function loadTwins(m, root) {
+    const box = root.querySelector("[data-twins]");
+    if (!box) return;
+    if (m.source === "nesine") { box.innerHTML = `<p class="note">Bu bölüm bizim veritabanımızdaki maçlar için çalışır; nesine üzerinden açılan maçlarda yok.</p>`; return; }
+    try {
+      const d = m._twins !== undefined ? m._twins : await api(`/api/twins/${encodeURIComponent(m.id)}?k=50`);
+      m._twins = d;
+      const g = d.diagnostics, w = d.outcomes?.win;
+      const rows = d.twins.map((t) => `<tr><td class="num">${fmtShort(t.date)}</td><td class="wrap">${esc(t.home_team)} – ${esc(t.away_team)}</td>
+        <td class="num"><b>${num(t.twin_score, 1)}</b></td><td class="num hide-sm">${num(t.sim_market, 0)}</td>
+        <td class="num hide-sm">${num(t.sim_form, 0)}</td><td class="num hide-sm">${num(t.sim_gap, 0)}</td>
+        <td class="num res-${esc(t.ftr)}">${t.fthg == null ? "–" : `${t.fthg}-${t.ftag}`}</td></tr>`).join("");
+      box.innerHTML = `<p class="note">Benzerlik yedi başlıkta ayrı ayrı ölçülür: piyasa profili, iki tarafın gücü, güç farkı,
+          son beş maçın formu, gol dengesi ve oran hareketi. En yakın ${d.twins.length} maç listelenir; skor 100 = birebir aynı.</p>
+        <div class="rs-funnel">
+          ${[["en yakın", g.best], ["${d.k}. ikiz".replace("${d.k}", d.k), g.worst], ["ortanca", g.median], ["90 üstü", g.n_above_90]]
+            .map(([k, v]) => `<div class="rs-step"><span class="v num">${v == null ? "–" : v}</span><small>${k}</small></div>`).join("")}
+        </div>
+        ${w && w.market != null
+          ? `<p class="sentence">Bu ${w.n} ikizde ev sahibi <b>${pct(w.actual, 1)}</b> kazanmış; <b>o maçların kendi fiyatı</b>
+             ${pct(w.market, 1)} diyordu (fark ${pp1(w.diff)} puan). Bugünün piyasası ${pct(m.market.h, 1)}.</p>`
+          : ""}
+        <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Maç</th><th class="num">Skor</th>
+          <th class="num hide-sm">Piyasa</th><th class="num hide-sm">Form</th><th class="num hide-sm">Güç farkı</th>
+          <th class="num">Sonuç</th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="note">Bu bölüm araştırma içindir: aynı motoru tahmine çevirdiğimizde 5.000 maçlık ileriye dönük testte
+          piyasayı geçemedi (Araştırma sekmesi). "Benzer maçlarda şu oldu" cümlesi, "bu maçta şu olur" demek değildir.</p>`;
+    } catch (e) {
+      const msg = String(e.message || "");
+      box.innerHTML = `<p class="note">${msg.startsWith("404") ? "Bu maç için durum tablosu henüz hazır değil; günlük güncellemeden sonra görünür." : "İkizler yüklenemedi: " + esc(msg)}</p>`;
+    }
   }
 
   function openSheet(m) {

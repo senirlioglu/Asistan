@@ -566,6 +566,34 @@ def match_detail(match_id: str) -> dict:
     return {"match": payload, "nesine": _nesine_brief(payload["date"], payload["home"], payload["away"])}
 
 
+@app.get("/api/twins/{match_id}")
+def twins(match_id: str, k: int = Query(50, ge=5, le=500), side: str = Query("home", pattern="^(home|away)$")) -> dict:
+    """The matches most like this one on form, strength and price — the research engine, not a tip.
+
+    Everything it reports is paired with what the market said about those same twins; the model
+    comparison (`results/backtest/models.json`) found that turning this into a prediction does not
+    beat the price, and the page says so."""
+    from ..patterns import service
+
+    out = service.twins_for(settings, match_id, k=k, side=side)
+    if out is None:
+        raise HTTPException(404, "bu maç için durum tablosu hazır değil (günlük iş henüz işlemedi)")
+    return out
+
+
+@app.get("/api/research")
+def research() -> dict:
+    """The offline research results: the notebook notes, the model comparison, the pattern scan."""
+    from ..patterns import service
+
+    files = service.research_files(settings)
+    df = service.frame(settings)
+    files["state"] = {"matches": int(len(df)) if df is not None else 0,
+                      "from": str(df["date"].min())[:10] if df is not None and len(df) else None,
+                      "to": str(df["date"].max())[:10] if df is not None and len(df) else None}
+    return files
+
+
 @app.get("/api/notlar")
 def notlar(date: str | None = None, refresh: bool = False) -> dict:
     """nesine.com bulletin filtered by the user's notes: every football match with the notes it satisfies."""

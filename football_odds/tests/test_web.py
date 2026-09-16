@@ -147,3 +147,50 @@ def test_match_detail_carries_the_nesine_side(client, monkeypatch):
     # a bulletin without this match: the sheet says so instead of guessing
     monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([{**sample, "home": "Chelsea", "away": "Fulham"}], {}))
     assert client.get("/api/match/abc").json()["nesine"] is None
+
+
+@pytest.fixture()
+def research_client(client, tmp_path, monkeypatch):
+    """The API with a small state table of its own, so the twin endpoint has something to search."""
+    import numpy as np
+
+    from src.patterns import service, state
+
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    monkeypatch.setattr(web.settings, "raw", web.settings.with_overrides(
+        **{"data.processed_dir": str(processed), "data.results_dir": str(web.RESULTS)}).raw)
+    rows = []
+    for i in range(60):
+        rows.append({"date": f"2026-0{1 + i // 30}-{1 + i % 28:02d}", "league": "E0", "season": "2526",
+                     "home_team": f"T{i % 6}", "away_team": f"T{(i + 1) % 6}", "fthg": i % 3, "ftag": (i + 1) % 2,
+                     "p_home": 0.45 + (i % 5) / 100, "p_draw": 0.25, "p_away": 0.30 - (i % 5) / 100,
+                     "htr": "H" if i % 2 else "D", "hthg": 1, "htag": 0})
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    df["match_id"] = [f"s{i}" for i in range(len(df))]
+    df["ftr"] = np.where(df["fthg"] > df["ftag"], "H", np.where(df["fthg"] == df["ftag"], "D", "A"))
+    df["total_goals"] = df["fthg"] + df["ftag"]
+    state.build(web.settings, df)
+    service._cached.cache_clear()
+    return client
+
+
+def test_twins_endpoint_answers_with_its_own_quality(research_client):
+    d = research_client.get("/api/twins/s59?k=10").json()
+    assert d["match"]["id"] == "s59" and d["k"] == 10
+    assert len(d["twins"]) and all(t["date"] < d["match"]["date"] for t in d["twins"])   # only earlier matches
+    g = d["diagnostics"]
+    assert g["k"] == 10 and g["best"] >= g["median"] >= g["worst"]      # how far the last twin is, always reported
+    assert set(g["categories"]) == set(d["weights"])
+    # what the twins did comes with what the market said about those same twins
+    assert d["outcomes"]["win"]["n"] == 10 and "market" in d["outcomes"]["win"]
+    assert research_client.get("/api/twins/yok").status_code == 404
+    assert research_client.get("/api/twins/s59?k=1").status_code == 422        # k is bounded
+
+
+def test_research_endpoint_reports_the_pool_and_the_missing_pieces(research_client):
+    d = research_client.get("/api/research").json()
+    assert d["state"]["matches"] == 60 and d["state"]["from"] == "2026-01-01"
+    # the offline artefacts are absent in this temporary results dir, and that is said rather than faked
+    assert d["notes"] is None and d["models"] is None and d["discovery"] is None

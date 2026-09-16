@@ -25,6 +25,7 @@
       <button class="tab" data-view="scorecard" type="button">Özet</button>
       <button class="tab" data-view="paper" type="button">Oyun</button>
       <button class="tab" data-view="notes" type="button">Nesine</button>
+      <button class="tab" data-view="research" type="button">Araştırma</button>
       <button class="tab" data-view="glossary" type="button">Sözlük</button>
     </nav>
     <button class="status" id="status-btn" type="button" title="Veri durumu">
@@ -235,6 +236,37 @@
       <summary>Notların listesi ve geçmişte ne olduğu</summary>
       <div id="nt-rule-list">Yükleniyor…</div>
     </details>
+  </section>
+
+  <section class="view" id="view-research" hidden>
+    <h2 class="h2">Araştırma</h2>
+    <p class="lead">Bu sekme tahmin üretmez. Geçmişte "bu duruma benzeyen maçlarda ne olmuş" sorusunu sorar ve cevabı
+    <b>her zaman o maçların kendi fiyatının yanında</b> gösterir. Yüksek gerçekleşme oranı tek başına bir şey ifade
+    etmez: bir takım üst üste kazanıyorsa piyasa bunu zaten fiyatlamıştır. Ölçülen şey, gerçekleşenin fiyatın
+    söylediğinden <b>farklı olup olmadığı</b>.</p>
+
+    <div class="verdict" id="rs-verdict">Yükleniyor…</div>
+
+    <section class="rs-block">
+      <h3 class="rs-h">Modeller: yeni motorlar fiyata bir şey ekliyor mu?</h3>
+      <p class="note">Aynı maçlarda, ileriye doğru (her tahmin yalnızca o maçtan önce bilinenle). Artı işareti
+      "piyasadan kötü" demek. Brier: düşük olan iyi.</p>
+      <div id="rs-models">—</div>
+    </section>
+
+    <section class="rs-block">
+      <h3 class="rs-h">Desen taraması: ne kadar aday, ne kadarı sağ kaldı</h3>
+      <p class="note">Aday listesi kodda önceden yazılıdır, yani kaç test yapıldığı sayılabilir. Üç pencere:
+      keşif → doğrulama → hiç dokunulmamış test; sonda çoklu test düzeltmesi (Benjamini-Hochberg).</p>
+      <div id="rs-discovery">—</div>
+    </section>
+
+    <section class="rs-block">
+      <h3 class="rs-h">Defter notları, yeniden ölçüldü</h3>
+      <p class="note">Her iddia, fiyatı olan piyasalarda <b>piyasaya</b>, olmayanlarda <b>aynı fiyattaki maçlara</b>
+      karşı ölçüldü; sonra hepsi birlikte çoklu test düzeltmesinden geçti.</p>
+      <div id="rs-notes">—</div>
+    </section>
   </section>
 
   <section class="view" id="view-glossary" hidden>

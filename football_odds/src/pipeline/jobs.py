@@ -108,6 +108,7 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
         df, _ = build_processed(settings)
         _write(settings, "running", "analysing upcoming fixtures", started_at=started.isoformat())
         table = run_today(settings, date=dt.date.today(), days=days, refresh=True, merge=True)
+        _build_state(settings, table)
         try:  # the last week: any day without a prediction file gets analysed after the fact (results come from the database)
             _write(settings, "running", "analysing last week's matches", started_at=started.isoformat())
             from .today import run_backfill
@@ -129,6 +130,20 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
         _LOCK.release()
 
 
+def _build_state(settings: Settings, table) -> None:
+    """Refresh the pre-match state table (form, goals, table position, TSI) including today's fixtures.
+
+    The research tab reads it; the prediction path does not, so a failure here is logged and
+    swallowed rather than allowed to take the daily job down with it."""
+    try:
+        from ..patterns.state import build
+
+        out = build(settings, fixtures=table)
+        log.info("match state rebuilt: %d rows", len(out))
+    except Exception as exc:  # noqa: BLE001 - derived data, never fatal
+        log.warning("match state build skipped: %s", exc)
+
+
 def run_fixture_refresh(settings: Settings, days: int = 7) -> int:
     """Re-read the fixture list and analyse whatever is new, without touching the historical database.
 
@@ -148,6 +163,7 @@ def run_fixture_refresh(settings: Settings, days: int = 7) -> int:
     try:
         before = read_status(settings)
         table = run_today(settings, date=dt.date.today(), days=days, refresh=True, merge=True)
+        _build_state(settings, table)
         _write(settings, "ok", f"{len(table)} fixtures analysed (fixture refresh), {before.get('n_history', '?')} historical matches",
                started_at=before.get("started_at"), finished_at=dt.datetime.now(dt.timezone.utc).isoformat(),
                n_fixtures=int(len(table)), n_history=before.get("n_history"), intraday=True)

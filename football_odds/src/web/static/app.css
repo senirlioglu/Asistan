@@ -282,6 +282,15 @@ td .no { color: var(--ink-3); }
 .mv { font-style: normal; font-size: 0.62rem; margin-left: 2px; vertical-align: 1px; cursor: help; }
 .mv.up { color: var(--hist); }
 .mv.down { color: var(--market); }
+/* research tab */
+.rs-block { margin: 20px 0 26px; }
+.rs-h { font-size: 1.05rem; margin-bottom: 4px; }
+.rs-funnel { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.rs-step { flex: 1 1 90px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 10px; }
+.rs-step .v { font-family: var(--font-display); font-weight: 700; font-size: 1.2rem; display: block; }
+.rs-step small { color: var(--ink-3); font-size: 0.72rem; }
+.rs-note { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+.rs-note h4 { font-family: var(--font-display); font-size: 0.95rem; margin: 0 0 2px; }
 .nt-actions { margin-top: 8px; }
 .nt-actions .btn { padding: 6px 12px; font-size: 0.85rem; }
 

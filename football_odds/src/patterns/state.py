@@ -51,6 +51,12 @@ from ..logging_setup import get_logger
 
 log = get_logger("patterns.state")
 
+# columns copied straight through from the match row, so the state table stands on its own: the
+# research engines and the API can read it without joining the match database back in, and an
+# upcoming fixture (no result yet) still carries its price
+PASSTHROUGH = ("p_home", "p_draw", "p_away", "p_over25", "cons_h", "cons_d", "cons_a",
+               "ftr", "htr", "fthg", "ftag", "hthg", "htag", "total_goals", "delta_p_home", "result_code")
+
 WINDOWS = (3, 5, 10)        # the look-back lengths every count feature is produced for
 FORM_LEN = 10               # how many results the form strings keep
 ELO_START = 1500.0
@@ -158,6 +164,7 @@ def build_state(df: pd.DataFrame, progress_every: int = 40000) -> pd.DataFrame:
     if missing:
         raise ValueError(f"match state needs columns {sorted(missing)}")
     df = df.sort_values(["date", "league", "home_team"], kind="mergesort").reset_index(drop=True)
+    passthrough = {c for c in PASSTHROUGH if c in df.columns}
     states: dict[str, TeamState] = defaultdict(TeamState)
     league_teams: dict[str, set[str]] = defaultdict(set)
     h2h: dict[tuple[str, str], list[str]] = defaultdict(list)     # (a,b) sorted -> results seen from a's view
@@ -180,6 +187,9 @@ def build_state(df: pd.DataFrame, progress_every: int = 40000) -> pd.DataFrame:
 
         row: dict[str, object] = {"match_id": r.match_id, "date": date, "league": league, "season": season,
                                   "home_team": home, "away_team": away}
+        for col in PASSTHROUGH:
+            if col in passthrough:
+                row[col] = getattr(r, col, None)
         for prefix, st, venue in (("h_", hs, "H"), ("a_", as_, "A")):
             for k, v in _side_features(st, venue, date, table.get(home if prefix == "h_" else away, {})).items():
                 row[prefix + k] = v
@@ -242,10 +252,38 @@ def build_state(df: pd.DataFrame, progress_every: int = 40000) -> pd.DataFrame:
     return out
 
 
-def build(settings: Settings, df: pd.DataFrame | None = None, write: bool = True) -> pd.DataFrame:
+def fixture_rows(table: pd.DataFrame) -> pd.DataFrame:
+    """Today's analysed fixtures in the shape the builder reads, so upcoming matches get a state row.
+
+    They carry no result, so they never move a team's form or rating — `build_state` folds a match in
+    only when it has a score — but they do get the two teams' state as it stands today, which is what
+    the research tab needs to find a fixture's twins."""
+    if table is None or not len(table):
+        return pd.DataFrame()
+    from ..config import current_season_code
+
+    out = pd.DataFrame({
+        "match_id": table["match_id"], "date": pd.to_datetime(table["date"]), "league": table["league"],
+        "season": current_season_code(), "home_team": table["home"], "away_team": table["away"],
+        "fthg": np.nan, "ftag": np.nan, "ftr": None,
+        "p_home": pd.to_numeric(table["market_h"], errors="coerce") / 100,
+        "p_draw": pd.to_numeric(table["market_d"], errors="coerce") / 100,
+        "p_away": pd.to_numeric(table["market_a"], errors="coerce") / 100,
+        "cons_h": table.get("odds_h"), "cons_d": table.get("odds_d"), "cons_a": table.get("odds_a"),
+        "p_over25": pd.to_numeric(table.get("market_over25"), errors="coerce") / 100,
+    })
+    return out[~out["match_id"].isna()]
+
+
+def build(settings: Settings, df: pd.DataFrame | None = None, write: bool = True,
+          fixtures: pd.DataFrame | None = None) -> pd.DataFrame:
     """Build the state table from the processed database and (by default) write it next to it."""
     if df is None:
         df = pd.read_parquet(settings.processed_dir / "matches.parquet")
+    if fixtures is not None and len(fixtures):
+        extra = fixture_rows(fixtures)
+        if len(extra):
+            df = pd.concat([df, extra[~extra["match_id"].isin(df["match_id"])]], ignore_index=True)
     started = dt.datetime.now()
     out = build_state(df)
     if write:
