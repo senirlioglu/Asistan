@@ -284,6 +284,30 @@
     </section>
 
     <section class="rs-block">
+      <h3 class="rs-h">Kendi desenini sor</h3>
+      <p class="note">Aklındaki fikri 179.545 maçta ölç. Sonuç her zaman <b>o maçların kendi fiyatının yanında</b>
+      ve havuz geneli sapma çıkarılmış olarak gelir. Form dizisi sondan okunur: <code>WWW</code> = son üç maçı
+      kazanmış, <code>W?L</code> = kazandı · farketmez · kaybetti.</p>
+      <form id="ex-form" class="ex-form">
+        <label>Form dizisi <input id="ex-form-seq" type="text" maxlength="8" placeholder="WWW" value="WWW" autocomplete="off"></label>
+        <label>Taraf
+          <select id="ex-side"><option value="home">Ev sahibi</option><option value="away">Deplasman</option></select></label>
+        <label>Tolerans
+          <select id="ex-approx"><option value="0">birebir</option><option value="1">±1</option><option value="2">±2</option></select></label>
+        <label class="ex-check"><input id="ex-venue" type="checkbox"> Saha formu</label>
+        <label>Rakibin formu <input id="ex-opp" type="text" maxlength="8" placeholder="(boş)" autocomplete="off"></label>
+        <label>Güç yüzdeliği
+          <span class="ex-pair"><input id="ex-tsi-lo" type="number" min="0" max="100" placeholder="alt">
+          <input id="ex-tsi-hi" type="number" min="0" max="100" placeholder="üst"></span></label>
+        <label>Fiyat bandı (0–1)
+          <span class="ex-pair"><input id="ex-p-lo" type="number" min="0" max="1" step="0.05" placeholder="alt">
+          <input id="ex-p-hi" type="number" min="0" max="1" step="0.05" placeholder="üst"></span></label>
+        <button class="btn" type="submit">Ölç</button>
+      </form>
+      <div id="ex-out"></div>
+    </section>
+
+    <section class="rs-block">
       <h3 class="rs-h">Desen taraması: ne kadar aday, ne kadarı sağ kaldı</h3>
       <p class="note">Aday listesi kodda önceden yazılıdır, yani kaç test yapıldığı sayılabilir. Üç pencere:
       keşif → doğrulama → hiç dokunulmamış test; sonda çoklu test düzeltmesi (Benjamini-Hochberg).</p>

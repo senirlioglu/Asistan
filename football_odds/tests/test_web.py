@@ -274,3 +274,22 @@ def test_combined_endpoint_cascades_and_never_widens(research_client):
     assert tight["rows"][-1]["n"] <= d["rows"][-1]["n"]        # stricter cannot find more
     assert research_client.get("/api/kombine/yok").status_code == 404
     assert research_client.get("/api/kombine/s59?length=9").status_code == 422
+
+
+def test_the_pattern_explorer_answers_a_typed_query_against_the_price(research_client):
+    """The research tab has always claimed an idea can be tested in seconds; this is the control that
+    does it, and it must come back with the interval, not only the hit rate."""
+    d = research_client.get("/api/desen?form=WWW&side=home").json()
+    assert d["pool"] > 0 and "label" in d and len(d["span"]) == 2
+    win = d["outcomes"]["win"]
+    assert "actual" in win and "diff_ci" in win
+    assert d["n_exact"] <= d["pool"]
+
+    loose = research_client.get("/api/desen?form=WWW&side=home&approx=2").json()
+    assert loose["n"] >= d["n"]                       # slack can only widen the net
+    banded = research_client.get("/api/desen?form=WWW&side=home&tsi_lo=90&tsi_hi=100").json()
+    assert banded["n"] <= d["n"]                      # a band can only narrow it
+    assert "TSI%" in banded["label"]
+
+    assert research_client.get("/api/desen?form=WWW&approx=9").status_code == 422
+    assert research_client.get("/api/desen?form=WWW&p_lo=2").status_code == 422

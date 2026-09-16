@@ -112,7 +112,79 @@
     renderResearch();
   }
 
+
+  // ---------------------------------------------------------------- kendi desenini sor
+  // The research tab has always said an idea can be tested in seconds against 180.000 matches, and
+  // there was no control that did it. This is that control — and it is a p-hacking machine by
+  // construction, so it keeps count: ask twenty questions and one clears zero because that is what
+  // a 95 % interval means. The counter is the denominator the reader needs.
+  state.ex = { asked: 0, cleared: 0 };
+  const EX_OUT = { win: "Kazanır", draw: "Berabere", loss: "Kaybeder", over25: "2,5 üst", btts: "KG var",
+                   over15: "1,5 üst", over35: "3,5 üst", ht_draw: "İY berabere", ht_win: "İY önde" };
+
+  function exWire() {
+    const f = $("#ex-form");
+    if (!f || f._wired) return;
+    f._wired = true;
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const v = (id) => ($(id)?.value || "").trim();
+      const num = (id) => (v(id) === "" ? null : Number(v(id)));
+      const q = new URLSearchParams({ form: v("#ex-form-seq"), side: v("#ex-side"), approx: v("#ex-approx") });
+      if ($("#ex-venue")?.checked) q.set("venue", "true");
+      if (v("#ex-opp")) q.set("opp_form", v("#ex-opp"));
+      const pairs = [["tsi_lo", "#ex-tsi-lo"], ["tsi_hi", "#ex-tsi-hi"], ["p_lo", "#ex-p-lo"], ["p_hi", "#ex-p-hi"]];
+      pairs.forEach(([k, id]) => { const n = num(id); if (n != null && !Number.isNaN(n)) q.set(k, String(n)); });
+      const out = $("#ex-out");
+      out.innerHTML = `<p class="note">Ölçülüyor…</p>`;
+      try {
+        const d = await api(`/api/desen?${q}`);
+        state.ex.asked++;
+        renderExplore(d);
+      } catch (err) {
+        out.innerHTML = `<p class="note">Ölçülemedi: ${esc(err.message)}</p>`;
+      }
+    };
+  }
+
+  function renderExplore(d) {
+    const rows = (d.outcomes_order || []).map((o) => {
+      const x = d.outcomes[o] || {};
+      if (!x.n) return "";
+      const edge = x.edge != null ? x.edge : x.vs_ref;
+      const ci = x.edge_ci || x.vs_ref_ci || [null, null];
+      const solid = ci[0] != null && (ci[0] > 0 || ci[1] < 0);
+      return `<tr class="${x.n < 200 ? "thin" : ""}"><td>${EX_OUT[o] || o}</td>
+        <td class="num">${x.n}</td><td class="num">%${num(x.actual, 1)}</td>
+        <td class="num">${(x.market ?? x.ref) == null ? "–" : "%" + num(x.market ?? x.ref, 1)}</td>
+        <td class="num ${solid ? "yes" : ""}"><b>${edge == null ? "–" : pp1(edge)}</b></td>
+        <td class="num hide-sm">${ci[0] == null ? "–" : `[${pp1(ci[0])}, ${pp1(ci[1])}]`}</td>
+        <td>${ciBar(edge, ci[0], ci[1])}</td></tr>`;
+    }).join("");
+    const solidN = (d.outcomes_order || []).filter((o) => {
+      const c = (d.outcomes[o] || {}).edge_ci || (d.outcomes[o] || {}).vs_ref_ci || [null, null];
+      return c[0] != null && (c[0] > 0 || c[1] < 0);
+    }).length;
+    state.ex.cleared += solidN;
+    const tests = state.ex.asked * (d.outcomes_order || []).length;
+    $("#ex-out").innerHTML = `<p class="sentence"><b>${esc(d.label)}</b> — ${d.n.toLocaleString("tr")} maç
+        ${d.n_exact !== d.n ? `(birebir ${d.n_exact.toLocaleString("tr")})` : ""} · havuz
+        ${d.pool.toLocaleString("tr")} maç, ${d.span[0]} – ${d.span[1]}.</p>
+      ${d.n < 200 ? `<p class="ex-warn">Örneklem 200'ün altında. Bu satırlardan hiçbiri okunmamalı.</p>` : ""}
+      <div class="table-wrap"><table><thead><tr><th>Sonuç</th><th class="num">N</th><th class="num">Gerçekleşen</th>
+        <th class="num">Piyasa/kıyas</th><th class="num">Fark</th><th class="num hide-sm">%95 aralık</th><th>Sıfıra göre</th>
+        </tr></thead><tbody>${rows || `<tr><td colspan="7">Bu desene uyan maç yok.</td></tr>`}</tbody></table></div>
+      <p class="note">Fark, havuz geneli sapma çıkarıldıktan sonradır. <b>Aralık sıfırı içeriyorsa desen,
+        piyasanın zaten bildiği bir şeyi söylüyor.</b></p>
+      <p class="ex-warn">Bu oturumda <b>${state.ex.asked} sorgu</b> çalıştırdın, her biri ${(d.outcomes_order || []).length}
+        sonucu ölçtü: <b>${tests} test</b>. %95 aralıkla, hiçbir gerçek desen olmasa bile bunların yaklaşık
+        <b>${Math.max(1, Math.round(tests * 0.05))} tanesinin</b> sıfırı dışlaması beklenir — şu ana kadar
+        ${state.ex.cleared} tanesi dışladı. Buradan çıkan bir fikir bulgu değil, <b>adaydır</b>: gerçek sınav
+        aşağıdaki üç pencereli tarama ve çoklu test düzeltmesidir.</p>`;
+  }
+
   function renderResearch() {
+    exWire();
     const d = state.rs || {};
     const sum = (d.models?.summary) || [];
     const market = sum.find((r) => r.model.startsWith("A"));

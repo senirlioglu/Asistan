@@ -304,3 +304,42 @@ def _f(v):
 
 def _s(v):
     return "" if v is None or (isinstance(v, float) and pd.isna(v)) else str(v)
+
+
+def explore(settings: Settings, form: str = "", side: str = "home", approx: int = 0,
+            form_venue: bool = False, opp_form: str = "", tsi: tuple[float, float] | None = None,
+            opp_tsi: tuple[float, float] | None = None, market: tuple[float, float] | None = None,
+            leagues: list[str] | None = None, sample: int = 10) -> dict | None:
+    """Ask the pattern engine a question of your own, over the whole database.
+
+    The research tab has always claimed you can test an idea in seconds against 180.000 matches, and
+    until now there was no control that did it: every pattern query was derived from a match rather
+    than typed by a reader. This is that control.
+
+    It is also, unavoidably, a p-hacking machine. Ask twenty questions and one of them comes back
+    with an interval that clears zero, because that is what a 95 % interval means. So the answer
+    carries `n_tests_note` and the caller is expected to say so: an idea that survives here has
+    earned a run through `discovery.py`'s three windows, not a bet.
+    """
+    from . import engine
+
+    got = _load(settings)
+    if got is None:
+        return None
+    df = got[0]
+    pattern = engine.Pattern(
+        form=(form or None), side=side, approx=approx, form_venue=form_venue,
+        opp_form=(opp_form or None),
+        tsi_pct=tsi, opp_tsi_pct=opp_tsi, market=market,
+        leagues=[x for x in (leagues or []) if x] or None,
+    )
+    sp = state.state_path(settings)
+    year = int(pd.Timestamp(df["date"].max()).year) + 1          # the whole pool: nothing is held back
+    base, refs = _pool_stats(df, (str(sp), sp.stat().st_mtime), side, year)
+    res = engine.run(df, pattern, outcomes=PATTERN_OUTCOMES, sample=sample, base=base, refs=refs)
+    exact = pattern if not approx else engine.Pattern(**{**pattern.__dict__, "approx": 0})
+    res["n_exact"] = int(len(engine.select(df, exact))) if form else res["n"]
+    res["pool"] = int(len(df))
+    res["span"] = [str(df["date"].min())[:10], str(df["date"].max())[:10]]
+    res["outcomes_order"] = list(PATTERN_OUTCOMES)
+    return res

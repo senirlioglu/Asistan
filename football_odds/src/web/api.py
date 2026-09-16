@@ -628,6 +628,28 @@ def kombine(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
     return out
 
 
+@app.get("/api/desen")
+def desen(form: str = Query("", max_length=12), side: str = Query("home", pattern="^(home|away)$"),
+          approx: int = Query(0, ge=0, le=2), venue: bool = False, opp_form: str = Query("", max_length=12),
+          tsi_lo: float | None = Query(None, ge=0, le=100), tsi_hi: float | None = Query(None, ge=0, le=100),
+          opp_lo: float | None = Query(None, ge=0, le=100), opp_hi: float | None = Query(None, ge=0, le=100),
+          p_lo: float | None = Query(None, ge=0, le=1), p_hi: float | None = Query(None, ge=0, le=1),
+          leagues: str = Query("")) -> dict:
+    """Your own pattern, measured over the whole database against what the market charged.
+
+    Free-form querying is how people fool themselves, so the answer always carries the interval and
+    the caller is expected to keep count: ask enough questions and one will clear zero by chance."""
+    from ..patterns import service
+
+    rng = lambda a, b: (float(a), float(b)) if a is not None and b is not None else None  # noqa: E731
+    out = service.explore(settings, form=form.strip().upper(), side=side, approx=approx, form_venue=venue,
+                          opp_form=opp_form.strip().upper(), tsi=rng(tsi_lo, tsi_hi), opp_tsi=rng(opp_lo, opp_hi),
+                          market=rng(p_lo, p_hi), leagues=[x.strip() for x in leagues.split(",") if x.strip()])
+    if out is None:
+        raise HTTPException(404, "durum tablosu hazır değil")
+    return out
+
+
 @app.get("/api/research")
 def research() -> dict:
     """The offline research results: the notebook notes, the model comparison, the pattern scan."""

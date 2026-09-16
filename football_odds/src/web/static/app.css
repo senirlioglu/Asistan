@@ -476,3 +476,16 @@ tr.thin td { color: var(--ink-3); }          /* under 200 matches: visible, but 
 .decide-tbl .jump { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-align: left;
   border-bottom: 1px dotted var(--line-strong); cursor: pointer; }
 .decide-tbl .jump:hover { color: var(--market); }
+
+/* Kendi desenini sor: the control the research tab had always claimed to offer. */
+.ex-form { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin: 10px 0; }
+.ex-form label { display: flex; flex-direction: column; gap: 3px; font-size: 0.78rem; color: var(--ink-3); }
+.ex-form input[type="text"], .ex-form input[type="number"], .ex-form select {
+  font: inherit; font-size: 0.88rem; padding: 4px 7px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s); background: var(--ground); color: var(--ink); }
+.ex-form input[type="text"] { width: 96px; text-transform: uppercase; }
+.ex-form input[type="number"] { width: 62px; }
+.ex-pair { display: flex; gap: 4px; }
+.ex-check { flex-direction: row; align-items: center; gap: 5px; padding-bottom: 6px; }
+.ex-warn { border-left: 3px solid var(--hist); background: var(--surface-2); padding: 8px 10px;
+  border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.84rem; margin: 10px 0 0; }
