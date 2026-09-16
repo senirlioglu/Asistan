@@ -1,0 +1,816 @@
+[
+ {
+  "id": "n2",
+  "no": 2,
+  "title": "Ters çevirenin 7. maçı",
+  "note": "Bir takım 2/1 veya 1/2 yaptıysa, sonra oynayacağı 7. maçı yine 2/1 veya 1/2 yapar. Bazen 6+ gol çıkıyor.",
+  "how": "Takımın son ters çevirmesinden bu yana oynadığı maç sayısı 6 ise (bugünkü maç 7.'si).",
+  "side": "ev sahibi",
+  "n": 3972,
+  "claims": [
+   {
+    "outcome": "reversal",
+    "text": "yine 2/1 veya 1/2",
+    "n": 1909,
+    "actual": 9.3,
+    "ci": [
+     8.1,
+     10.7
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 10.0,
+    "vs_ref": -0.7,
+    "vs_ref_ci": [
+     -2.0,
+     0.7
+    ],
+    "p": 0.3203492100782449,
+    "q": 0.5949
+   },
+   {
+    "outcome": "goals6",
+    "text": "6+ gol",
+    "n": 3972,
+    "actual": 6.0,
+    "ci": [
+     5.3,
+     6.8
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 5.7,
+    "vs_ref": 0.2,
+    "vs_ref_ci": [
+     -0.5,
+     1.0
+    ],
+    "p": 0.5095581551257606,
+    "q": 0.6818
+   }
+  ]
+ },
+ {
+  "id": "n2",
+  "no": 2,
+  "title": "Ters çevirenin 7. maçı",
+  "note": "Bir takım 2/1 veya 1/2 yaptıysa, sonra oynayacağı 7. maçı yine 2/1 veya 1/2 yapar. Bazen 6+ gol çıkıyor.",
+  "how": "Takımın son ters çevirmesinden bu yana oynadığı maç sayısı 6 ise (bugünkü maç 7.'si).",
+  "side": "deplasman",
+  "n": 4036,
+  "claims": [
+   {
+    "outcome": "reversal",
+    "text": "yine 2/1 veya 1/2",
+    "n": 1955,
+    "actual": 10.6,
+    "ci": [
+     9.3,
+     12.1
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 9.9,
+    "vs_ref": 0.8,
+    "vs_ref_ci": [
+     -0.6,
+     2.1
+    ],
+    "p": 0.2650759607196455,
+    "q": 0.5302
+   },
+   {
+    "outcome": "goals6",
+    "text": "6+ gol",
+    "n": 4036,
+    "actual": 5.7,
+    "ci": [
+     5.0,
+     6.5
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 5.7,
+    "vs_ref": 0.0,
+    "vs_ref_ci": [
+     -0.7,
+     0.7
+    ],
+    "p": 0.9822606318102955,
+    "q": 0.9823
+   }
+  ]
+ },
+ {
+  "id": "n4",
+  "no": 4,
+  "title": "Favoriye oran açılmıyor (≤ 1,20)",
+  "note": "Favoriye hiç oran açılmazsa ya da en fazla 1,20 açılırsa o maç %99,9 2,5 üst, %80 3,5 üst, %70 6+ biter.",
+  "how": "Konsensüs oranların düşüğü 1,20 ve altındaysa. 'Hiç açılmamış' hali veritabanında yok.",
+  "side": "ev sahibi",
+  "n": 3579,
+  "claims": [
+   {
+    "outcome": "over25",
+    "text": "2,5 üst",
+    "n": 3579,
+    "actual": 69.4,
+    "ci": [
+     67.9,
+     70.9
+    ],
+    "market": 67.6,
+    "diff": 1.3,
+    "diff_ci": [
+     -0.5,
+     3.0
+    ],
+    "n_market": 2733,
+    "ref": 68.0,
+    "vs_ref": 1.4,
+    "vs_ref_ci": [
+     -0.1,
+     2.9
+    ],
+    "p": 0.15108982786650854,
+    "base": 0.1,
+    "edge": 1.2,
+    "edge_ci": [
+     -0.6,
+     2.9
+    ],
+    "q": 0.4365
+   },
+   {
+    "outcome": "over35",
+    "text": "3,5 üst",
+    "n": 3579,
+    "actual": 46.9,
+    "ci": [
+     45.3,
+     48.5
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 46.4,
+    "vs_ref": 0.5,
+    "vs_ref_ci": [
+     -1.1,
+     2.2
+    ],
+    "p": 0.5243937727193257,
+    "q": 0.6818
+   },
+   {
+    "outcome": "goals6",
+    "text": "6+ gol",
+    "n": 3579,
+    "actual": 13.9,
+    "ci": [
+     12.8,
+     15.1
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 14.3,
+    "vs_ref": -0.5,
+    "vs_ref_ci": [
+     -1.6,
+     0.7
+    ],
+    "p": 0.43581246204494906,
+    "q": 0.6818
+   }
+  ]
+ },
+ {
+  "id": "n10",
+  "no": 10,
+  "title": "Maç sonucu tam 1,67",
+  "note": "MS1 veya MS2'de 1,67 görürsen o yöne ilk yarı 1 ve ilk yarı 1-0 al. %85 çalışıyor.",
+  "how": "Ev sahibinin konsensüs oranı 1,665–1,675 ise (deplasman için ayrı satır).",
+  "side": "ev sahibi",
+  "n": 940,
+  "claims": [
+   {
+    "outcome": "ht_win",
+    "text": "ilk yarı önde",
+    "n": 572,
+    "actual": 38.1,
+    "ci": [
+     34.2,
+     42.2
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 42.4,
+    "vs_ref": -4.3,
+    "vs_ref_ci": [
+     -8.4,
+     -0.3
+    ],
+    "p": 0.03702963293841318,
+    "q": 0.1926
+   },
+   {
+    "outcome": "ht_1_0",
+    "text": "ilk yarı 1-0",
+    "n": 572,
+    "actual": 23.1,
+    "ci": [
+     19.8,
+     26.7
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 24.6,
+    "vs_ref": -1.5,
+    "vs_ref_ci": [
+     -5.1,
+     2.0
+    ],
+    "p": 0.39830613701510076,
+    "q": 0.6818
+   },
+   {
+    "outcome": "win",
+    "text": "maçı kazanır",
+    "n": 940,
+    "actual": 56.7,
+    "ci": [
+     53.5,
+     59.8
+    ],
+    "market": 56.0,
+    "diff": 0.7,
+    "diff_ci": [
+     -2.5,
+     3.9
+    ],
+    "n_market": 940,
+    "ref": 57.6,
+    "vs_ref": -0.9,
+    "vs_ref_ci": [
+     -4.0,
+     2.3
+    ],
+    "p": 0.6676260186065526,
+    "base": 0.6,
+    "edge": 0.1,
+    "edge_ci": [
+     -3.1,
+     3.3
+    ],
+    "q": 0.7332
+   }
+  ]
+ },
+ {
+  "id": "n10",
+  "no": 10,
+  "title": "Maç sonucu tam 1,67",
+  "note": "MS1 veya MS2'de 1,67 görürsen o yöne ilk yarı 1 ve ilk yarı 1-0 al. %85 çalışıyor.",
+  "how": "Ev sahibinin konsensüs oranı 1,665–1,675 ise (deplasman için ayrı satır).",
+  "side": "deplasman",
+  "n": 275,
+  "claims": [
+   {
+    "outcome": "ht_win",
+    "text": "ilk yarı önde",
+    "n": 183,
+    "actual": 47.5,
+    "ci": [
+     40.4,
+     54.8
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 41.2,
+    "vs_ref": 6.4,
+    "vs_ref_ci": [
+     -0.7,
+     13.5
+    ],
+    "p": 0.07896718068133525,
+    "q": 0.3422
+   },
+   {
+    "outcome": "ht_1_0",
+    "text": "ilk yarı 1-0",
+    "n": 183,
+    "actual": 29.5,
+    "ci": [
+     23.4,
+     36.5
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 24.4,
+    "vs_ref": 5.1,
+    "vs_ref_ci": [
+     -1.2,
+     11.3
+    ],
+    "p": 0.11024603062343359,
+    "q": 0.3756
+   },
+   {
+    "outcome": "win",
+    "text": "maçı kazanır",
+    "n": 275,
+    "actual": 60.7,
+    "ci": [
+     54.8,
+     66.3
+    ],
+    "market": 56.1,
+    "diff": 4.6,
+    "diff_ci": [
+     -1.1,
+     10.4
+    ],
+    "n_market": 275,
+    "ref": 57.9,
+    "vs_ref": 2.8,
+    "vs_ref_ci": [
+     -3.0,
+     8.7
+    ],
+    "p": 0.11555823575979254,
+    "base": -0.5,
+    "edge": 5.1,
+    "edge_ci": [
+     -0.6,
+     10.9
+    ],
+    "q": 0.3756
+   }
+  ]
+ },
+ {
+  "id": "n11",
+  "no": 11,
+  "title": "MS1 ile MS2 eşit (±0,01)",
+  "note": "MS1 ve MS2 aynıysa %100 2/1 veya 1/2 olur; 0,01 fark varsa düşük tarafın yönünde.",
+  "how": "İki tarafın konsensüs oranı arasındaki fark 0,01 ve altındaysa. Notun 23–25 İY/MS oran penceresi veritabanında yok (İY/MS fiyatı tutulmuyor), o kısım ölçülemedi.",
+  "side": "ev sahibi",
+  "n": 628,
+  "claims": [
+   {
+    "outcome": "reversal",
+    "text": "2/1 veya 1/2",
+    "n": 197,
+    "actual": 16.8,
+    "ci": [
+     12.2,
+     22.6
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 11.4,
+    "vs_ref": 5.3,
+    "vs_ref_ci": [
+     0.9,
+     9.8
+    ],
+    "p": 0.018377312154836196,
+    "q": 0.1593
+   },
+   {
+    "outcome": "draw",
+    "text": "beraberlik",
+    "n": 628,
+    "actual": 28.2,
+    "ci": [
+     24.8,
+     31.8
+    ],
+    "market": 29.0,
+    "diff": -0.8,
+    "diff_ci": [
+     -4.3,
+     2.7
+    ],
+    "n_market": 628,
+    "ref": 30.1,
+    "vs_ref": -1.9,
+    "vs_ref_ci": [
+     -5.5,
+     1.7
+    ],
+    "p": 0.6469251113237556,
+    "base": -0.1,
+    "edge": -0.7,
+    "edge_ci": [
+     -4.2,
+     2.8
+    ],
+    "q": 0.7332
+   },
+   {
+    "outcome": "over25",
+    "text": "2,5 üst",
+    "n": 628,
+    "actual": 49.2,
+    "ci": [
+     45.3,
+     53.1
+    ],
+    "market": 48.0,
+    "diff": -0.6,
+    "diff_ci": [
+     -5.2,
+     4.0
+    ],
+    "n_market": 437,
+    "ref": 48.0,
+    "vs_ref": 1.2,
+    "vs_ref_ci": [
+     -2.7,
+     5.1
+    ],
+    "p": 0.801768998757078,
+    "base": 0.1,
+    "edge": -0.7,
+    "edge_ci": [
+     -5.3,
+     3.9
+    ],
+    "q": 0.8338
+   }
+  ]
+ },
+ {
+  "id": "n14",
+  "no": 14,
+  "title": "Son maçı ters çevirenin ilk yarısı berabere",
+  "note": "En son maçını 1/2 ya da 2/1 yapan takımın bir sonraki maçının ilk yarısı %80–90 berabere olur.",
+  "how": "Takımın bir önceki maçı 2/1 ya da 1/2 bittiyse.",
+  "side": "ev sahibi",
+  "n": 5476,
+  "claims": [
+   {
+    "outcome": "ht_draw",
+    "text": "ilk yarı berabere",
+    "n": 5472,
+    "actual": 42.2,
+    "ci": [
+     40.9,
+     43.5
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 41.8,
+    "vs_ref": 0.4,
+    "vs_ref_ci": [
+     -0.9,
+     1.7
+    ],
+    "p": 0.5244853772156858,
+    "q": 0.6818
+   },
+   {
+    "outcome": "draw",
+    "text": "maç berabere",
+    "n": 5476,
+    "actual": 26.4,
+    "ci": [
+     25.3,
+     27.6
+    ],
+    "market": 26.2,
+    "diff": 0.2,
+    "diff_ci": [
+     -0.9,
+     1.4
+    ],
+    "n_market": 5472,
+    "ref": 26.3,
+    "vs_ref": 0.1,
+    "vs_ref_ci": [
+     -1.0,
+     1.3
+    ],
+    "p": 0.6767705743250453,
+    "base": -0.1,
+    "edge": 0.3,
+    "edge_ci": [
+     -0.8,
+     1.5
+    ],
+    "q": 0.7332
+   }
+  ]
+ },
+ {
+  "id": "n14",
+  "no": 14,
+  "title": "Son maçı ters çevirenin ilk yarısı berabere",
+  "note": "En son maçını 1/2 ya da 2/1 yapan takımın bir sonraki maçının ilk yarısı %80–90 berabere olur.",
+  "how": "Takımın bir önceki maçı 2/1 ya da 1/2 bittiyse.",
+  "side": "deplasman",
+  "n": 5503,
+  "claims": [
+   {
+    "outcome": "ht_draw",
+    "text": "ilk yarı berabere",
+    "n": 5500,
+    "actual": 41.1,
+    "ci": [
+     39.8,
+     42.4
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 41.9,
+    "vs_ref": -0.9,
+    "vs_ref_ci": [
+     -2.2,
+     0.4
+    ],
+    "p": 0.19186400177059948,
+    "q": 0.4988
+   },
+   {
+    "outcome": "draw",
+    "text": "maç berabere",
+    "n": 5503,
+    "actual": 25.8,
+    "ci": [
+     24.7,
+     27.0
+    ],
+    "market": 26.2,
+    "diff": -0.4,
+    "diff_ci": [
+     -1.6,
+     0.7
+    ],
+    "n_market": 5500,
+    "ref": 26.4,
+    "vs_ref": -0.5,
+    "vs_ref_ci": [
+     -1.7,
+     0.7
+    ],
+    "p": 0.48849761533697217,
+    "base": -0.1,
+    "edge": -0.3,
+    "edge_ci": [
+     -1.5,
+     0.8
+    ],
+    "q": 0.6818
+   }
+  ]
+ },
+ {
+  "id": "n16",
+  "no": 16,
+  "title": "Favori 1,65 / 1,67 / 1,75",
+  "note": "Favoriye 1,65, 1,67, bazen 1,75 verilirse o yöne ilk yarı gönül rahatlığıyla oynarsın; açılan takım ilk yarı mutlaka 1 gol atar.",
+  "how": "Ev sahibi favorinin oranı 1,645–1,755 ise. Not üç ayrı oranı sayıyor; aradaki değerler de bu banda giriyor, yani not olduğundan biraz geniş ölçüldü.",
+  "side": "ev sahibi",
+  "n": 11129,
+  "claims": [
+   {
+    "outcome": "ht_win",
+    "text": "ilk yarı önde",
+    "n": 6810,
+    "actual": 41.4,
+    "ci": [
+     40.2,
+     42.6
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 42.1,
+    "vs_ref": -0.7,
+    "vs_ref_ci": [
+     -1.9,
+     0.5
+    ],
+    "p": 0.2351669036541159,
+    "q": 0.5095
+   },
+   {
+    "outcome": "win",
+    "text": "maçı kazanır",
+    "n": 11129,
+    "actual": 56.5,
+    "ci": [
+     55.6,
+     57.5
+    ],
+    "market": 55.0,
+    "diff": 1.6,
+    "diff_ci": [
+     0.6,
+     2.5
+    ],
+    "n_market": 11129,
+    "ref": 56.4,
+    "vs_ref": 0.1,
+    "vs_ref_ci": [
+     -0.8,
+     1.1
+    ],
+    "p": 0.0008909734614723779,
+    "base": 0.6,
+    "edge": 1.0,
+    "edge_ci": [
+     0.0,
+     1.9
+    ],
+    "q": 0.0116
+   },
+   {
+    "outcome": "ht_draw",
+    "text": "ilk yarı berabere",
+    "n": 6810,
+    "actual": 40.5,
+    "ci": [
+     39.3,
+     41.7
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 39.2,
+    "vs_ref": 1.3,
+    "vs_ref_ci": [
+     0.1,
+     2.4
+    ],
+    "p": 0.03459017978180347,
+    "q": 0.1926
+   }
+  ]
+ },
+ {
+  "id": "n16",
+  "no": 16,
+  "title": "Favori 1,65 / 1,67 / 1,75",
+  "note": "Favoriye 1,65, 1,67, bazen 1,75 verilirse o yöne ilk yarı gönül rahatlığıyla oynarsın; açılan takım ilk yarı mutlaka 1 gol atar.",
+  "how": "Ev sahibi favorinin oranı 1,645–1,755 ise. Not üç ayrı oranı sayıyor; aradaki değerler de bu banda giriyor, yani not olduğundan biraz geniş ölçüldü.",
+  "side": "deplasman",
+  "n": 3112,
+  "claims": [
+   {
+    "outcome": "ht_win",
+    "text": "ilk yarı önde",
+    "n": 2004,
+    "actual": 40.5,
+    "ci": [
+     38.3,
+     42.6
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 36.9,
+    "vs_ref": 3.6,
+    "vs_ref_ci": [
+     1.5,
+     5.7
+    ],
+    "p": 0.0008835336065715787,
+    "q": 0.0116
+   },
+   {
+    "outcome": "win",
+    "text": "maçı kazanır",
+    "n": 3112,
+    "actual": 56.1,
+    "ci": [
+     54.4,
+     57.9
+    ],
+    "market": 55.0,
+    "diff": 1.1,
+    "diff_ci": [
+     -0.6,
+     2.8
+    ],
+    "n_market": 3111,
+    "ref": 54.5,
+    "vs_ref": 1.6,
+    "vs_ref_ci": [
+     -0.1,
+     3.4
+    ],
+    "p": 0.21497364075484668,
+    "base": -0.5,
+    "edge": 1.6,
+    "edge_ci": [
+     -0.1,
+     3.3
+    ],
+    "q": 0.5081
+   },
+   {
+    "outcome": "ht_draw",
+    "text": "ilk yarı berabere",
+    "n": 2004,
+    "actual": 40.2,
+    "ci": [
+     38.1,
+     42.4
+    ],
+    "market": null,
+    "diff": null,
+    "diff_ci": [
+     null,
+     null
+    ],
+    "n_market": 0,
+    "ref": 40.8,
+    "vs_ref": -0.6,
+    "vs_ref_ci": [
+     -2.7,
+     1.6
+    ],
+    "p": 0.5928882815902017,
+    "q": 0.7332
+   }
+  ]
+ }
+]

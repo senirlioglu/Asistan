@@ -147,8 +147,8 @@ def test_measure_compares_against_what_the_market_said():
     assert m["n"] == 10 and m["actual"] == 60.0 and m["market"] == 50.0 and m["diff"] == 10.0
     assert m["ci"][0] < 60.0 < m["ci"][1] and m["diff_ci"][0] < 10.0 < m["diff_ci"][1]
     assert engine.measure(pool, "home", "loss")["actual"] == 40.0
-    assert engine.measure(pool.head(0), "home", "win") == {"n": 0, "actual": None, "market": None, "diff": None,
-                                                           "ci": [None, None], "diff_ci": [None, None], "n_market": 0}
+    empty = engine.measure(pool.head(0), "home", "win")
+    assert empty["n"] == 0 and empty["actual"] is None and empty["diff"] is None
     # a market that is right on average leaves no difference to report
     even = _pool([{"date": "2026-02-01", "home_team": "A", "away_team": "B", "ftr": "H", "p_home": 1.0, "p_away": 0.0},
                   {"date": "2026-02-02", "home_team": "A", "away_team": "B", "ftr": "A", "p_home": 0.0, "p_away": 1.0}])
@@ -180,3 +180,77 @@ def test_levels_splits_into_this_club_everybody_and_comparable_strength():
     out = engine.levels(_pool(rows), engine.Pattern(form="WWW"), team="A", tsi_pct=90.0, outcomes=("win",))
     assert out["all"]["n"] == 10 and out["same_team"]["n"] == 5 and out["similar"]["n"] == 5
     assert "A" in out["same_team"]["label"]
+
+
+def test_half_time_outcomes_read_the_break_and_skip_the_matches_without_one():
+    pool = _pool([
+        {"date": "2026-01-01", "home_team": "A", "away_team": "B", "htr": "H", "ftr": "A", "hthg": 1, "htag": 0},   # 1/2
+        {"date": "2026-01-02", "home_team": "A", "away_team": "B", "htr": "A", "ftr": "H", "hthg": 0, "htag": 2},   # 2/1
+        {"date": "2026-01-03", "home_team": "A", "away_team": "B", "htr": "D", "ftr": "H", "hthg": 1, "htag": 1},
+        {"date": "2026-01-04", "home_team": "A", "away_team": "B", "htr": "H", "ftr": "H", "hthg": 1, "htag": 0},
+        {"date": "2026-01-05", "home_team": "A", "away_team": "B", "htr": None, "ftr": "H"},                        # no half-time
+    ])
+    assert engine.measure(pool, "home", "reversal") == {**engine.measure(pool, "home", "reversal"), "n": 3, "actual": 66.7}
+    assert engine.measure(pool, "home", "ht_win")["n"] == 4 and engine.measure(pool, "home", "ht_win")["actual"] == 50.0
+    assert engine.measure(pool, "home", "ht_draw")["actual"] == 25.0
+    assert engine.measure(pool, "home", "ht_1_0")["actual"] == 50.0          # 1-0 twice out of the four known
+    assert engine.measure(pool, "away", "ht_win")["actual"] == 25.0
+
+
+def test_the_reference_is_matches_at_the_same_price_not_the_whole_pool():
+    """The trap the notes fall into: a pattern that selects favourites beats the pool average by
+    construction. Priced-matched against other favourites, the same pattern must come out flat."""
+    rows = []
+    for i in range(400):
+        fav = i % 2 == 0                                   # half the pool are favourites...
+        flagged = i % 4 == 0                               # ... and half of THOSE carry the pattern
+        # the win cycle runs on i // 4 so it is identical inside and outside the flagged half
+        won = ((i // 4) % 4 != 3) if fav else ((i // 4) % 4 == 0)     # favourites 75 %, the rest 25 %
+        rows.append({"date": f"2026-0{1 + i // 200}-{1 + i % 28:02d}", "home_team": "A", "away_team": "B",
+                     "htr": "H" if won else "A", "ftr": "H" if won else "A", "hthg": 1 if won else 0,
+                     "htag": 0 if won else 1, "p_home": 0.75 if fav else 0.35, "p_away": 0.2 if fav else 0.6,
+                     "h_form": "WWWWW" if flagged else "LLLLL"})
+    pool = _pool(rows)
+    pool["match_id"] = [f"m{i}" for i in range(len(pool))]
+    sub = engine.select(pool, engine.Pattern(form="WWWWW"))
+    assert len(sub) == 100
+    naive = engine.pool_rates(pool, "home", ("ht_win",))["ht_win"]
+    matched = engine.matched_rates(pool, sub, "home", ("ht_win",))["ht_win"]
+    assert round(naive, 2) == 0.50 and round(matched, 2) == 0.75   # the pool says 50 %, their own price says 75 %
+    m = engine.measure(sub, "home", "ht_win", ref=matched)
+    assert m["actual"] == 75.0 and m["vs_ref"] == 0.0              # against matches priced alike: nothing
+    assert engine.measure(sub, "home", "ht_win", ref=naive)["vs_ref"] == 25.0   # the misleading version
+
+
+def test_benjamini_hochberg_holds_the_noise_back():
+    assert engine.fdr([]) == [] and engine.fdr([None, None]) == [None, None]
+    # one real effect among twenty coin flips: only the real one survives
+    q = engine.fdr([0.0001] + [0.2 + 0.04 * i for i in range(19)])
+    assert q[0] <= 0.05 and all(x > 0.05 for x in q[1:])
+    # the smallest p of a batch of "significant-looking" results does not survive on its own
+    assert all(x > 0.05 for x in engine.fdr([0.04, 0.06, 0.2, 0.5, 0.9]))
+    assert engine.fdr([0.5, None, 0.01])[1] is None
+
+
+def test_the_notebook_notes_are_measured_with_their_caveats(settings):
+    from src.patterns import notes
+
+    rows = []
+    for i in range(300):                       # every match has a home favourite at 1.67
+        rows.append({"date": f"2026-0{1 + i // 150}-{1 + i % 28:02d}", "home_team": "A", "away_team": "B",
+                     "htr": "H" if i % 3 else "D", "ftr": "H" if i % 3 else "D", "hthg": 1 if i % 3 else 0,
+                     "htag": 0, "p_home": 0.56, "p_draw": 0.25, "p_away": 0.19, "p_over25": 0.5,
+                     "cons_h": 1.67, "cons_a": 5.0, "total_goals": 2.0})
+    pool = _pool(rows)
+    pool["match_id"] = [f"m{i}" for i in range(len(pool))]
+    pool["odds_gap"] = (pool["cons_h"] - pool["cons_a"]).abs()
+    pool["fav_odds"] = pool[["cons_h", "cons_a"]].min(axis=1)
+    pool["h_since_rev"] = 6
+    pool["a_since_rev"] = 0
+    out = notes.measure_notes(pool)
+    by = {(r["id"], r["side"]): r for r in out}
+    assert by[("n10", "ev sahibi")]["n"] == 300                # every match matches "exactly 1.67"
+    assert by[("n2", "ev sahibi")]["n"] == 300                 # ... and every one is a 7th match after
+    assert all("q" in c for r in out for c in r["claims"])     # every claim carries its corrected p
+    assert notes.verdict({"n": 0}) == "ölçülemedi"
+    assert "N=" in notes.report(out)

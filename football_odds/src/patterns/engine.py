@@ -38,13 +38,18 @@ import pandas as pd
 
 from ..models.stats import wilson_interval
 
-# outcome -> (indicator from the played match, the market's own probability column)
+# outcome -> what it means. Football-Data prices 1X2 and 2.5 goals; the rest have no market number,
+# so those are compared against the pool's own rate instead (see `measure(ref=...)`).
 OUTCOMES: dict[str, str] = {
     "win": "the side wins", "draw": "the match is drawn", "loss": "the side loses",
     "over25": "over 2.5 goals", "btts": "both teams score",
+    "over15": "over 1.5 goals", "over35": "over 3.5 goals", "goals6": "6 or more goals",
+    "ht_win": "the side leads at half time", "ht_draw": "the first half is level",
+    "reversal": "half-time leader loses (2/1 or 1/2)", "ht_1_0": "1-0 for the side at half time",
 }
 MARKET_COLS = {"win": ("p_home", "p_away"), "draw": ("p_draw", "p_draw"),
-               "loss": ("p_away", "p_home"), "over25": ("p_over25", "p_over25"), "btts": (None, None)}
+               "loss": ("p_away", "p_home"), "over25": ("p_over25", "p_over25")}
+GOAL_OUTCOMES = ("over15", "over25", "over35", "goals6", "btts")   # governed by the over/under price
 
 
 @dataclass
@@ -97,13 +102,18 @@ def _form_mask(series: pd.Series, pattern: str, approx: int) -> np.ndarray:
 
 
 def prepare(state: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:
-    """Join the pre-match state with what the market said and what actually happened."""
-    cols = ["match_id", "p_home", "p_draw", "p_away", "p_over25", "ftr", "fthg", "ftag", "total_goals", "btts"]
+    """Join the pre-match state with what the market said and what actually happened.
+
+    The raw consensus odds ride along too: the owner's notes are written about the printed price
+    ("favoriye 1,20 altı", "tam 1,67"), not about a margin-free probability."""
+    cols = ["match_id", "p_home", "p_draw", "p_away", "p_over25", "ftr", "htr", "fthg", "ftag", "hthg", "htag",
+            "total_goals", "cons_h", "cons_d", "cons_a"]
     have = [c for c in cols if c in matches.columns]
     out = state.merge(matches[have], on="match_id", how="inner", validate="one_to_one")
-    out["over25"] = out["total_goals"] > 2.5 if "total_goals" in out else np.nan
-    if "btts" in out:
-        out["btts_hit"] = out["btts"].astype(str).str.lower().isin(["yes", "true", "1"]) | (out["btts"] == 1)
+    if {"cons_h", "cons_a"} <= set(out.columns):
+        out["odds_gap"] = (out["cons_h"] - out["cons_a"]).abs()
+        out["fav_odds"] = out[["cons_h", "cons_a"]].min(axis=1)
+        out["fav_side"] = np.where(out["cons_h"] <= out["cons_a"], "home", "away")
     return out
 
 
@@ -158,34 +168,142 @@ def outcome_columns(sub: pd.DataFrame, side: str, outcome: str) -> tuple[np.ndar
         hit = ftr == ("A" if home else "H")
     elif outcome == "draw":
         hit = ftr == "D"
-    elif outcome == "over25":
-        hit = pd.to_numeric(sub.get("total_goals"), errors="coerce").to_numpy() > 2.5
+    elif outcome in ("over15", "over25", "over35", "goals6"):
+        line = {"over15": 1.5, "over25": 2.5, "over35": 3.5, "goals6": 5.5}[outcome]
+        hit = pd.to_numeric(sub.get("total_goals"), errors="coerce").to_numpy() > line
     elif outcome == "btts":
         hit = (pd.to_numeric(sub.get("fthg"), errors="coerce").to_numpy() > 0) & (pd.to_numeric(sub.get("ftag"), errors="coerce").to_numpy() > 0)
+    elif outcome in ("ht_win", "ht_draw", "reversal", "ht_1_0"):
+        htr = sub["htr"].astype(str).to_numpy() if "htr" in sub else np.full(len(sub), "")
+        known = np.isin(htr, ["H", "D", "A"])
+        if outcome == "ht_draw":
+            hit = np.where(known, htr == "D", np.nan)
+        elif outcome == "ht_win":
+            hit = np.where(known, htr == ("H" if home else "A"), np.nan)
+        elif outcome == "reversal":     # 2/1 or 1/2 as a property of the match, either way round
+            hit = np.where(known & (htr != "D") & (ftr != "D"), htr != ftr, np.nan)
+        else:
+            hh = pd.to_numeric(sub.get("hthg"), errors="coerce").to_numpy()
+            ha = pd.to_numeric(sub.get("htag"), errors="coerce").to_numpy()
+            lead, trail = (hh, ha) if home else (ha, hh)
+            hit = np.where(np.isfinite(hh) & np.isfinite(ha), (lead == 1) & (trail == 0), np.nan)
     else:
         raise ValueError(f"unknown outcome {outcome!r}")
-    col = MARKET_COLS[outcome][0 if home else 1]
+    hit = np.asarray(hit, dtype=float)
+    col = MARKET_COLS.get(outcome, (None, None))[0 if home else 1]
     market = pd.to_numeric(sub[col], errors="coerce").to_numpy() if col and col in sub else np.full(len(sub), np.nan)
-    return hit.astype(float), market
+    return hit, market
 
 
-def measure(sub: pd.DataFrame, side: str, outcome: str) -> dict:
-    """Hit rate, the market's own average expectation, and the paired difference with its interval."""
+def _two_sided(z: float) -> float:
+    """Two-sided normal p-value; `math.erfc` keeps this dependency-free."""
+    import math
+
+    return float(math.erfc(abs(z) / math.sqrt(2)))
+
+
+def fdr(pvals: list[float | None], q: float = 0.05) -> list[float | None]:
+    """Benjamini-Hochberg adjusted p-values. Measuring thirty claims at 95 % produces one or two
+    'findings' from noise alone, so every batch of claims goes through this before anything is
+    called a finding."""
+    idx = [i for i, v in enumerate(pvals) if v is not None]
+    out: list[float | None] = [None] * len(pvals)
+    if not idx:
+        return out
+    order = sorted(idx, key=lambda i: pvals[i])
+    m = len(order)
+    running = 1.0
+    for rank in range(m, 0, -1):
+        i = order[rank - 1]
+        running = min(running, pvals[i] * m / rank)
+        out[i] = round(min(1.0, running), 4)
+    return out
+
+
+def measure(sub: pd.DataFrame, side: str, outcome: str, ref: float | None = None) -> dict:
+    """Hit rate, the market's own average expectation, and the paired difference with its interval.
+
+    `ref` is the pool-wide rate of the same outcome, used for the markets Football-Data does not
+    price (half-time results, reversals, 6+ goals). There the comparison is against how often the
+    thing happens in general — weaker than a price, and labelled as such — with the one-sample
+    interval around it. Matches whose half-time score is unknown (the extra-league files) drop out
+    of the count rather than being guessed."""
     hit, market = outcome_columns(sub, side, outcome)
+    known = np.isfinite(hit)
+    hit, market = hit[known], market[known]
     n = int(len(hit))
     if n == 0:
-        return {"n": 0, "actual": None, "market": None, "diff": None, "ci": [None, None], "diff_ci": [None, None], "n_market": 0}
+        return {"n": 0, "actual": None, "market": None, "diff": None, "ci": [None, None], "diff_ci": [None, None],
+                "n_market": 0, "ref": None, "vs_ref": None, "vs_ref_ci": [None, None], "p": None}
     actual = float(np.mean(hit))
     lo, hi = wilson_interval(actual, n)
     ok = np.isfinite(market)
     out = {"n": n, "actual": round(100 * actual, 1), "ci": [round(100 * lo, 1), round(100 * hi, 1)],
-           "market": None, "diff": None, "diff_ci": [None, None], "n_market": int(ok.sum())}
+           "market": None, "diff": None, "diff_ci": [None, None], "n_market": int(ok.sum()),
+           "ref": None, "vs_ref": None, "vs_ref_ci": [None, None], "p": None}
+    if ref is not None and 0 < ref < 1:
+        se_ref = float(np.sqrt(ref * (1 - ref) / n))
+        out["ref"] = round(100 * ref, 1)
+        out["vs_ref"] = round(100 * (actual - ref), 1)
+        out["vs_ref_ci"] = [round(100 * (actual - ref - 1.96 * se_ref), 1), round(100 * (actual - ref + 1.96 * se_ref), 1)]
+        out["p"] = _two_sided((actual - ref) / se_ref) if se_ref > 0 else None
     if ok.sum() >= 2:
         d = hit[ok] - market[ok]
         se = float(np.std(d, ddof=1) / np.sqrt(ok.sum()))
         out["market"] = round(100 * float(np.mean(market[ok])), 1)
         out["diff"] = round(100 * float(np.mean(d)), 1)
         out["diff_ci"] = [round(100 * (float(np.mean(d)) - 1.96 * se), 1), round(100 * (float(np.mean(d)) + 1.96 * se), 1)]
+        out["p"] = _two_sided(float(np.mean(d)) / se) if se > 0 else None
+    return out
+
+
+def pool_rates(frame: pd.DataFrame, side: str, outcomes: tuple[str, ...]) -> dict[str, float]:
+    """How often each outcome happens across the whole pool — the reference for the unpriced ones."""
+    out = {}
+    for o in outcomes:
+        hit, _ = outcome_columns(frame, side, o)
+        known = np.isfinite(hit)
+        if known.any():
+            out[o] = float(np.mean(hit[known]))
+    return out
+
+
+def matched_rates(frame: pd.DataFrame, sub: pd.DataFrame, side: str, outcomes: tuple[str, ...],
+                  step: float = 0.025) -> dict[str, float]:
+    """The rate of each outcome among matches PRICED LIKE these ones — the honest reference for the
+    markets Football-Data does not quote.
+
+    Half of the notebook's notes are conditions on the price itself ("favoriye 1,20 altı", "tam
+    1,67"). Comparing those against the whole pool only rediscovers that favourites lead at half
+    time and win — which the price already said. So the reference is built by matching on the
+    market's own probability for the side: the pool is cut into `step`-wide probability bins, the
+    outcome rate is taken in each bin over the matches OUTSIDE the pattern, and those rates are
+    averaged with the pattern's own distribution over the bins as weights. The result answers
+    "did these matches do it more often than other matches carrying the same price?".
+    """
+    side_col = "p_home" if side == "home" else "p_away"
+    if side_col not in frame or not len(sub):
+        return {}
+    ids = set(sub["match_id"]) if "match_id" in sub else set()
+    others = frame[~frame["match_id"].isin(ids)] if ids else frame
+    out: dict[str, float] = {}
+    for o in outcomes:
+        # match on the price that governs THAT market: the goal markets belong to the over/under
+        # price, not to 1X2 — an extreme favourite and a high-scoring game are different things
+        col = "p_over25" if (o in GOAL_OUTCOMES and "p_over25" in frame and frame["p_over25"].notna().any()) else side_col
+        b_sub = (pd.to_numeric(sub[col], errors="coerce") / step).round()
+        b_oth = (pd.to_numeric(others[col], errors="coerce") / step).round()
+        hit_o, _ = outcome_columns(others, side, o)
+        hit_s, _ = outcome_columns(sub, side, o)
+        ok_o, ok_s = np.isfinite(hit_o) & b_oth.notna().to_numpy(), np.isfinite(hit_s) & b_sub.notna().to_numpy()
+        if not ok_s.any() or not ok_o.any():
+            continue
+        rates = pd.Series(hit_o[ok_o]).groupby(b_oth[ok_o].to_numpy()).mean()
+        w = pd.Series(1.0, index=b_sub[ok_s].to_numpy()).groupby(level=0).sum()
+        common = rates.index.intersection(w.index)
+        if not len(common) or w[common].sum() == 0:
+            continue
+        out[o] = float((rates[common] * w[common]).sum() / w[common].sum())
     return out
 
 
@@ -209,14 +327,16 @@ def beats_market(m: dict) -> bool:
 
 
 def run(frame: pd.DataFrame, pattern: Pattern, outcomes: tuple[str, ...] = ("win", "draw", "loss", "over25", "btts"),
-        as_of: pd.Timestamp | None = None, sample: int = 0, base: dict[str, float] | None = None) -> dict:
+        as_of: pd.Timestamp | None = None, sample: int = 0, base: dict[str, float] | None = None,
+        refs: dict[str, float] | None = None) -> dict:
     """One pattern over one pool: the matches it selects and every outcome measured against the market.
 
     `base` is the whole-pool offset from `baseline()`; pass it and each outcome also carries `edge`,
     the difference after that offset is taken out. That is the number to read."""
     sub = select(frame, pattern, as_of=as_of)
+    refs = refs or {}
     res = {"label": pattern.label(), "side": pattern.side, "n": int(len(sub)),
-           "outcomes": {o: measure(sub, pattern.side, o) for o in outcomes}}
+           "outcomes": {o: measure(sub, pattern.side, o, ref=refs.get(o)) for o in outcomes}}
     if base:
         for o, m in res["outcomes"].items():
             if m.get("diff") is None or o not in base:

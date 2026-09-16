@@ -4,6 +4,7 @@
     python -m src.cli audit               # PHASE 1 column/market availability audit
     python -m src.cli build               # processed Parquet database + data quality report
     python -m src.cli state               # match state table (form, goals, table, TSI) next to it
+    python -m src.cli notes               # re-measure the notebook notes against price-matched history
     python -m src.cli backtest            # walk-forward backtest, model comparison, ROI, buckets
     python -m src.cli today               # analyse upcoming fixtures -> results/YYYY-MM-DD_predictions.csv
     python -m src.cli dashboard           # launch the Streamlit dashboard
@@ -43,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--leagues")
 
     sub.add_parser("state", help="build the match state table (pre-match form / goals / table / TSI)")
+
+    sub.add_parser("notes", help="measure the notebook notes against the market and against price-matched matches")
 
     p = sub.add_parser("backtest", help="walk-forward backtest + model comparison")
     p.add_argument("--quick", action="store_true", help="smaller parameter grid (development)")
@@ -93,6 +96,25 @@ def main(argv: list[str] | None = None) -> int:
         from .patterns.state import build, state_path
         out = build(settings)
         log.info("wrote %s: %d matches, %d columns", state_path(settings), len(out), len(out.columns))
+        return 0
+
+    if args.command == "notes":
+        import json
+
+        import pandas as pd
+
+        from .patterns import engine, notes, state
+        st = state.load(settings)
+        if st is None:
+            log.error("match state not built yet — run: python -m src.cli state")
+            return 1
+        frame = engine.prepare(st, pd.read_parquet(settings.processed_dir / "matches.parquet"))
+        rows = notes.measure_notes(frame)
+        print(notes.report(rows))
+        out = settings.results_dir / "notes_measured.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+        log.info("wrote %s", out)
         return 0
 
     if args.command == "backtest":

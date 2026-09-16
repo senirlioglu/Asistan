@@ -29,7 +29,11 @@ carries `tsi_pct`: the team's percentile among the teams of its own league on th
 comparable across leagues. Use the percentile for cross-league work, the raw one inside a league.
 
 Missing data is left missing: a team's first ever match in the pool has no form, and the extra-league
-files carry no half-time score, so those columns stay null there rather than being invented.
+files carry no half-time score, so `since_rev` / `htft` stay null there rather than being invented.
+
+`since_rev` is the count the owner's note 2 is about: the matches a team has played SINCE its last
+half-time-to-full-time reversal (2/1 or 1/2), not counting the reversal itself. Today being "the
+7th match after" therefore means `since_rev == 6`.
 """
 
 from __future__ import annotations
@@ -69,6 +73,9 @@ class TeamState:
     scored: deque = field(default_factory=lambda: deque(maxlen=max(WINDOWS)))
     conceded: deque = field(default_factory=lambda: deque(maxlen=max(WINDOWS)))
     dates: deque = field(default_factory=lambda: deque(maxlen=max(WINDOWS) + 5))
+    since_rev: int | None = None     # matches played since this team's last 2/1 or 1/2 (None = never seen one)
+    revs10: int = 0                  # how many of the last ten were reversals
+    htft: deque = field(default_factory=lambda: deque(maxlen=FORM_LEN))     # "2/1", "1/1", ... newest last
     season: str | None = None
     played: int = 0          # this season
     points: int = 0
@@ -118,6 +125,9 @@ def _side_features(st: TeamState, venue: str, date: pd.Timestamp, table: dict) -
         out["rest_days"] = int((date - st.dates[-1]).days)
         out["games7"] = sum(1 for d in st.dates if 0 <= (date - d).days <= 7)
         out["games14"] = sum(1 for d in st.dates if 0 <= (date - d).days <= 14)
+    out["since_rev"] = st.since_rev          # note 2 reads this: today is the 7th match after == 6
+    out["revs10"] = st.revs10
+    out["htft"] = st.htft[-1] if st.htft else None
     out["elo"] = round(st.elo, 1)
     out["tsi"] = round(min(100.0, max(0.0, 50.0 + (st.elo - ELO_START) / ELO_SCALE)), 1)
     out["tsi_pct"] = table.get("pct")
@@ -193,7 +203,20 @@ def build_state(df: pd.DataFrame, progress_every: int = 40000) -> pd.DataFrame:
         gh, ga = int(gh), int(ga)
         res_home = "W" if gh > ga else "D" if gh == ga else "L"
         res_away = {"W": "L", "L": "W", "D": "D"}[res_home]
-        for st, res, scored, conceded, venue in ((hs, res_home, gh, ga, "H"), (as_, res_away, ga, gh, "A")):
+        # half-time -> full-time, from each side's own view: "2/1" means trailed at the break, won the match
+        ht_home = getattr(r, "htr", None)
+        htft_home = htft_away = None
+        if isinstance(ht_home, str) and ht_home in ("H", "D", "A"):
+            code = {"H": "1", "D": "X", "A": "2"}
+            htft_home = f"{code[ht_home]}/{code[r.ftr]}"
+            flip = {"1": "2", "2": "1", "X": "X"}
+            htft_away = f"{flip[htft_home[0]]}/{flip[htft_home[2]]}"
+        for st, res, scored, conceded, venue, hf in ((hs, res_home, gh, ga, "H", htft_home), (as_, res_away, ga, gh, "A", htft_away)):
+            if hf is not None:
+                st.htft.append(hf)
+                reversed_ = hf in ("1/2", "2/1")
+                st.since_rev = 0 if reversed_ else (None if st.since_rev is None else st.since_rev + 1)
+                st.revs10 = sum(1 for x in st.htft if x in ("1/2", "2/1"))
             st.results.append(res)
             st.venue_results[venue].append(res)
             st.scored.append(scored)
