@@ -14,6 +14,9 @@ Every refresh records the prices of the markets the notes use, so each match car
 price, its previous price and when it last changed. The store is a small JSON on the results
 directory (the mounted volume on Railway), pruned to matches that have not kicked off yet.
 
+That store is a working view and it forgets. Every change is ALSO appended to the permanent
+per-day history in `archive.py`, which is never rewritten — research reads that one.
+
 Environment:
     FO_NESINE_WATCH   0/false turns the thread off (default on)
     FO_NESINE_MIN_S   floor for the refresh interval in seconds (default 30)
@@ -31,6 +34,7 @@ from typing import Any
 
 from ..config import Settings
 from ..logging_setup import get_logger
+from . import archive
 from .bulletin import load_matches
 
 log = get_logger("nesine.watcher")
@@ -99,8 +103,12 @@ def kickoff(m: dict) -> dt.datetime | None:
         return None
 
 
-def record(store: dict, matches: list[dict], now: dt.datetime | None = None) -> dict:
-    """Append changed prices to the store and forget matches the bulletin no longer carries."""
+def record(store: dict, matches: list[dict], now: dt.datetime | None = None,
+           changes: list[dict] | None = None) -> dict:
+    """Append changed prices to the store and forget matches the bulletin no longer carries.
+
+    `changes` collects every price this refresh actually moved, as {"c": code, "p": path, "o": odds,
+    "m": minutes to kick-off} — `archive.py` writes those to the permanent history."""
     now = now or dt.datetime.now(dt.timezone.utc)
     stamp = now.isoformat(timespec="seconds")
     out = store.setdefault("matches", {})
@@ -109,6 +117,8 @@ def record(store: dict, matches: list[dict], now: dt.datetime | None = None) -> 
         code = str(m.get("code"))
         seen.add(code)
         entry = out.setdefault(code, {"first_seen": stamp, "odds": {}})
+        ko = kickoff(m) if changes is not None else None
+        mtk = round((ko - now).total_seconds() / 60) if ko else None
         for path in tracked_paths(m):
             v = value_at(m, path)
             if v is None:
@@ -117,6 +127,8 @@ def record(store: dict, matches: list[dict], now: dt.datetime | None = None) -> 
             if points and abs(points[-1][1] - v) < 1e-9:
                 continue                      # unchanged: nothing to store
             points.append([stamp, v])
+            if changes is not None:
+                changes.append({"c": m.get("code"), "p": path, "o": v, "m": mtk})
             if len(points) > MAX_POINTS:
                 del points[0:len(points) - MAX_POINTS]
     # forget matches that are no longer in the bulletin (played or pulled)
@@ -167,7 +179,7 @@ def interval_for(matches: list[dict], now: dt.datetime | None = None) -> int:
 
 # --------------------------------------------------------------------------- the thread
 
-_state: dict[str, Any] = {"thread": None, "last": None, "error": None, "interval": None, "n": 0, "runs": 0}
+_state: dict[str, Any] = {"thread": None, "last": None, "error": None, "interval": None, "n": 0, "runs": 0, "archived": 0}
 _lock = threading.Lock()
 
 
@@ -179,11 +191,14 @@ def status() -> dict:
 
 
 def refresh_once(settings: Settings) -> tuple[list[dict], dict]:
+    changes: list[dict] = []
     matches, meta = load_matches(settings, force=True)
-    store = record(load_store(settings), matches)
+    store = record(load_store(settings), matches, changes=changes)
     save_store(settings, store)
+    archive.append(settings, changes, matches)     # the permanent history; the store above forgets
     with _lock:
-        _state.update(last=meta.get("fetched_at"), error=meta.get("error"), n=len(matches), runs=_state["runs"] + 1)
+        _state.update(last=meta.get("fetched_at"), error=meta.get("error"), n=len(matches),
+                      runs=_state["runs"] + 1, archived=_state["archived"] + len(changes))
     return matches, meta
 
 
@@ -192,6 +207,8 @@ def _loop(settings: Settings, min_interval: int) -> None:
         wait = INTERVALS["idle"]
         try:
             matches, _ = refresh_once(settings)
+            if _state["runs"] % 24 == 1:               # once in a while: gzip the finished day files
+                archive.compress_old(settings)
             wait = max(min_interval, interval_for(matches))
         except Exception as exc:  # noqa: BLE001 - the watcher must never die
             log.warning("nesine refresh failed: %s", exc)

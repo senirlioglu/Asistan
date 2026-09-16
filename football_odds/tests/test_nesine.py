@@ -158,3 +158,43 @@ def test_nesine_prices_survive_the_high_margin(settings):
     assert 1.15 < float(row["overround_1x2"]) < MAX_OVERROUND
     assert abs(float(row["p_home"]) + float(row["p_draw"]) + float(row["p_away"]) - 1.0) < 1e-9
     assert priced_row(settings, _m(ms={"1": 2.53})) is None        # incomplete 1X2 -> not analysable
+
+
+def test_archive_keeps_every_change_forever(settings, tmp_path, monkeypatch):
+    """The working store forgets (12 points, pruned at kick-off); the archive may not."""
+    import datetime as dt
+    import gzip
+
+    from src.nesine import archive, watcher
+
+    monkeypatch.setattr(settings, "raw", settings.with_overrides(**{"data.results_dir": str(tmp_path)}).raw)
+    t0 = dt.datetime(2026, 9, 20, 17, 0, tzinfo=dt.timezone.utc)
+    m = _m(ms={"1": 2.30, "X": 3.40, "2": 2.30})              # kick-off 20:00 Turkey = 17:00 UTC
+    changes: list[dict] = []
+    store = watcher.record({}, [m], now=t0 - dt.timedelta(hours=2), changes=changes)
+    n_open = len(changes)                                      # the opening snapshot: every tracked price
+    assert n_open == len(watcher.tracked_paths(m)) > 10
+    assert archive.append(settings, changes, [m], now=t0 - dt.timedelta(hours=2)) == n_open
+    assert {c["m"] for c in changes} == {120}                  # minutes to kick-off, on every row
+
+    changes = []
+    watcher.record(store, [_m(ms={"1": 2.11, "X": 3.40, "2": 2.30})], now=t0 - dt.timedelta(minutes=10), changes=changes)
+    assert [(c["p"], c["o"], c["m"]) for c in changes] == [("ms.1", 2.11, 10)]
+    archive.append(settings, changes, [m], now=t0 - dt.timedelta(minutes=10))
+
+    rows = archive.load_day(settings, t0.date())
+    assert len(rows) == n_open + 1 and rows[-1]["p"] == "ms.1" and rows[-1]["o"] == 2.11
+    assert [r["o"] for r in rows if r["p"] == "ms.1"] == [2.30, 2.11]     # the whole path, in order
+    meta = archive.load_meta(settings, t0.date())
+    assert meta["1"]["home"] == "A" and meta["1"]["time"] == "20:00"      # teams live in the meta file
+
+    # the match kicks off and leaves the bulletin: the working store drops it, the archive does not
+    watcher.record(store, [], now=t0 + dt.timedelta(minutes=5))
+    assert store["matches"] == {} and len(archive.load_day(settings, t0.date())) == n_open + 1
+
+    # a finished day is gzipped and still readable
+    assert archive.compress_old(settings, today=t0.date() + dt.timedelta(days=1))
+    assert not archive.day_path(settings, t0.date()).exists()
+    assert gzip.open(archive.day_path(settings, t0.date(), gz=True), "rt").readline()
+    assert len(archive.load_day(settings, t0.date())) == n_open + 1
+    assert archive.load_day(settings, dt.date(2030, 1, 1)) == []
