@@ -46,10 +46,19 @@ OUTCOMES: dict[str, str] = {
     "over15": "over 1.5 goals", "over35": "over 3.5 goals", "goals6": "6 or more goals",
     "ht_win": "the side leads at half time", "ht_draw": "the first half is level",
     "reversal": "half-time leader loses (2/1 or 1/2)", "ht_1_0": "1-0 for the side at half time",
+    # Match-perspective targets (Pattern Lab): 1 = home, X = draw, 2 = away, whatever `side` says.
+    # A reader asks "does this match end 2/1", not "does the side I happen to be describing lead".
+    "ft_1": "home win", "ft_X": "draw", "ft_2": "away win",
+    "ht_1": "home leads at half time", "ht_X": "level at half time", "ht_2": "away leads at half time",
+    **{f"htft_{h}/{f}": f"half time {h}, full time {f}" for h in "1X2" for f in "1X2"},
 }
 MARKET_COLS = {"win": ("p_home", "p_away"), "draw": ("p_draw", "p_draw"),
-               "loss": ("p_away", "p_home"), "over25": ("p_over25", "p_over25")}
+               "loss": ("p_away", "p_home"), "over25": ("p_over25", "p_over25"),
+               "ft_1": ("p_home", "p_home"), "ft_X": ("p_draw", "p_draw"), "ft_2": ("p_away", "p_away")}
 GOAL_OUTCOMES = ("over15", "over25", "over35", "goals6", "btts")   # governed by the over/under price
+MATCH_OUTCOMES = ("ft_1", "ft_X", "ft_2", "ht_1", "ht_X", "ht_2",
+                  *[f"htft_{h}/{f}" for h in "1X2" for f in "1X2"])           # side-independent
+_CODE = {"1": "H", "X": "D", "2": "A"}
 
 
 @dataclass
@@ -75,6 +84,11 @@ class Pattern:
     pos: tuple[float, float] | None = None           # league position of the side
     leagues: list[str] | None = None
     team: str | None = None                 # level A: this club only
+    opponent: str | None = None             # the other club, by name (the "rakibin geçmişi" layer)
+    # how the side's price moved between the pre-close consensus and the closing line — the only
+    # movement history the database has (2019/20 onwards). "steam" = shortened, "drift" = lengthened
+    movement: str | None = None             # "steam" | "drift" | "stable"
+    role: str | None = None                 # "favorite" | "underdog": the side's price against the opponent's
     extra: dict[str, tuple[float, float]] = field(default_factory=dict)   # any other numeric state column
 
     def label(self) -> str:
@@ -94,9 +108,19 @@ class Pattern:
                 bits.append(f"{name} {rng[0]:g}–{rng[1]:g}")
         if self.team:
             bits.append(self.team)
+        if self.opponent:
+            bits.append(f"rakip {self.opponent}")
+        if self.role:
+            bits.append("favori" if self.role == "favorite" else "sürpriz adayı")
+        if self.movement:
+            bits.append({"steam": "oran düştü", "drift": "oran yükseldi", "stable": "oran sabit"}.get(self.movement, self.movement))
         if self.leagues:
             bits.append("/".join(self.leagues))
         return " · ".join(bits) or "tüm maçlar"
+
+
+MOVE_PP = 0.02        # a closing move of two probability points or more counts as steam / drift
+STABLE_PP = 0.01      # under one point either way is "stable"
 
 
 def form_matches(form: str, pattern: str, approx: int = 0) -> bool:
@@ -140,6 +164,10 @@ def prepare(state: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def gap_sign_of(side: str) -> int:
+    return 1 if side == "home" else -1
+
+
 def _range_mask(frame: pd.DataFrame, col: str, rng: tuple[float, float] | None) -> np.ndarray | None:
     if rng is None or col not in frame:
         return None
@@ -164,6 +192,19 @@ def select(frame: pd.DataFrame, pattern: Pattern, as_of: pd.Timestamp | None = N
     if pattern.team:
         side_team = "home_team" if pattern.side == "home" else "away_team"
         mask &= (frame[side_team] == pattern.team).to_numpy()
+    if pattern.opponent:
+        opp_team = "away_team" if pattern.side == "home" else "home_team"
+        mask &= (frame[opp_team] == pattern.opponent).to_numpy()
+    if pattern.role and {"p_home", "p_away"} <= set(frame.columns):
+        mine = pd.to_numeric(frame["p_home" if pattern.side == "home" else "p_away"], errors="coerce")
+        theirs = pd.to_numeric(frame["p_away" if pattern.side == "home" else "p_home"], errors="coerce")
+        want = (mine > theirs) if pattern.role == "favorite" else (mine < theirs)
+        mask &= want.fillna(False).to_numpy(dtype=bool)
+    if pattern.movement and "delta_p_home" in frame:
+        d = gap_sign_of(pattern.side) * pd.to_numeric(frame["delta_p_home"], errors="coerce")
+        want = {"steam": d >= MOVE_PP, "drift": d <= -MOVE_PP, "stable": d.abs() < STABLE_PP}.get(pattern.movement)
+        if want is not None:
+            mask &= want.fillna(False).to_numpy(dtype=bool)
     if pattern.leagues:
         mask &= frame["league"].isin(pattern.leagues).to_numpy()
     gap_sign = 1 if pattern.side == "home" else -1
@@ -189,7 +230,17 @@ def outcome_columns(sub: pd.DataFrame, side: str, outcome: str) -> tuple[np.ndar
     """(what happened, what the market said) for one outcome, over the matches in `sub`."""
     ftr = sub["ftr"].astype(str).to_numpy()
     home = side == "home"
-    if outcome == "win":
+    if outcome in MATCH_OUTCOMES:
+        htr = sub["htr"].astype(str).to_numpy() if "htr" in sub else np.full(len(sub), "")
+        known_ht = np.isin(htr, ["H", "D", "A"])
+        if outcome.startswith("ft_"):
+            hit = ftr == _CODE[outcome[3]]
+        elif outcome.startswith("ht_"):
+            hit = np.where(known_ht, htr == _CODE[outcome[3]], np.nan)
+        else:                                   # htft_H/F
+            h, f = outcome[5], outcome[7]
+            hit = np.where(known_ht, (htr == _CODE[h]) & (ftr == _CODE[f]), np.nan)
+    elif outcome == "win":
         hit = ftr == ("H" if home else "A")
     elif outcome == "loss":
         hit = ftr == ("A" if home else "H")
@@ -262,6 +313,18 @@ def measure(sub: pd.DataFrame, side: str, outcome: str, ref: float | None = None
     ten half-weighted matches cannot buy the confidence of ten full ones. `n` stays the raw count —
     it is what the reader counts — and `n_eff` carries what the statistics actually used."""
     hit, market = outcome_columns(sub, side, outcome)
+    return paired_measure(hit, market, ref=ref, w=w)
+
+
+def paired_measure(hit: np.ndarray, market: np.ndarray, ref: float | None = None,
+                   w: np.ndarray | None = None) -> dict:
+    """`measure` on plain arrays: what happened (1/0/NaN) next to what the market said (p or NaN).
+
+    Split out so that a claim which is not an outcome column of a match frame — "the centre result
+    of a fixture cycle repeated" is one — is measured by exactly the same arithmetic, and reports the
+    same fields, as every other claim in this package."""
+    hit = np.asarray(hit, dtype=float)
+    market = np.asarray(market, dtype=float)
     known = np.isfinite(hit)
     hit, market = hit[known], market[known]
     ws = np.ones(len(hit)) if w is None else np.asarray(w, dtype=float)[known]
@@ -455,7 +518,7 @@ def cascade(frame: pd.DataFrame, steps: list[tuple[str, Pattern]], as_of: pd.Tim
         sub = select(pool, pattern, as_of=as_of)
         res = run(sub, replace(pattern, form=None, venue_form=None, opp_form=None, opp_venue_form=None,
                                tsi_pct=None, opp_tsi_pct=None, gap=None, market=None, rest_days=None,
-                               pos=None, team=None, leagues=None, extra={}),
+                               pos=None, team=None, opponent=None, movement=None, role=None, leagues=None, extra={}),
                   as_of=as_of, **kw)
         res["label"] = pattern.label()
         res["step"] = label

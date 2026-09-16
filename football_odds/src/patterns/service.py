@@ -21,6 +21,7 @@ import pandas as pd
 
 from ..config import Settings
 from ..logging_setup import get_logger
+from . import engine as _engine
 from . import state, twins
 
 log = get_logger("patterns.service")
@@ -32,6 +33,9 @@ COLUMNS = [
     "h_form", "a_form", "h_form_venue", "a_form_venue", "h_tsi", "a_tsi", "h_tsi_pct", "a_tsi_pct",
     "strength_gap", "h_gf5", "h_ga5", "a_gf5", "a_ga5", "h_pts5", "a_pts5", "h_pos", "a_pos",
     "h_rest_days", "a_rest_days", "h_since_rev", "a_since_rev", "h2h_n",
+    # the goal-pattern conditions Pattern Lab's own-pattern mode filters on (counts over the last five)
+    "h_btts5", "a_btts5", "h_ov15_5", "a_ov15_5", "h_ov25_5", "a_ov25_5", "h_ov35_5", "a_ov35_5",
+    "avgc_h", "avgc_d", "avgc_a",           # closing prices (2019/20 on): CLV for the cycle rows
 ]
 CATEGORIES = ("league", "season", "ftr", "htr", "h_form", "a_form", "h_form_venue", "a_form_venue")
 
@@ -101,8 +105,9 @@ def twin_config(settings: Settings) -> dict | None:
     return got[3] if got else None
 
 
-def twins_for(settings: Settings, match_id: str, k: int = 50, side: str = "home", sample: int = 12) -> dict | None:
-    """The twins of one match: the list, how close they actually are, and what they did."""
+def twin_query(settings: Settings, match_id: str, k: int = 50, side: str = "home") -> tuple[pd.Series, twins.TwinResult, dict] | None:
+    """The raw twin query for one match: (the match row, the TwinResult with every twin row and its
+    decay weight, the engine configuration). Pattern Lab measures its own targets on these rows."""
     got = _load(settings)
     if got is None:
         return None
@@ -112,7 +117,15 @@ def twins_for(settings: Settings, match_id: str, k: int = 50, side: str = "home"
         return None
     row = hit.iloc[0]
     index = home_index if side == "home" else away_index
-    res = index.query(row, k=k, as_of=row["date"])
+    return row, index.query(row, k=k, as_of=row["date"]), cfg
+
+
+def twins_for(settings: Settings, match_id: str, k: int = 50, side: str = "home", sample: int = 12) -> dict | None:
+    """The twins of one match: the list, how close they actually are, and what they did."""
+    got = twin_query(settings, match_id, k=k, side=side)
+    if got is None:
+        return None
+    row, res, cfg = got
     cols = ["date", "league", "home_team", "away_team", "ftr", "fthg", "ftag", "twin_score", "twin_weight",
             "sim_market", "sim_strength", "sim_opponent", "sim_gap", "sim_form", "sim_goals", "sim_movement",
             "h_form", "a_form", "p_home", "p_draw", "p_away"]
@@ -140,6 +153,9 @@ def twins_for(settings: Settings, match_id: str, k: int = 50, side: str = "home"
 
 
 PATTERN_OUTCOMES = ("win", "draw", "loss", "over25", "btts", "over15", "over35", "ht_draw", "ht_win")
+# Pattern Lab's targets are match-perspective (1 / X / 2, İY, İY/MS); the pool offsets and the
+# price-matched references are cached for both families at once so a target costs no extra scan
+LAB_OUTCOMES = PATTERN_OUTCOMES + _engine.MATCH_OUTCOMES
 
 
 _POOL_STATS: dict[tuple, tuple[dict, dict]] = {}
@@ -164,8 +180,8 @@ def _pool_stats(df: pd.DataFrame, key: tuple, side: str, year: int) -> tuple[dic
         if len(_POOL_STATS) > 64:
             _POOL_STATS.clear()
         pool = df[df["date"] < pd.Timestamp(year=year, month=1, day=1)]
-        _POOL_STATS[ck] = (engine.baseline(pool, side, PATTERN_OUTCOMES),
-                           engine.pool_rates(pool, side, PATTERN_OUTCOMES))
+        _POOL_STATS[ck] = (engine.baseline(pool, side, LAB_OUTCOMES),
+                           engine.pool_rates(pool, side, LAB_OUTCOMES))
     return _POOL_STATS[ck]
 
 
@@ -175,11 +191,13 @@ _OUT_CACHE: dict[tuple, dict] = {}
 def _cache_for(df: pd.DataFrame, key: tuple, side: str) -> dict:
     from . import engine
 
-    ck = (*key, side)
+    # the pool differs by as-of date (matches before the day analysed) and the explorer uses the whole
+    # frame: a cache built on one and read with the other's mask is a shape error, so the size is in the key
+    ck = (*key, side, len(df))
     if ck not in _OUT_CACHE:
         if len(_OUT_CACHE) > 8:
             _OUT_CACHE.clear()
-        _OUT_CACHE[ck] = engine.outcome_cache(df, side, PATTERN_OUTCOMES)
+        _OUT_CACHE[ck] = engine.outcome_cache(df, side, LAB_OUTCOMES)
     return _OUT_CACHE[ck]
 
 
@@ -257,7 +275,8 @@ COMBINED_LENGTH, COMBINED_APPROX = 3, 1
 
 
 def combined_for(settings: Settings, match_id: str, side: str = "home", approx: int = COMBINED_APPROX,
-                 length: int = COMBINED_LENGTH, band: float = 10.0, gap_band: float = 60.0) -> dict | None:
+                 length: int = COMBINED_LENGTH, band: float = 10.0, gap_band: float = 60.0,
+                 outcomes: tuple[str, ...] = PATTERN_OUTCOMES) -> dict | None:
     """TEAM A x TEAM B: this match's two states at once, one condition at a time.
 
     The pattern engine has always been able to describe one side. A match is two sides, and the
@@ -317,6 +336,7 @@ def combined_for(settings: Settings, match_id: str, side: str = "home", approx: 
     if tsi is not None:
         at = replace(at, tsi_pct=(max(0.0, tsi - band), min(100.0, tsi + band)))
         steps.append((f"+ benzer güç (%{tsi:g} ± {band:g})", at))
+    n_team_steps = len(steps)                 # everything after this describes the opponent or the pair
     if opp_form:
         at = replace(at, opp_form=opp_form)
         steps.append((f"+ rakip formu {opp_form}", at))
@@ -332,7 +352,7 @@ def combined_for(settings: Settings, match_id: str, side: str = "home", approx: 
         steps.append((f"+ güç farkı {sign * gap:+.0f} ± {gap_band:g}", at))
 
     refs = _refs_fast(pool, engine.select(pool, steps[0][1], as_of=as_of), side, (str(sp), sp.stat().st_mtime), naive)
-    rows = engine.cascade(pool, steps, as_of=as_of, outcomes=PATTERN_OUTCOMES, base=base, refs=refs)
+    rows = engine.cascade(pool, steps, as_of=as_of, outcomes=outcomes, base=base, refs=refs)
     return {
         "match": {"id": match_id, "date": str(row["date"])[:10], "league": str(row["league"]),
                   "home": str(row["home_team"]), "away": str(row["away_team"]), "side": side,
@@ -343,7 +363,8 @@ def combined_for(settings: Settings, match_id: str, side: str = "home", approx: 
                   "gf5": _f(row.get(f"{p}gf5")), "ga5": _f(row.get(f"{p}ga5")),
                   "opp_gf5": _f(row.get(f"{o}gf5")), "opp_ga5": _f(row.get(f"{o}ga5")),
                   "band": band, "gap_band": gap_band},
-        "approx": approx, "length": length, "outcomes": list(PATTERN_OUTCOMES), "rows": rows,
+        "approx": approx, "length": length, "outcomes": list(outcomes), "rows": rows,
+        "n_team_steps": n_team_steps,
     }
 
 

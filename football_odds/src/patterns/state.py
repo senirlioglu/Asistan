@@ -55,6 +55,7 @@ log = get_logger("patterns.state")
 # research engines and the API can read it without joining the match database back in, and an
 # upcoming fixture (no result yet) still carries its price
 PASSTHROUGH = ("p_home", "p_draw", "p_away", "p_over25", "cons_h", "cons_d", "cons_a",
+               "avgc_h", "avgc_d", "avgc_a",        # closing prices: the CLV benchmark for the cycle rows
                "ftr", "htr", "fthg", "ftag", "hthg", "htag", "total_goals", "delta_p_home", "result_code")
 
 WINDOWS = (3, 5, 10)        # the look-back lengths every count feature is produced for

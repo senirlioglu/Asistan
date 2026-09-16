@@ -158,8 +158,11 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
         for f, q in zip(sized, qs):
             f.q = float(q)
     findings = [f for f in sized if f.q <= alpha and abs(f.edge) >= min_edge]
+    # Surviving this match's own family is a discovery and nothing more: "doğrulandı" is reserved
+    # for the offline scan's validation window, and `_mark_tested` promotes only what its test window
+    # kept. A pattern found in the pool it was searched in is never shown as confirmed.
     for f in findings:
-        f.evidence = "confirmed" if f.q <= alpha else "discovery"
+        f.evidence = "discovery"
     _mark_tested(settings, findings, side)
 
     return {

@@ -183,7 +183,8 @@ def meta() -> dict:
     import datetime as _dt
     return {"dates": _dates(), "today": _dt.date.today().isoformat(), "status": status, "backtest": backtest,
             "days_ahead": int(os.environ.get("FO_DAYS_AHEAD", "7")),
-            "admin_required": bool(os.environ.get("FO_ADMIN_KEY", "")), "daily_utc": os.environ.get("FO_DAILY_UTC", "06:30")}
+            "admin_required": bool(os.environ.get("FO_ADMIN_KEY", "")), "daily_utc": os.environ.get("FO_DAILY_UTC", "06:30"),
+            "leagues": LEAGUE_TR}
 
 
 @app.get("/api/day/{date}")
@@ -653,13 +654,190 @@ def dongu(team: str = Query(..., min_length=2, max_length=60), match_id: str = Q
     strength) are searched automatically. A cycle carries a similarity, never a probability: whether
     a repeating run says anything about the centre match is a separate question, and the measurement
     on the whole database says it does not."""
-    from ..patterns import sequence, service
+    from ..patterns import cycles, sequence, service
 
     df = service.frame(settings)
     if df is None:
         raise HTTPException(404, "durum tablosu hazır değil")
-    return sequence.find_cycles(df, team.strip(), centre_match_id=match_id.strip() or None,
-                                min_similarity=min_similarity)
+    out = sequence.find_cycles(df, team.strip(), centre_match_id=match_id.strip() or None,
+                               min_similarity=min_similarity)
+    # the club's strength at the centre, so the measurement can ask about comparable clubs, and
+    # whether the whole-database pair table exists yet (the daily job builds it; it can lag a rebuild)
+    c = out.get("centre")
+    if c:
+        hit = df[df["match_id"].astype(str) == c["match_id"]]
+        if not hit.empty:
+            r = hit.iloc[0]
+            at_home = str(r["home_team"]) == team.strip()
+            out["centre"]["venue"] = "home" if at_home else "away"
+            out["centre"]["tsi"] = service._f(r.get("h_tsi_pct" if at_home else "a_tsi_pct"))
+            out["centre"]["home"], out["centre"]["away"] = str(r["home_team"]), str(r["away_team"])
+    out["pairs"] = cycles.status(settings)
+    return out
+
+
+# --------------------------------------------------------------------------- Pattern Lab (/api/lab/*)
+# The orchestration layer: a match or a target in, every engine's answer out, always next to the
+# price. Nothing here is a new engine; see src/patterns/target.py and src/patterns/cycles.py.
+
+@app.get("/api/lab/hedefler")
+def lab_targets() -> dict:
+    """The targets the backend can actually measure (1X2, İY, İY/MS, goals), grouped for the page."""
+    from ..patterns import target
+
+    return target.targets_payload()
+
+
+@app.get("/api/lab/maclar")
+def lab_matches(from_: str | None = Query(default=None, alias="from"), to: str | None = None) -> dict:
+    """The analysed fixtures of a date range (Turkey dates) that the state table knows — the lab's match picker."""
+    from ..patterns import service
+
+    df = _all_matches()
+    if df.empty:
+        return {"matches": []}
+    today = dt.date.today().isoformat()
+    lo, hi = from_ or today, to or from_ or today
+    sub = df[(df["date_tr"].astype(str) >= lo) & (df["date_tr"].astype(str) <= hi)]
+    frame = service.frame(settings)
+    known = set(frame["match_id"].astype(str)) if frame is not None else set()
+    out = []
+    for _, r in sub.iterrows():
+        mid = _str(r["match_id"])
+        out.append({"id": mid, "date": _str(r["date_tr"]), "time": _str(r["time_tr"]), "league": _str(r["league"]),
+                    "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": _str(r["home"]),
+                    "away": _str(r["away"]), "odds": [_num(r.get("odds_h")), _num(r.get("odds_d")), _num(r.get("odds_a"))],
+                    "market": [_num(r.get("market_h")), _num(r.get("market_d")), _num(r.get("market_a"))],
+                    "ready": mid in known})
+    out.sort(key=lambda m: (m["date"], m["time"], m["league_name"]))
+    return {"from": lo, "to": hi, "matches": out, "state_ready": frame is not None}
+
+
+@app.get("/api/lab/hedef/{match_id}")
+def lab_target(match_id: str, target: str = Query(..., min_length=3, max_length=12),
+               side: str = Query("home", pattern="^(home|away)$")) -> dict:
+    """Mode 1 with a target: every layer re-measured for one outcome, next to today's price."""
+    from ..patterns import target as tg
+
+    if target not in tg.TARGETS:
+        raise HTTPException(422, "bilinmeyen hedef")
+    df = _all_matches()
+    nesine = None
+    if not df.empty:
+        sub = df[df["match_id"].astype(str) == match_id]
+        if not sub.empty:
+            r = sub.iloc[-1]
+            nesine = _nesine_brief(_str(r["date_tr"]), _str(r["home"]), _str(r["away"]))
+    out = tg.analyse(settings, match_id, target, side=side, nesine=nesine)
+    if out is None:
+        raise HTTPException(404, "bu maç için durum tablosu hazır değil")
+    return out
+
+
+@app.get("/api/lab/tara")
+def lab_scan_status(date: str = Query(..., min_length=10, max_length=10), target: str = Query(..., min_length=3, max_length=12)) -> dict:
+    """Progress and rows of a day scan started with POST /api/lab/tara."""
+    from ..patterns import target as tg
+
+    job = tg.day_scan_status(settings, date, target)
+    if job is None:
+        return {"state": "none", "date": date, "target": target, "rows": [], "done": 0, "total": 0}
+    return job
+
+
+@app.post("/api/lab/tara")
+def lab_scan_start(date: str = Query(..., min_length=10, max_length=10), target: str = Query(..., min_length=3, max_length=12)) -> dict:
+    """Mode 2: scan every analysed match of a day for one target, in the background (poll GET)."""
+    from ..patterns import service, target as tg
+
+    if target not in tg.TARGETS:
+        raise HTTPException(422, "bilinmeyen hedef")
+    if service.frame(settings) is None:
+        raise HTTPException(404, "durum tablosu hazır değil")
+    matches = [m for m in lab_matches(date, date)["matches"] if m["ready"]]
+    nesine_by_id = {}
+    if tg.NESINE_PATH.get(target, ("", ""))[0] not in ("ms", ""):      # only where the price has to come from nesine
+        for m in matches:
+            try:
+                nesine_by_id[m["id"]] = _nesine_brief(m["date"], m["home"], m["away"])
+            except Exception:  # noqa: BLE001 - no bulletin, no price; the row says so
+                pass
+    job = tg.start_day_scan(settings, date, target, matches, nesine_by_id)
+    return {"state": job["state"], "total": job["total"], "done": job["done"]}
+
+
+@app.get("/api/lab/kendi")
+def lab_own(side: str = Query("home", pattern="^(home|away)$"), form: str = Query("", max_length=12),
+            venue_form: str = Query("", max_length=12), approx: int = Query(0, ge=0, le=2),
+            strength: str = Query(""), opp_form: str = Query("", max_length=12), opp_venue_form: str = Query("", max_length=12),
+            opp_strength: str = Query(""), gap_lo: float | None = None, gap_hi: float | None = None,
+            leagues: str = Query(""), goals: str = Query("", max_length=200), role: str = Query(""),
+            p_lo: float | None = Query(None, ge=0, le=1), p_hi: float | None = Query(None, ge=0, le=1),
+            movement: str = Query(""), outcome: str = Query("")) -> dict:
+    """Mode 3: the reader's own conditions, added one at a time, each row against the price.
+
+    `strength` / `opp_strength`: weak | mid | strong | top or "lo-hi". `goals`: "gf5:8-30,ov25_5:3-5".
+    `outcome`: an extra target to measure alongside the nine standard ones (e.g. htft_2/1)."""
+    from ..patterns import service, target as tg
+
+    def band(v: str):
+        v = (v or "").strip()
+        if not v:
+            return None
+        if v in tg.STRENGTH_BANDS:
+            return v
+        try:
+            lo, hi = v.split("-")
+            return [float(lo), float(hi)]
+        except ValueError:
+            raise HTTPException(422, f"aralık biçimi: {v}")
+
+    goal_spec = {}
+    for part in [x for x in goals.split(",") if x.strip()]:
+        try:
+            k, rng = part.split(":")
+            lo, hi = rng.split("-")
+            goal_spec[k.strip()] = [float(lo), float(hi)]
+        except ValueError:
+            raise HTTPException(422, f"gol koşulu biçimi: {part}")
+    spec = {"side": side, "form": form.strip().upper(), "venue_form": venue_form.strip().upper(), "approx": approx,
+            "strength": band(strength), "opp_form": opp_form.strip().upper(), "opp_venue_form": opp_venue_form.strip().upper(),
+            "opp_strength": band(opp_strength),
+            "gap": [gap_lo, gap_hi] if gap_lo is not None and gap_hi is not None else None,
+            "leagues": [x.strip() for x in leagues.split(",") if x.strip()], "goals": goal_spec,
+            "role": role or None, "market": [p_lo, p_hi] if p_lo is not None and p_hi is not None else None,
+            "movement": movement or None}
+    outcomes = tuple(service.PATTERN_OUTCOMES) + ((outcome,) if outcome and outcome in tg.TARGETS and outcome not in service.PATTERN_OUTCOMES else ())
+    out = tg.own_pattern(settings, spec, outcomes=outcomes)
+    if out is None:
+        raise HTTPException(404, "durum tablosu hazır değil")
+    return out
+
+
+@app.get("/api/lab/takimlar")
+def lab_teams(q: str = Query("", max_length=60), limit: int = Query(20, ge=1, le=100)) -> dict:
+    """Clubs in the database matching `q` — the cycle mode's team picker."""
+    from ..patterns import target as tg
+
+    return {"teams": tg.teams(settings, q, limit)}
+
+
+@app.get("/api/lab/dongu-olc")
+def lab_cycle_measure(kind: str = Query(...), window: int = Query(..., ge=2, le=4),
+                      similarity: float = Query(..., ge=0, le=100), team: str = Query("", max_length=60),
+                      tsi: float | None = Query(None, ge=0, le=100), hypothesis: str = Query("")) -> dict:
+    """"Bu döngü geçmişte işe yaramış mı?" — the whole database, three layers, every claim priced."""
+    from ..patterns import cycles
+
+    if kind not in cycles.KINDS:
+        raise HTTPException(422, "bilinmeyen döngü türü")
+    if hypothesis and hypothesis not in ("repeat", "mirror"):
+        raise HTTPException(422, "hipotez repeat ya da mirror olmalı")
+    out = cycles.measure_for(settings, kind, window, similarity, team=team.strip() or None, tsi=tsi,
+                             hypothesis=hypothesis or None)
+    if out is None:
+        raise HTTPException(404, "durum tablosu hazır değil")
+    return out
 
 
 @app.get("/api/fikstur/{match_id}")

@@ -289,6 +289,18 @@ K=100 / prior 200`; Brier market 0.59715 vs adjusted 0.59747, **p = 0.044 in the
 same as before and slightly firmer: the analogue model does not beat the market; with more data it is measurably a
 little worse. Details and per-league table in `docs/PHASE_REPORT.md` and `results/backtest/summary.md`.
 
+## Pattern Lab (research tab)
+
+The research tab opens with **Pattern Lab**, an orchestration layer over the existing engines: the
+reader picks a match (mode 1: every engine runs, the family is FDR-corrected, then a target such as
+İY/MS 2/1 is re-measured layer by layer next to the price), a result (mode 2: the day's matches are
+scanned in the background and ordered by research relevance, never a "bet score"), their own
+conditions (mode 3: one cascade row per condition), or a club (mode 4: fixture cycles across ±2/±3/±4
+and every earlier season, then "did this cycle mean anything" measured on the whole database with
+repeat and mirror hypotheses). Endpoints live under `/api/lab/*`, `/api/tarama` and `/api/dongu`;
+see `docs/MOTORLAR.md` §8k–8l. The cycle pair table (`results/backtest/cycle_pairs.parquet`) is
+built by the daily job after the state table.
+
 ## Hosted deployment (Railway / any container host)
 
 `serve.py` is a single-process entry point: it serves the web app (FastAPI + `src/web/static/`) on `$PORT`, bootstraps

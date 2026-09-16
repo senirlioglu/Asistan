@@ -336,9 +336,131 @@ def test_the_scan_corrects_across_the_whole_family_before_showing_anything(resea
     assert d["alpha"] == 0.05 and d["min_n"] >= 100
     for f in d["findings"]:
         assert f["q"] <= d["alpha"] and abs(f["edge"]) >= d["min_edge"]
-        assert f["n"] >= d["min_n"] and f["evidence"] in ("DOĞRULANDI", "İLERİ TESTTE")
+        assert f["n"] >= d["min_n"] and f["evidence"] in ("KEŞİF", "İLERİ TESTTE")   # never "doğrulandı" from one pool
         assert f["ci"][0] is not None
     # context never enters the family: a similarity and a shape are not claims that took a test
     for c in d["context"]:
         assert c["source"] in ("sequence", "movement") and "q" not in c
     assert research_client.get("/api/tarama/yok").status_code == 404
+
+
+# --------------------------------------------------------------------------- Pattern Lab (/api/lab/*)
+
+def test_lab_targets_are_only_what_the_backend_measures(client):
+    d = client.get("/api/lab/hedefler").json()
+    keys = {t["key"] for g in d["groups"] for t in g["targets"]}
+    assert {"ft_1", "ht_X", "htft_2/1", "over25", "btts"} <= keys
+    from src.patterns import engine
+    assert keys <= set(engine.OUTCOMES)                     # every target is a measurable outcome
+    two_one = next(t for g in d["groups"] for t in g["targets"] if t["key"] == "htft_2/1")
+    assert "deplasman önde" in two_one["explain"] and "ev sahibi kazanır" in two_one["explain"]
+
+
+def test_lab_target_analysis_keeps_market_and_similarity_apart(research_client, monkeypatch):
+    """Spec 7 and 8: every layer carries N / actual / expectation / difference / CI / evidence; the
+    market is the reference or the payload says there is none; similarity is never the probability."""
+    monkeypatch.setattr(web, "_nesine_brief", lambda *a, **k: None)
+    d = research_client.get("/api/lab/hedef/s59?target=ft_1").json()
+    assert d["target"]["key"] == "ft_1" and d["match"]["id"] == "s59"
+    assert d["market"]["source"] == "football-data" and d["market"]["p"] is not None
+    for l in d["layers"]:
+        assert {"n", "actual", "expected", "edge", "ci", "evidence_tr"} <= set(l)
+        assert l["evidence_tr"] in ("YETERSİZ VERİ", "KEŞİF", "DOĞRULANDI", "İLERİ TESTTE", "FARK YOK")
+    assert d["similarity"] is None or "median" in d["similarity"]     # a different field, a different thing
+    assert d["evidence"]["label"] in ("YETERSİZ VERİ", "KEŞİF", "DOĞRULANDI", "İLERİ TESTTE", "FARK YOK")
+    assert isinstance(d["reasons"]["pro"], list) and isinstance(d["reasons"]["con"], list)
+    # a half-time target has no Football-Data price: no number is invented
+    h = research_client.get("/api/lab/hedef/s59?target=htft_2/1").json()
+    assert h["market"]["p"] is None and "mevcut değil" in h["market"]["note"]
+    assert all(l["reference"] in (None, "matched") for l in h["layers"] if l["n"])
+    assert research_client.get("/api/lab/hedef/s59?target=nope").status_code == 422
+    assert research_client.get("/api/lab/hedef/yok?target=ft_1").status_code == 404
+
+
+def test_lab_own_pattern_adds_one_condition_at_a_time(research_client):
+    """Spec 12: each condition is a row, N can only fall, and the reader sees which one moved the number."""
+    d = research_client.get("/api/lab/kendi?side=home&form=W&strength=strong&opp_strength=weak&goals=gf5:0-30&role=favorite").json()
+    ns = [r["n"] for r in d["rows"]]
+    assert len(d["rows"]) == 5 and ns == sorted(ns, reverse=True)
+    assert d["steps"][0].startswith("Ev sahibi formu W") and "+ favori" in d["steps"]
+    assert "win" in d["rows"][0]["outcomes"] and "diff_ci" in d["rows"][0]["outcomes"]["win"]
+    extra = research_client.get("/api/lab/kendi?side=away&form=L&outcome=htft_2/1").json()
+    assert "htft_2/1" in extra["outcomes"]
+    assert research_client.get("/api/lab/kendi?strength=bad").status_code == 422
+
+
+def test_lab_team_picker_and_match_picker(research_client):
+    t = research_client.get("/api/lab/takimlar?q=t1").json()["teams"]
+    assert t and all("t1" in x["team"].lower() for x in t) and {"league", "season", "n"} <= set(t[0])
+    m = research_client.get("/api/lab/maclar?from=2026-09-14&to=2026-09-14").json()
+    assert m["matches"] and m["matches"][0]["home"] == "Arsenal" and m["matches"][0]["ready"] is False   # not in the state table
+
+
+def test_lab_day_scan_runs_in_the_background_and_ranks_without_a_bet_score(research_client, monkeypatch, tmp_path):
+    """Spec 10: the scan is started, polled, and its ordering is explained as research relevance."""
+    import time
+
+    from src.patterns import target as tg
+
+    monkeypatch.setattr(web, "_nesine_brief", lambda *a, **k: None)
+    # one match of the state table doubles as an analysed fixture of the day
+    monkeypatch.setattr(web, "lab_matches", lambda *a, **k: {"matches": [
+        {"id": "s59", "date": "2026-02-28", "time": "20:00", "league": "E0", "league_name": "x", "home": "T5", "away": "T0", "ready": True}]})
+    tg._JOBS.clear()
+    r = research_client.post("/api/lab/tara?date=2026-02-28&target=ft_1").json()
+    assert r["state"] in ("running", "done") and r["total"] == 1
+    for _ in range(100):
+        d = research_client.get("/api/lab/tara?date=2026-02-28&target=ft_1").json()
+        if d["state"] == "done":
+            break
+        time.sleep(0.2)
+    assert d["state"] == "done" and len(d["rows"]) == 1
+    row = d["rows"][0]
+    assert {"market", "estimate", "difference", "similarity", "evidence", "relevance"} <= set(row)
+    assert "bahis" in d["note"] and "değildir" in d["note"]           # the ordering is not a bet score
+    assert research_client.get("/api/lab/tara?date=2026-02-28&target=ft_X").json()["state"] == "none"
+
+
+def test_the_sassuolo_cycle_is_found_and_measured_through_the_api(client, tmp_path, monkeypatch):
+    """Spec 17 and 19: pick the team, nothing else; the reverse cycle comes back at ±2 and 100 %, and
+    the measurement of that shape over the whole database comes back with its three layers."""
+    import numpy as np
+
+    from src.patterns import cycles, service, state
+
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    monkeypatch.setattr(web.settings, "raw", web.settings.with_overrides(
+        **{"data.processed_dir": str(processed), "data.results_dir": str(web.RESULTS)}).raw)
+    rows = []
+    seasons = {"2324": ("2024-01-01", ["Juventus", "Monza", "Bologna", "Torino", "Atalanta"]),
+               "2425": ("2025-01-01", ["Inter", "Milan", "Bologna", "Roma", "Lazio"]),
+               "2627": ("2026-08-01", ["Atalanta", "Torino", "Bologna", "Juventus", "Monza"])}
+    for season, (start, opps) in seasons.items():
+        for i, opp in enumerate(opps):
+            rows.append({"match_id": f"S-{season}-{i}", "date": pd.Timestamp(start) + pd.Timedelta(days=7 * i),
+                         "league": "I1", "season": season, "home_team": "Sassuolo", "away_team": opp,
+                         "fthg": 1 + (i % 2), "ftag": 1, "p_home": 0.45, "p_draw": 0.27, "p_away": 0.28,
+                         "htr": "A" if i % 2 else "D", "hthg": 0, "htag": 1 if i % 2 else 0})
+    df = pd.DataFrame(rows)
+    df["ftr"] = np.where(df["fthg"] > df["ftag"], "H", np.where(df["fthg"] == df["ftag"], "D", "A"))
+    df["total_goals"] = df["fthg"] + df["ftag"]
+    state.build(web.settings, df)
+    service._cached.cache_clear()
+    cycles._MEM.update(key=None, pairs=None)
+
+    d = client.get("/api/dongu?team=Sassuolo&match_id=S-2627-2").json()
+    best = d["cycles"][0]
+    assert best["kind"] == "EXACT_REVERSE" and best["window"] == 2 and best["similarity"] == 100.0
+    assert best["past"]["season"] == "2324" and best["past"]["opponents"] == ["Juventus", "Monza", "Bologna", "Torino", "Atalanta"]
+    assert d["centre"]["venue"] == "home" and "pairs" in d
+
+    m = client.get("/api/dongu-olc-yok").status_code == 404 or True       # (route name check below)
+    m = client.get(f"/api/lab/dongu-olc?kind=EXACT_REVERSE&window=2&similarity=100&team=Sassuolo&tsi={d['centre']['tsi'] or 50}").json()
+    band = m["bands"][0]
+    assert band["hypothesis"] == "mirror" and {"same_team", "all"} <= {l["key"] for l in band["layers"]}
+    for l in band["layers"]:
+        assert {"n", "actual", "market", "edge", "ci", "evidence_tr"} <= set(l)
+        assert l["evidence_tr"] == "YETERSİZ VERİ"                    # three seasons of one club is not evidence
+    assert "olasılık değildir" in m["bands"][0]["note"]
+    assert client.get("/api/lab/dongu-olc?kind=NOPE&window=2&similarity=50").status_code == 422

@@ -239,7 +239,195 @@
   </section>
 
   <section class="view" id="view-research" hidden>
-    <h2 class="h2">Araştırma</h2>
+    <section class="lab" id="lab">
+      <div class="lab-head">
+        <h2 class="h2">Pattern Lab</h2>
+        <p class="lab-sub">Aklındaki futbol fikrini veriye sor.</p>
+        <p class="lead">Bir maç seç, bir sonuç ara veya kendi fikrini kur. Sistem geçmiş maçları, benzer takımları,
+        piyasa fiyatlarını ve sezonlar arası döngüleri otomatik araştırır. Motor seçmezsin, araştırma türü seçmezsin;
+        her sayı <b>piyasanın beklentisinin yanında</b> gelir ve benzerlik hiçbir yerde olasılık diye sunulmaz.</p>
+      </div>
+      <div class="lab-modes" role="tablist" aria-label="Pattern Lab modları">
+        <button type="button" class="lab-mode" data-lab="match" role="tab"><span class="lab-n">1</span><b>Bu maçta ne olur?</b><small>Bir maç seç; araştırılabilir durumları sistem bulsun.</small></button>
+        <button type="button" class="lab-mode" data-lab="find" role="tab"><span class="lab-n">2</span><b>Bu sonuca uyan maç bul</b><small>Bir sonuç seç; günün maçları taransın.</small></button>
+        <button type="button" class="lab-mode" data-lab="own" role="tab"><span class="lab-n">3</span><b>Kendi patternini test et</b><small>Koşulları kur; geçmişte ne olmuş, koşul koşul.</small></button>
+        <button type="button" class="lab-mode" data-lab="cycle" role="tab"><span class="lab-n">4</span><b>Döngü ara</b><small>Bir takım seç; fikstür döngülerini sistem bulsun.</small></button>
+      </div>
+
+      <!-- MOD 1 — BU MAÇTA NE OLUR? -->
+      <div class="lab-panel" id="lab-match" hidden>
+        <p class="ex-lbl">Bir maç seç <span class="muted">— bugünkü ve gelecek maçlar</span></p>
+        <div class="sc-controls">
+          <label class="select"><span class="label">Tarih</span><select id="lm-date"></select></label>
+          <label class="select"><span class="label">Takım ara</span><input type="search" id="lm-q" placeholder="ör. Bologna"></label>
+        </div>
+        <div class="chips-scroll" id="lm-leagues" role="group" aria-label="Lig filtresi"></div>
+        <div class="lab-list" id="lm-list"><p class="note">Yükleniyor…</p></div>
+        <div class="lab-picked" id="lm-picked" hidden>
+          <div class="lab-picked-top"><b id="lm-title"></b><span class="muted" id="lm-sub"></span></div>
+          <button type="button" class="btn ex-go" id="lm-go">BU MAÇI ANALİZ ET</button>
+        </div>
+        <div id="lm-scan"></div>
+        <div id="lm-target" hidden>
+          <h3 class="rs-h">Bu maç için ne düşünüyorsun?</h3>
+          <p class="note">Bir sonuç seç; biraz önce bulunan patternlerin bu sonuçla tarihsel ilişkisi katman katman,
+          her yerde piyasanın beklentisinin yanında hesaplanır.</p>
+          <div class="tp" id="lm-tp"></div>
+          <div id="lm-out"></div>
+        </div>
+      </div>
+
+      <!-- MOD 2 — BU SONUCA UYAN MAÇ BUL -->
+      <div class="lab-panel" id="lab-find" hidden>
+        <p class="ex-lbl">Hangi sonucu arıyorsun?</p>
+        <div class="tp" id="lf-tp"></div>
+        <div class="sc-controls">
+          <label class="select"><span class="label">Gün</span><select id="lf-date"></select></label>
+          <button type="button" class="btn" id="lf-go" disabled>BUGÜNKÜ MAÇLARI TARA</button>
+        </div>
+        <div id="lf-out"><p class="note">Önce bir sonuç seç.</p></div>
+      </div>
+
+      <!-- MOD 3 — KENDİ PATTERNİNİ TEST ET -->
+      <div class="lab-panel" id="lab-own" hidden>
+      <p class="note">Aklındaki fikri 179.545 maçta ölç. Sonuç her zaman <b>o maçların kendi fiyatının yanında</b>
+      ve havuz geneli sapma çıkarılmış olarak gelir. Her koşul eklendikçe sonucun nasıl değiştiğini görürsün.</p>
+
+      <p class="ex-lbl">Hazır sorular — dokun, ölç</p>
+      <div class="ex-presets" id="ex-presets"></div>
+
+      <div class="ex-card">
+        <p class="ex-lbl">1 · Takım</p>
+        <div class="seg" id="ex-side-seg">
+          <button type="button" data-v="home" class="is-on">Ev sahibi</button>
+          <button type="button" data-v="away">Deplasman</button>
+        </div>
+
+        <p class="ex-lbl">Son maçları nasıl geçti? <span class="muted">(soldan sağa: eskiden yeniye)</span></p>
+        <div class="ex-seq" id="ex-seq" aria-live="polite"></div>
+        <div class="ex-keys">
+          <button type="button" data-k="W" class="k-w">G <small>galibiyet</small></button>
+          <button type="button" data-k="D" class="k-d">B <small>beraberlik</small></button>
+          <button type="button" data-k="L" class="k-l">M <small>mağlubiyet</small></button>
+          <button type="button" data-k="?" class="k-x">? <small>farketmez</small></button>
+          <button type="button" data-k="del" class="k-del">← sil</button>
+        </div>
+        <label class="ex-check"><input id="ex-venue" type="checkbox">
+          <span>Bu diziyi sadece kendi sahasındaki maçlarından oku<br><span class="muted">deplasman seçiliyse deplasman maçları</span></span></label>
+        <label class="ex-check"><input id="ex-slack" type="checkbox">
+          <span>Bir maç tutmasa da olsun<br><span class="muted">dizideki bir sonuç farklı olabilir</span></span></label>
+
+        <p class="ex-lbl">Saha formu <span class="muted">(isteğe bağlı — üstteki diziye ek olarak)</span></p>
+        <div class="ex-seq" id="ex-vseq" aria-live="polite"></div>
+        <div class="ex-keys">
+          <button type="button" data-vk="W" class="k-w">G</button>
+          <button type="button" data-vk="D" class="k-d">B</button>
+          <button type="button" data-vk="L" class="k-l">M</button>
+          <button type="button" data-vk="?" class="k-x">?</button>
+          <button type="button" data-vk="del" class="k-del">← sil</button>
+        </div>
+
+        <p class="ex-lbl">Takım gücü <span class="muted">— ligindeki güç sırasına göre</span></p>
+        <div class="seg" id="ex-str">
+          <button type="button" data-s="" class="is-on">Herhangi</button>
+          <button type="button" data-s="weak">Zayıf</button>
+          <button type="button" data-s="mid">Orta</button>
+          <button type="button" data-s="strong">Güçlü</button>
+          <button type="button" data-s="top">Çok güçlü</button>
+        </div>
+
+        <details class="ex-more" open>
+          <summary>2 · Rakip <span class="muted">(isteğe bağlı)</span></summary>
+          <div class="ex-more-body">
+            <p class="ex-lbl">Rakip nasıl geldi?</p>
+            <div class="ex-seq" id="ex-oseq" aria-live="polite"></div>
+            <div class="ex-keys">
+              <button type="button" data-ok="W" class="k-w">G</button>
+              <button type="button" data-ok="D" class="k-d">B</button>
+              <button type="button" data-ok="L" class="k-l">M</button>
+              <button type="button" data-ok="?" class="k-x">?</button>
+              <button type="button" data-ok="del" class="k-del">← sil</button>
+            </div>
+            <p class="ex-lbl">Rakibin saha formu</p>
+            <div class="ex-seq" id="ex-ovseq" aria-live="polite"></div>
+            <div class="ex-keys">
+              <button type="button" data-ovk="W" class="k-w">G</button>
+              <button type="button" data-ovk="D" class="k-d">B</button>
+              <button type="button" data-ovk="L" class="k-l">M</button>
+              <button type="button" data-ovk="?" class="k-x">?</button>
+              <button type="button" data-ovk="del" class="k-del">← sil</button>
+            </div>
+            <p class="ex-lbl">Rakip gücü</p>
+            <div class="seg" id="ex-ostr">
+              <button type="button" data-s="" class="is-on">Herhangi</button>
+              <button type="button" data-s="weak">Zayıf</button>
+              <button type="button" data-s="mid">Orta</button>
+              <button type="button" data-s="strong">Güçlü</button>
+              <button type="button" data-s="top">Çok güçlü</button>
+            </div>
+          </div>
+        </details>
+
+        <details class="ex-more">
+          <summary>3 · Maç <span class="muted">(isteğe bağlı)</span></summary>
+          <div class="ex-more-body">
+            <p class="ex-lbl">Güç farkı <span class="muted">— takım eksi rakip, puan</span></p>
+            <div class="ex-pair"><input id="ex-gap-lo" type="number" step="10" inputmode="numeric" placeholder="örn. 50">
+              <span>–</span><input id="ex-gap-hi" type="number" step="10" inputmode="numeric" placeholder="400"></div>
+            <p class="ex-lbl">Lig</p>
+            <select id="ex-league"><option value="">Bütün ligler</option></select>
+          </div>
+        </details>
+
+        <details class="ex-more">
+          <summary>4 · Gol <span class="muted">(son 5 maç, isteğe bağlı)</span></summary>
+          <div class="ex-more-body" id="ex-goals"></div>
+        </details>
+
+        <details class="ex-more">
+          <summary>5 · Piyasa <span class="muted">(isteğe bağlı)</span></summary>
+          <div class="ex-more-body">
+            <p class="ex-lbl">Rol</p>
+            <div class="seg" id="ex-role">
+              <button type="button" data-r="" class="is-on">Farketmez</button>
+              <button type="button" data-r="favorite">Favori</button>
+              <button type="button" data-r="underdog">Sürpriz adayı</button>
+            </div>
+            <p class="ex-lbl">Oranı bu aralıkta olsun <span class="muted">— bahis oranı olarak</span></p>
+            <div class="ex-pair"><input id="ex-o-lo" type="number" min="1.01" max="50" step="0.05" inputmode="decimal" placeholder="örn. 1,20">
+              <span>–</span><input id="ex-o-hi" type="number" min="1.01" max="50" step="0.05" inputmode="decimal" placeholder="1,80"></div>
+            <p class="ex-lbl">Oran hareketi <span class="muted">— açılıştan kapanışa (2019/20'den beri kapanış oranı olan maçlar)</span></p>
+            <div class="seg" id="ex-move">
+              <button type="button" data-m="" class="is-on">Farketmez</button>
+              <button type="button" data-m="steam">Oran düştü</button>
+              <button type="button" data-m="drift">Oran yükseldi</button>
+              <button type="button" data-m="stable">Sabit</button>
+            </div>
+          </div>
+        </details>
+
+        <p class="ex-q" id="ex-q">Soru kuruluyor…</p>
+        <button class="btn ex-go" id="ex-go" type="button">GEÇMİŞTE NE OLMUŞ?</button>
+      </div>
+      <div id="ex-out"></div>
+      </div>
+
+      <!-- MOD 4 — DÖNGÜ ARA -->
+      <div class="lab-panel" id="lab-cycle" hidden>
+        <p class="note">Bir takım seç. Sezon, pencere (±2/±3/±4), aynı/ters/kaymış sıra, benzer güç dizisi — hepsini
+        sistem kendi tarar ve en anlamlı olanı öne koyar. Bulunan döngü bir <b>benzerliktir</b>, sonuç tahmini değildir;
+        "geçmişte işe yaramış mı" sorusunun cevabı ayrı ölçülür ve altında durur.</p>
+        <div class="sc-controls">
+          <label class="select"><span class="label">Takım</span><input type="search" id="lc-q" placeholder="ör. Sassuolo" autocomplete="off"></label>
+          <label class="select"><span class="label">Merkez maç</span><select id="lc-centre"><option value="">Son maç (varsayılan)</option></select></label>
+          <button type="button" class="btn" id="lc-go" disabled>DÖNGÜ ARA</button>
+        </div>
+        <div class="lab-suggest" id="lc-suggest" hidden></div>
+        <div id="lc-out"></div>
+      </div>
+    </section>
+
+    <h2 class="h2 rs-reports">Araştırma raporları</h2>
     <p class="lead">Bu sekme tahmin üretmez. Geçmişte "bu duruma benzeyen maçlarda ne olmuş" sorusunu sorar ve cevabı
     <b>her zaman o maçların kendi fiyatının yanında</b> gösterir. Yüksek gerçekleşme oranı tek başına bir şey ifade
     etmez: bir takım üst üste kazanıyorsa piyasa bunu zaten fiyatlamıştır. Ölçülen şey, gerçekleşenin fiyatın
@@ -281,65 +469,6 @@
       <p class="note">Aynı maçlarda, ileriye doğru (her tahmin yalnızca o maçtan önce bilinenle). Artı işareti
       "piyasadan kötü" demek. Brier: düşük olan iyi.</p>
       <div id="rs-models">—</div>
-    </section>
-
-    <section class="rs-block">
-      <h3 class="rs-h">Kendi desenini sor</h3>
-      <p class="note">Aklındaki fikri 179.545 maçta ölç. Sonuç her zaman <b>o maçların kendi fiyatının yanında</b>
-      ve havuz geneli sapma çıkarılmış olarak gelir.</p>
-
-      <p class="ex-lbl">Hazır sorular — dokun, ölç</p>
-      <div class="ex-presets" id="ex-presets"></div>
-
-      <div class="ex-card">
-        <p class="ex-lbl">1 · Kim?</p>
-        <div class="seg" id="ex-side-seg">
-          <button type="button" data-v="home" class="is-on">Ev sahibi</button>
-          <button type="button" data-v="away">Deplasman</button>
-        </div>
-
-        <p class="ex-lbl">2 · Son maçları nasıl geçti? <span class="muted">(soldan sağa: eskiden yeniye)</span></p>
-        <div class="ex-seq" id="ex-seq" aria-live="polite"></div>
-        <div class="ex-keys">
-          <button type="button" data-k="W" class="k-w">G <small>galibiyet</small></button>
-          <button type="button" data-k="D" class="k-d">B <small>beraberlik</small></button>
-          <button type="button" data-k="L" class="k-l">M <small>mağlubiyet</small></button>
-          <button type="button" data-k="?" class="k-x">? <small>farketmez</small></button>
-          <button type="button" data-k="del" class="k-del">← sil</button>
-        </div>
-        <label class="ex-check"><input id="ex-venue" type="checkbox">
-          <span>Sadece kendi sahasındaki maçları say<br><span class="muted">deplasman seçiliyse deplasman maçları</span></span></label>
-        <label class="ex-check"><input id="ex-slack" type="checkbox">
-          <span>Bir maç tutmasa da olsun<br><span class="muted">dizideki bir sonuç farklı olabilir</span></span></label>
-
-        <details class="ex-more">
-          <summary>3 · Daraltmak ister misin? <span class="muted">(isteğe bağlı)</span></summary>
-          <div class="ex-more-body">
-            <p class="ex-lbl">Rakip nasıl geldi?</p>
-            <div class="ex-seq" id="ex-oseq" aria-live="polite"></div>
-            <div class="ex-keys">
-              <button type="button" data-ok="W" class="k-w">G</button>
-              <button type="button" data-ok="D" class="k-d">B</button>
-              <button type="button" data-ok="L" class="k-l">M</button>
-              <button type="button" data-ok="?" class="k-x">?</button>
-              <button type="button" data-ok="del" class="k-del">← sil</button>
-            </div>
-
-            <p class="ex-lbl">Takımın gücü <span class="muted">— ligindeki sıralamada yüzde kaçlık dilimde
-              (100 = ligin en iyisi)</span></p>
-            <div class="ex-pair"><input id="ex-tsi-lo" type="number" min="0" max="100" inputmode="numeric" placeholder="örn. 80">
-              <span>–</span><input id="ex-tsi-hi" type="number" min="0" max="100" inputmode="numeric" placeholder="100"></div>
-
-            <p class="ex-lbl">Oranı bu aralıkta olsun <span class="muted">— bahis oranı olarak</span></p>
-            <div class="ex-pair"><input id="ex-o-lo" type="number" min="1.01" max="50" step="0.05" inputmode="decimal" placeholder="örn. 1,20">
-              <span>–</span><input id="ex-o-hi" type="number" min="1.01" max="50" step="0.05" inputmode="decimal" placeholder="1,80"></div>
-          </div>
-        </details>
-
-        <p class="ex-q" id="ex-q">Soru kuruluyor…</p>
-        <button class="btn ex-go" id="ex-go" type="button">Ölç</button>
-      </div>
-      <div id="ex-out"></div>
     </section>
 
     <section class="rs-block">

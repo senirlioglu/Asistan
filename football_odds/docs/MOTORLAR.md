@@ -423,6 +423,44 @@ değiştirse bile sonraki istek yenisini alır.
 
 ---
 
+## 8k. Pattern Lab — orkestrasyon katmanı (`patterns/target.py`, `patterns/lab.py`, `web/static`)
+
+Araştırma sekmesinin en üstündeki araç. Yeni bir motor değil: mevcut motorları (desen, ikiz, iki
+takımlı kaskad, fikstür döngüsü, oran hareketi) okuyucunun sorusuna göre kendisi seçip çalıştıran
+katman. Okuyucu motor, pencere, "birebir mi ±2 mi" seçmez.
+
+| mod | soru | ne çalışır | uç |
+|---|---|---|---|
+| 1 · Bu maçta ne olur? | bir maç | `lab.scan`: her motor × dokuz sonuç, tek ailede FDR; sağ kalanlar "araştırılabilir durum" (sinyal değil). Sonra bir **hedef** (1X2 / İY / İY/MS / gol) seçilince `target.analyse`: takımın geçmişi, rakibin geçmişi, tüm benzer durumlar, benzer takım × benzer rakip, historical twins, fikstür döngüsü — her katmanda N / gerçekleşen / beklenti / Δ / %95 / kanıt | `/api/tarama/{id}`, `/api/lab/hedef/{id}?target=` |
+| 2 · Bu sonuca uyan maç bul | bir hedef | günün her maçında `target.analyse(light=True)`, arka planda (iş + poll); sıralama "araştırma önceliği" (\|Δ\|/SE × katman payı × keşif taramasında sağ kalan var mı) — bahis skoru değil | `POST/GET /api/lab/tara?date=&target=` |
+| 3 · Kendi patternini test et | koşullar | `target.own_pattern`: takım (form, saha formu, güç), rakip, maç (güç farkı, lig), gol (son 5), piyasa (rol, oran aralığı, açılış→kapanış hareketi) — koşullar **tek tek eklenir**, her satır fiyata karşı (`engine.cascade`) | `/api/lab/kendi` (eski `/api/desen` duruyor) |
+| 4 · Döngü ara | bir takım | `sequence.find_cycles` (±2/±3/±4, dört tür, bütün geçmiş sezonlar) + "geçmişte işe yaramış mı": `cycles.measure_for` | `/api/dongu`, `/api/lab/dongu-olc` |
+
+Üç kural her yerde: piyasa referanstır (fiyatı olmayan markette kıyas "benzer fiyatlı maçlar"dır ve
+öyle yazılır; fiyat yoksa "piyasa karşılaştırması mevcut değil"), **benzerlik olasılık değildir**
+(ayrı kart, tooltip), havuzda bulunan hiçbir şey "doğrulandı" değildir (KEŞİF; DOĞRULANDI ve İLERİ
+TESTTE yalnızca üç pencereli taramadan gelir).
+
+Hedefler maç perspektifindedir (`engine.MATCH_OUTCOMES`: `ft_1/X/2`, `ht_1/X/2`, `htft_1/1 …
+2/2`); İY ve İY/MS için bugünkü fiyat yalnızca nesine bülteninden (marjsız) gelir. "Pattern tahmini"
+= bugünkü piyasa + kullanılabilir katmanların hassasiyet ağırlıklı ortalama farkı; katmanlar
+örtüştüğü için aralık iyimserdir ve sayfa bunu söyler.
+
+## 8l. Döngü ölçümü — `patterns/cycles.py`
+
+`sequence.py` bir kulübün döngüsünü bulur; bu modül "böyle bir döngü geçmişte merkez maç hakkında
+bir şey söylemiş mi" sorusunu **bütün veritabanında** ölçer. Her maç iki satır (iki kulübün
+gözünden), ±4 rakip kodları vektörel; aynı (takım, merkez rakip) grubundaki farklı sezon çiftleri
+toplu puanlanır (aynı sıra / ters sıra / kaymış / güç dizisi × ±2/±3/±4). ~180 bin maçta ~2 milyon
+çift, ~40 s; günlük işte kurulur, `results/backtest/cycle_pairs.parquet` olarak durum tablosunun
+mtime'ına bağlı önbelleklenir (ilk istek de kurabilir).
+
+İki hipotez: **tekrar** (yeni merkez maç eskisi gibi bitti) ve **ayna** (1 ↔ 2 döndü, ters sıra için
+varsayılan); yarı skoru olan maçlarda İY/MS aynası (1/2 ↔ 2/1, havuz oranına karşı). Her iddia yeni
+merkez maçta o sonucun **piyasa fiyatının** yanında; üç katman (aynı takım / tüm takımlar / benzer
+güç ±10); kanıt etiketi keşif/doğrulama/test pencerelerinden. Örnek tablosu (tarih, takım, sezon
+A/B, tür, benzerlik, önceki/yeni merkez, piyasa, CLV) ölçümle birlikte gelir.
+
 ## 8i. Oran hareketi motoru — `nesine/movement.py`
 
 Arşiv 15 Eylül 2026'dan beri her nesine fiyatını saklıyordu ama kimse geri okumuyordu: sayfada bir
@@ -507,6 +545,14 @@ geldiğinde listeler. Nesine bülteni ise her maçı ve **çok daha fazla market
 /api/patterns/{match_id}   desen motoru üç seviyede (bu takım / tüm takımlar / benzer güçtekiler),
                            `approx` ile birebir vs yaklaşık eşleşme
 /api/research              notlar + modeller + keşif sonuçları + durum tablosu
+/api/tarama/{match_id}     Pattern Lab mod 1: her motor, tek ailede FDR, araştırılabilir durumlar
+/api/lab/hedefler          ölçülebilen hedefler (1X2 / İY / İY/MS / gol)
+/api/lab/hedef/{id}        mod 1 hedef analizi: katmanlar, piyasa, pattern tahmini, neden
+/api/lab/tara              mod 2: günün maçlarını bir hedef için tara (POST başlatır, GET izler)
+/api/lab/kendi             mod 3: kendi koşulların, koşul koşul kaskad
+/api/lab/maclar, /api/lab/takimlar   maç ve takım seçiciler
+/api/dongu                 mod 4: bir takımın fikstür döngüleri (pencere/sezon/tür otomatik)
+/api/lab/dongu-olc         "bu döngü geçmişte işe yaramış mı" — üç katman, piyasa yanında
 /api/notlar                nesine notları + oran hareketi
 /api/nesine-analiz         nesine maçında kendi analizimiz
 /api/scorecard             karne
@@ -537,6 +583,10 @@ en benzer geçmiş maçlar.
 | "Bu takımın gücü/formu/dinlenmesi ne?" | `patterns/state` → `/api/twins` künyesi |
 | "Bu form dizisinden sonra ne oluyor?" | `patterns/engine` |
 | "Bu desen gerçek mi, gürültü mü?" | `patterns/discovery` (üç pencere + FDR) |
+| "Bu maçta araştırılabilir ne var?" | `patterns/lab` → Pattern Lab mod 1 |
+| "Bu maç 2/1 olur mu?" | `patterns/target` (her katman + piyasa) |
+| "Bugün 2/1 olabilecek maç hangisi?" | `patterns/target.start_day_scan` → mod 2 |
+| "Bu takımın fikstürü tersine mi döndü, bir anlamı var mı?" | `patterns/sequence` + `patterns/cycles` → mod 4 |
 | "Defterimdeki not doğru mu?" | `patterns/notes` |
 | "Sistem piyasayı yeniyor mu?" | `backtest/run` + `patterns/evaluate` |
 | "Dün kim haklıydı?" | `pipeline/scorecard` |
@@ -614,6 +664,7 @@ python -m pytest               # 60+ test
 | `results/backtest/models.json` | A–E karşılaştırması |
 | `results/backtest/discovery.json` | keşif hunisi sonucu |
 | `results/backtest/twin_weights.json` | ayarlanmış ikiz ağırlıkları + yarı ömür taraması |
+| `results/backtest/cycle_pairs.parquet` (+ `.json`) | Pattern Lab döngü çiftleri (günlük işte kurulur, durum tablosuna bağlı) |
 | `results/notes_measured.json` | not ölçümleri |
 | `results/*_predictions.csv` + `_details.json` | günlük analiz çıktısı |
 | `results/coupons.json` | kullanıcı kuponları |

@@ -147,6 +147,13 @@ def _build_state(settings: Settings, table) -> None:
         log.info("match state rebuilt: %d rows", len(out))
     except Exception as exc:  # noqa: BLE001 - derived data, never fatal
         log.warning("match state build skipped: %s", exc)
+        return
+    try:  # Pattern Lab's cycle pairs: a few million comparisons, so they are made here and cached, not per request
+        from ..patterns import cycles
+
+        cycles.build(settings)
+    except Exception as exc:  # noqa: BLE001 - the lab builds them lazily on first request instead
+        log.warning("cycle pairs skipped: %s", exc)
 
 
 def run_fixture_refresh(settings: Settings, days: int = 7) -> int:

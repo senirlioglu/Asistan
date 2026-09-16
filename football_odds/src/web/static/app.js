@@ -113,178 +113,6 @@
   }
 
 
-  // ---------------------------------------------------------------- kendi desenini sor
-  // The research tab has always said an idea can be tested in seconds against 180.000 matches, and
-  // there was no control that did it. This is that control — and it is a p-hacking machine by
-  // construction, so it keeps count: ask twenty questions and one clears zero because that is what
-  // a 95 % interval means. The counter is the denominator the reader needs.
-  state.ex = { asked: 0, cleared: 0 };
-  const EX_OUT = { win: "Kazanır", draw: "Berabere", loss: "Kaybeder", over25: "2,5 üst", btts: "KG var",
-                   over15: "1,5 üst", over35: "3,5 üst", ht_draw: "İY berabere", ht_win: "İY önde" };
-
-  // The form used to demand W/D/L typed into a text box while every other screen shows G/B/M
-  // chips, and asked for a probability band while the reader thinks in odds. Both are now the
-  // reader's own units, the sequence is tapped rather than typed (this is read on a phone), and
-  // the question is written back as a Turkish sentence before it is asked.
-  const EX_LET = { W: "G", D: "B", L: "M", "?": "?" };
-  const EX_WORD = { W: "kazanmış", D: "berabere kalmış", L: "kaybetmiş", "?": "farketmez" };
-  const EX_PRESETS = [
-    ["Üst üste 3 galibiyet", { side: "home", seq: "WWW" }],
-    ["3 maçtır kazanamıyor", { side: "home", seq: "??", seq2: "DL" }],
-    ["Deplasmanda 3 mağlubiyet", { side: "away", seq: "LLL", venue: true }],
-    ["Güçlü favori (oran 1,20–1,50)", { side: "home", seq: "", o_lo: 1.2, o_hi: 1.5 }],
-    ["Ligin en güçlüsü, kötü formda", { side: "home", seq: "LL", tsi_lo: 85, tsi_hi: 100 }],
-  ];
-  state.ex = { asked: 0, cleared: 0, side: "home", seq: "WWW", oseq: "" };
-
-  function exWire() {
-    const card = $("#ex-go");
-    if (!card || card._wired) return;
-    card._wired = true;
-
-    const presets = $("#ex-presets");
-    EX_PRESETS.forEach(([label, cfg]) => {
-      const b = el("button", "chip", label); b.type = "button";
-      b.onclick = () => {
-        state.ex.side = cfg.side || "home";
-        state.ex.seq = (cfg.seq || "") + (cfg.seq2 || "");
-        state.ex.oseq = "";
-        $("#ex-venue").checked = !!cfg.venue;
-        $("#ex-slack").checked = false;
-        $("#ex-tsi-lo").value = cfg.tsi_lo ?? ""; $("#ex-tsi-hi").value = cfg.tsi_hi ?? "";
-        $("#ex-o-lo").value = cfg.o_lo ?? ""; $("#ex-o-hi").value = cfg.o_hi ?? "";
-        $("#ex-side-seg").querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x.dataset.v === state.ex.side));
-        exPaint(); exRun();
-      };
-      presets.appendChild(b);
-    });
-
-    $("#ex-side-seg").querySelectorAll("button").forEach((b) => {
-      b.onclick = () => {
-        state.ex.side = b.dataset.v;
-        $("#ex-side-seg").querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x === b));
-        exPaint();
-      };
-    });
-    const scope = $("#ex-go").closest(".rs-block") || document;
-    scope.querySelectorAll("[data-k]").forEach((b) => {
-      b.onclick = () => {
-        state.ex.seq = b.dataset.k === "del" ? state.ex.seq.slice(0, -1) : (state.ex.seq + b.dataset.k).slice(-6);
-        exPaint();
-      };
-    });
-    scope.querySelectorAll("[data-ok]").forEach((b) => {
-      b.onclick = () => {
-        state.ex.oseq = b.dataset.ok === "del" ? state.ex.oseq.slice(0, -1) : (state.ex.oseq + b.dataset.ok).slice(-6);
-        exPaint();
-      };
-    });
-    ["#ex-venue", "#ex-slack", "#ex-tsi-lo", "#ex-tsi-hi", "#ex-o-lo", "#ex-o-hi"].forEach((id) => {
-      const n = $(id); if (n) n.oninput = n.onchange = exPaint;
-    });
-    $("#ex-go").onclick = exRun;
-    exPaint();
-  }
-
-  function exChips(seq, id) {
-    const box = $(id);
-    if (!box) return;
-    box.innerHTML = seq
-      ? seq.split("").map((c) => `<span class="fchip f-${c}">${EX_LET[c] || c}</span>`).join("")
-      : `<span class="muted">boş — hepsi dahil</span>`;
-  }
-
-  /** The query, written back in Turkish. If this sentence is not what you meant, the answer is not either. */
-  function exSentence() {
-    const who = state.ex.side === "home" ? "Ev sahibi" : "Deplasman";
-    const venue = $("#ex-venue")?.checked;
-    const bits = [];
-    if (state.ex.seq) {
-      const n = state.ex.seq.length;
-      const words = state.ex.seq.split("").map((c) => EX_WORD[c]).join(", ");
-      bits.push(`son ${n} ${venue ? (state.ex.side === "home" ? "iç saha " : "deplasman ") : ""}maçında sırayla ${words}`);
-    }
-    if (state.ex.oseq) bits.push(`rakibi ${state.ex.oseq.split("").map((c) => EX_WORD[c]).join(", ")}`);
-    const lo = $("#ex-tsi-lo")?.value, hi = $("#ex-tsi-hi")?.value;
-    if (lo && hi) bits.push(`ligindeki gücü %${lo}–%${hi} diliminde`);
-    const ol = $("#ex-o-lo")?.value, oh = $("#ex-o-hi")?.value;
-    if (ol && oh) bits.push(`oranı ${ol}–${oh} arasında`);
-    if ($("#ex-slack")?.checked) bits.push("<span class=\"muted\">(bir maç tutmasa da sayılır)</span>");
-    return bits.length
-      ? `<b>Soru:</b> ${who}, ${bits.join(" · ")} olan maçlarda ne olmuş?`
-      : `<b>Soru:</b> hiç koşul yok — veritabanındaki bütün maçlar. Yukarıdan bir şeyler seç.`;
-  }
-
-  function exPaint() {
-    exChips(state.ex.seq, "#ex-seq");
-    exChips(state.ex.oseq, "#ex-oseq");
-    const q = $("#ex-q"); if (q) q.innerHTML = exSentence();
-  }
-
-  async function exRun() {
-    const out = $("#ex-out");
-    const q = new URLSearchParams({ form: state.ex.seq, side: state.ex.side,
-                                    approx: $("#ex-slack")?.checked ? "1" : "0" });
-    if ($("#ex-venue")?.checked) q.set("venue", "true");
-    if (state.ex.oseq) q.set("opp_form", state.ex.oseq);
-    const tl = $("#ex-tsi-lo")?.value, th = $("#ex-tsi-hi")?.value;
-    if (tl && th) { q.set("tsi_lo", tl); q.set("tsi_hi", th); }
-    // the reader thinks in odds; the engine filters on the margin-free probability
-    const ol = Number($("#ex-o-lo")?.value), oh = Number($("#ex-o-hi")?.value);
-    if (ol > 1 && oh > 1) { q.set("p_lo", (1 / Math.max(ol, oh)).toFixed(4)); q.set("p_hi", (1 / Math.min(ol, oh)).toFixed(4)); }
-    out.innerHTML = `<p class="note">Ölçülüyor…</p>`;
-    try {
-      const d = await api(`/api/desen?${q}`);
-      state.ex.asked++;
-      renderExplore(d);
-    } catch (err) {
-      out.innerHTML = `<p class="note">Ölçülemedi: ${esc(err.message)}</p>`;
-    }
-  }
-
-  function renderExplore(d) {
-    const rows = (d.outcomes_order || []).map((o) => {
-      const x = d.outcomes[o] || {};
-      if (!x.n) return "";
-      const edge = x.edge != null ? x.edge : x.vs_ref;
-      const ci = x.edge_ci || x.vs_ref_ci || [null, null];
-      const solid = ci[0] != null && (ci[0] > 0 || ci[1] < 0);
-      return `<tr class="${x.n < 200 ? "thin" : ""}"><td>${EX_OUT[o] || o}</td>
-        <td class="num hide-sm">${x.n}</td><td class="num">%${num(x.actual, 1)}</td>
-        <td class="num">${(x.market ?? x.ref) == null ? "–" : "%" + num(x.market ?? x.ref, 1)}</td>
-        <td class="num ${solid ? "yes" : ""}"><b>${edge == null ? "–" : pp1(edge)}</b></td>
-        <td class="num hide-sm">${ci[0] == null ? "–" : `[${pp1(ci[0])}, ${pp1(ci[1])}]`}</td>
-        <td>${ciBar(edge, ci[0], ci[1])}</td></tr>`;
-    }).join("");
-    const solidN = (d.outcomes_order || []).filter((o) => {
-      const c = (d.outcomes[o] || {}).edge_ci || (d.outcomes[o] || {}).vs_ref_ci || [null, null];
-      return c[0] != null && (c[0] > 0 || c[1] < 0);
-    }).length;
-    state.ex.cleared += solidN;
-    const tests = state.ex.asked * (d.outcomes_order || []).length;
-    $("#ex-out").innerHTML = `<p class="sentence">${exSentence()}</p>
-      <p class="sentence">Bu tarife uyan <b>${d.n.toLocaleString("tr")} maç</b> bulundu
-${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""} —
-        ${d.pool.toLocaleString("tr")} maçlık havuzda, ${d.span[0]} ile ${d.span[1]} arası.</p>
-      ${d.n < 200 ? `<p class="ex-warn">Örneklem 200'ün altında. Bu satırlardan hiçbiri okunmamalı.</p>` : ""}
-      <div class="table-wrap"><table><thead><tr><th>Sonuç</th><th class="num hide-sm">N</th><th class="num">Oldu</th>
-        <th class="num">Fiyat</th><th class="num">Fark</th><th class="num hide-sm">%95 aralık</th><th>Sıfıra göre</th>
-        </tr></thead><tbody>${rows || `<tr><td colspan="7">Bu desene uyan maç yok.</td></tr>`}</tbody></table></div>
-      <p class="note"><b>Fiyat</b> sütunu: piyasanın fiyatı olan marketlerde (1X2, 2,5 üst) o maçların kendi fiyatı;
-        olmayan marketlerde (İY, 1,5/3,5 üst, KG) <b>aynı fiyattaki maçlarda</b> aynı şeyin ne sıklıkta olduğu —
-        havuz ortalaması değil, çünkü iyi takım seçen her desen havuz ortalamasını zaten geçer.
-        Fark, havuz geneli sapma çıkarıldıktan sonradır. <b>Aralık sıfırı içeriyorsa desen, piyasanın zaten
-        bildiği bir şeyi söylüyor.</b></p>
-      <p class="ex-warn">Bu oturumda <b>${state.ex.asked} sorgu</b> çalıştırdın, her biri ${(d.outcomes_order || []).length}
-        sonucu ölçtü: <b>${tests} test</b>. %95 aralıkla, hiçbir gerçek desen olmasa bile bunların yaklaşık
-        <b>${Math.max(1, Math.round(tests * 0.05))} tanesinin</b> sıfırı dışlaması beklenir — şu ana kadar
-        ${state.ex.cleared} tanesi dışladı. Üstelik bu dokuz test <b>bağımsız değil</b> — kazanır/berabere/kaybeder
-        birbirini tamamlar, 1,5/2,5/3,5 üst aynı maçın gol sayısına bakar — yani birkaçının birlikte hareket etmesi
-        beklenen bir şeydir, birbirini doğrulamaz. Buradan çıkan bir fikir bulgu değil, <b>adaydır</b>: gerçek sınav
-        aşağıdaki üç pencereli tarama ve çoklu test düzeltmesidir.</p>`;
-  }
-
-
   // ---------------------------------------------------------------- taranan bütün desenler
   // The funnel says 658 -> 65 -> 4 -> 1 and hides the useful half: WHICH ideas died and where.
   // A reader who wants to try every pattern mostly wants this table, because their idea is
@@ -333,7 +161,7 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
   }
 
   function renderResearch() {
-    exWire();
+    labInit();
     const d = state.rs || {};
     const sum = (d.models?.summary) || [];
     const market = sum.find((r) => r.model.startsWith("A"));
@@ -2099,11 +1927,627 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
     ["Özet: gerçeğe daha yakın", "Gelen sonuca hangi taraf daha yüksek ihtimal vermişti? Aynı favoriyi seçmiş olsalar bile derece farkını ölçer. Fark 1 puandan azsa 'eşit'. Geçmiş, piyasaya doğru çekilmiş (düzeltilmiş) ihtimali kullandığı için farklar çoğunlukla 1–4 puandır."],
     ["Özet: beklenen / gerçekleşen üst", "Tarafın verdiği üst ihtimallerinin ortalaması ile gerçekten üst biten maçların oranı. Yakınsa taraf iyi ayarlıdır; tek tek isabetten daha sağlam bir ölçüdür."],
     ["Körleme test","Sistem 2017–2021 sezonlarında ayarlandı, 2021–2026 sezonlarında hiç görmediği maçlarda denendi; bir maçı analiz ederken yalnızca ondan önce oynanmış maçları görebilir. Sonuç: piyasadan daha iyi tahmin edemedi."],
+    ["Pattern Lab", "Araştırma sekmesinin üstündeki araç. Dört mod: bir maç seç (araştırılabilir durumları sistem bulur), bir sonuç seç (günün maçları taranır), kendi koşullarını kur (koşul koşul geçmiş), bir takım seç (fikstür döngüleri). Motor, pencere ya da araştırma türü seçtirmez."],
+    ["Araştırılabilir durum", "Pattern Lab'ın bir maçta bulduğu şey. 'Sinyal' değildir: bir motorun ölçümü, aynı maçın bütün ölçümleri arasında çoklu test düzeltmesinden geçtikten sonra da sıfırı dışlıyorsa araştırılabilir durum sayılır. Döngü ve oran hareketi bağlamdır, ölçüm değil."],
+    ["Pattern benzerliği", "Maçın geçmiş koşullara (fiyat, güç, form, gol) ne kadar benzediği; 0–100. Sonucun gerçekleşme olasılığı DEĞİLDİR: %83 benzerlik, hedefin %83 ihtimalle olacağı anlamına gelmez. Ekranda olasılıklardan ayrı bir kartta durur."],
+    ["Pattern tahmini", "Bugünkü piyasa olasılığı + katmanların (takım, rakip, benzer durumlar, ikizler, döngü) fiyata göre farklarının hassasiyet ağırlıklı ortalaması. Katmanlar örtüştüğü için aralığı iyimserdir; piyasa yoksa katmanların gerçekleşme oranıdır ve kıyas 'benzer fiyatlı maçlar'dır."],
+    ["Kanıt seviyesi", "KEŞİF: havuzda sıfırı dışlıyor, o kadar. DOĞRULANDI: doğrulama penceresinde aynı işaretle tekrarladı. İLERİ TESTTE: dokunulmamış test penceresinde de tuttu. YETERSİZ VERİ: 200 maçın altı. FARK YOK: fiyattan ayrılmıyor. Eğitimde bulunan hiçbir şey 'doğrulandı' diye gösterilmez."],
+    ["Fikstür döngüsü", "Bir takımın bir merkez maç etrafındaki rakip dizisinin (±2/±3/±4) geçmiş bir sezonda aynı sırayla, ters sırayla, kaymış olarak ya da benzer güç profiliyle tekrarlaması. Bir benzerliktir; 'geçmişte işe yaramış mı' sorusu bütün veritabanındaki döngü çiftleri üzerinde, piyasa fiyatının yanında ayrıca ölçülür."],
+    ["Ayna hipotezi", "Fikstür sırası tersine döndüyse merkez maçın sonucu da tersine (1 ↔ 2) dönüyor mu? Grafiklerin iması; doğru kabul edilmez, her ters döngü çiftinde yeni merkez maçın sonucu ve o sonucun fiyatı üzerinden test edilir."],
     ["Kalibrasyon skoru (Brier)", "Tahmin kalitesi ölçüsü; düşük daha iyi. Piyasa 0.5899, sistem 0.5897: fark yok denecek kadar küçük ve istatistiksel olarak anlamsız."],
   ];
 
   function renderGlossary() {
     $("#glossary").innerHTML = GLOSSARY.map(([t, d]) => `<div><dt>${t}</dt><dd>${d}</dd></div>`).join("");
+  }
+
+  // ================================================================== PATTERN LAB
+  // The orchestration UI. Four modes over the engines that already exist: the reader picks a match,
+  // a result, their own conditions, or a club — never an engine, never a window, never "exact or
+  // ±2". Every number is drawn next to the market's expectation, similarity never wears the label
+  // of a probability, and nothing found in the pool alone is called "doğrulandı".
+  const EX_OUT = { win: "Kazanır", draw: "Berabere", loss: "Kaybeder", over25: "2,5 üst", btts: "KG var",
+                   over15: "1,5 üst", over35: "3,5 üst", ht_draw: "İY berabere", ht_win: "İY önde" };
+  const leagueName = (code) => (state.meta?.leagues || {})[code] || code;
+  state.lab = { inited: false, mode: null, targets: null, day: null, dayList: [], picked: null, scan: null,
+                target: null, find: { target: null, timer: null }, cycle: { team: null, data: null } };
+
+  const EV_CLS = { "YETERSİZ VERİ": "thin", "KEŞİF": "disc", "DOĞRULANDI": "conf", "İLERİ TESTTE": "test", "FARK YOK": "none" };
+  const evBadge = (tr) => `<span class="ev ev-${EV_CLS[tr] || "none"}">${esc(tr || "–")}</span>`;
+  const pctv = (v, d = 1) => (v == null ? "–" : `%${Number(v).toFixed(d)}`);
+  const ppv = (v) => (v == null ? "–" : `${v > 0 ? "+" : ""}${Number(v).toFixed(1)} puan`);
+  const ciTxt = (ci) => (!ci || ci[0] == null ? "–" : `[${pp1(ci[0])}, ${pp1(ci[1])}]`);
+  const SIM_TIP = "Pattern benzerliği maçın geçmiş koşullara ne kadar benzediğini gösterir. Sonucun gerçekleşme olasılığı değildir.";
+
+  async function labInit() {
+    if (state.lab.inited) return;
+    state.lab.inited = true;
+    document.querySelectorAll("[data-lab]").forEach((b) => (b.onclick = () => labShow(b.dataset.lab)));
+    try { state.lab.targets = await api("/api/lab/hedefler"); } catch (e) { state.lab.targets = { groups: [] }; }
+    lmInit(); lfInit(); exWire(); lcInit();
+    let want = "match";
+    try { want = localStorage.getItem("fo.labMode") || "match"; } catch (_) {}
+    labShow(want);
+  }
+
+  function labShow(mode) {
+    state.lab.mode = mode;
+    document.querySelectorAll("[data-lab]").forEach((b) => b.classList.toggle("is-on", b.dataset.lab === mode));
+    ["match", "find", "own", "cycle"].forEach((k) => { const p = $(`#lab-${k}`); if (p) p.hidden = k !== mode; });
+    try { localStorage.setItem("fo.labMode", mode); } catch (_) {}
+  }
+
+  /** The target picker: market groups as chips, the selections of the chosen group as buttons. */
+  function tpBuild(root, onPick) {
+    const groups = state.lab.targets?.groups || [];
+    const st = { group: groups[0]?.key, key: null };
+    const paint = () => {
+      const g = groups.find((x) => x.key === st.group) || groups[0];
+      root.innerHTML = `<div class="kseg tp-groups">${groups.map((x) =>
+          `<button type="button" data-g="${x.key}" class="${x.key === st.group ? "is-on" : ""}">${esc(x.label)}</button>`).join("")}</div>
+        <div class="tp-targets">${(g?.targets || []).map((t) =>
+          `<button type="button" data-t="${esc(t.key)}" class="tp-t ${t.key === st.key ? "is-on" : ""}" title="${esc(t.explain)}">${esc(t.label)}</button>`).join("")}</div>
+        <p class="tp-explain">${st.key ? esc((g.targets.find((t) => t.key === st.key) || {}).explain || "") : "<span class=\"muted\">bir sonuç seç</span>"}</p>`;
+      root.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { st.group = b.dataset.g; paint(); }));
+      root.querySelectorAll("[data-t]").forEach((b) => (b.onclick = () => { st.key = b.dataset.t; paint(); onPick(st.key); }));
+    };
+    paint();
+    return { set(key) { const g = groups.find((x) => x.targets.some((t) => t.key === key)); if (g) { st.group = g.key; st.key = key; paint(); } },
+             get key() { return st.key; } };
+  }
+
+  function labDates(sel, onChange) {
+    const today = state.meta?.today || isoDay(new Date());
+    const has = new Set(state.meta?.dates || []);
+    sel.innerHTML = "";
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today + "T12:00:00"); d.setDate(d.getDate() + i); const s = isoDay(d);
+      const o = el("option"); o.value = s; o.textContent = fmtDate(s) + (i === 0 ? " · bugün" : "") + (has.has(s) ? "" : " · henüz maç yok");
+      sel.appendChild(o);
+    }
+    sel.value = today;
+    sel.onchange = () => onChange(sel.value);
+  }
+
+  // ---------------------------------------------------------------- MOD 1 — bu maçta ne olur?
+  function lmInit() {
+    labDates($("#lm-date"), lmLoad);
+    $("#lm-q").oninput = lmList;
+    $("#lm-go").onclick = lmScan;
+    lmLoad($("#lm-date").value);
+  }
+
+  async function lmLoad(date) {
+    state.lab.picked = null; $("#lm-picked").hidden = true; $("#lm-scan").innerHTML = ""; $("#lm-target").hidden = true;
+    $("#lm-list").innerHTML = `<p class="note">Yükleniyor…</p>`;
+    let day = { matches: [] }, ready = {};
+    try { day = await api(`/api/day/${date}`); } catch (_) {}
+    try { (await api(`/api/lab/maclar?from=${date}&to=${date}`)).matches.forEach((m) => (ready[m.id] = m.ready)); } catch (_) {}
+    if ($("#lm-date").value !== date) return;
+    state.lab.day = day; state.lab.dayList = day.matches.map((m) => ({ ...m, _ready: ready[m.id] !== false }));
+    state.lab.leagues = new Set(state.lab.dayList.map((m) => m.league));
+    const wrap = $("#lm-leagues"); wrap.innerHTML = "";
+    const leagues = [...new Map(state.lab.dayList.map((m) => [m.league, m.league_name])).entries()].sort((a, b) => a[1].localeCompare(b[1], "tr"));
+    const all = el("button", "chip is-on", "Tümü"); all.type = "button";
+    all.onclick = () => { state.lab.leagues = new Set(leagues.map((l) => l[0])); wrap.querySelectorAll(".chip").forEach((c, i) => c.classList.toggle("is-on", i === 0)); lmList(); };
+    wrap.appendChild(all);
+    leagues.forEach(([code, name]) => {
+      const b = el("button", "chip", esc(name)); b.type = "button";
+      b.onclick = () => { state.lab.leagues = new Set([code]); wrap.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-on", c === b)); lmList(); };
+      wrap.appendChild(b);
+    });
+    lmList();
+  }
+
+  function lmList() {
+    const q = ($("#lm-q").value || "").trim().toLocaleLowerCase("tr");
+    const ms = state.lab.dayList.filter((m) => state.lab.leagues.has(m.league) && (!q || `${m.home} ${m.away}`.toLocaleLowerCase("tr").includes(q)));
+    const box = $("#lm-list");
+    if (!state.lab.dayList.length) { box.innerHTML = `<div class="day-empty">Bu gün için analiz edilmiş maç yok. Football-Data yeni haftanın maçlarını genellikle Salı–Çarşamba yükler.</div>`; return; }
+    if (!ms.length) { box.innerHTML = `<p class="note">Filtreye uyan maç yok.</p>`; return; }
+    box.innerHTML = ms.slice(0, 120).map((m) => `<button type="button" class="lab-row${m._ready ? "" : " is-na"}" data-pick="${esc(m.id)}" ${m._ready ? "" : 'title="Bu maç için durum tablosu henüz hazır değil (günlük iş)"'}>
+        <span class="lab-row-main"><b>${esc(m.home)} – ${esc(m.away)}</b><small class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}</small></span>
+        <span class="num muted">${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}</span></button>`).join("");
+    box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => lmPick(b.dataset.pick)));
+  }
+
+  function lmPick(id, opts = {}) {
+    const m = state.lab.dayList.find((x) => x.id === id);
+    if (!m) return;
+    state.lab.picked = m; state.lab.scan = null; state.lab.target = null;
+    $("#lm-list").querySelectorAll("[data-pick]").forEach((b) => b.classList.toggle("is-on", b.dataset.pick === id));
+    $("#lm-picked").hidden = false;
+    $("#lm-title").textContent = `${m.home} – ${m.away}`;
+    $("#lm-sub").textContent = ` ${m.league_name}${m.time ? " · " + m.time : ""} · ${fmtDate(m.date)} · oran ${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}`;
+    $("#lm-scan").innerHTML = ""; $("#lm-target").hidden = true; $("#lm-out").innerHTML = "";
+    if (!opts.quiet) $("#lm-picked").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  const SCAN_ANCHOR = { pattern_all: "patterns", pattern_similar: "patterns", pattern_same_team: "patterns", twins: "twins",
+                        combined: "combo", sequence: "fixture", movement: "move" };
+
+  async function lmScan() {
+    const m = state.lab.picked; if (!m) return;
+    const box = $("#lm-scan"); const btn = $("#lm-go");
+    btn.disabled = true; btn.textContent = "Taranıyor… (her motor çalışıyor)";
+    box.innerHTML = `<p class="note">Form, güç, gol, ikiz, fikstür döngüsü ve oran hareketi motorları çalışıyor…</p>`;
+    try {
+      const d = await api(`/api/tarama/${encodeURIComponent(m.id)}`);
+      state.lab.scan = d;
+      renderScan(d, m);
+      $("#lm-target").hidden = false;
+      if (!state.lab.tp) state.lab.tp = tpBuild($("#lm-tp"), (key) => lmTarget(key));
+      if (state.lab.pendingTarget) { const k = state.lab.pendingTarget; state.lab.pendingTarget = null; state.lab.tp.set(k); lmTarget(k); }
+    } catch (e) {
+      const msg = String(e.message || "");
+      box.innerHTML = `<p class="note">${msg.startsWith("404") ? "Bu maç için durum tablosu hazır değil; günlük güncellemeden sonra görünür." : "Tarama yapılamadı: " + esc(msg)}</p>`;
+    }
+    btn.disabled = false; btn.textContent = "BU MAÇI ANALİZ ET";
+  }
+
+  function findingCard(f, m) {
+    const solid = f.ci && f.ci[0] != null && (f.ci[0] > 0 || f.ci[1] < 0);
+    return `<div class="lab-card">
+      <div class="lab-card-top"><b>${esc(f.source_tr)}</b>${evBadge(f.evidence_tr)}</div>
+      <div class="lab-card-body"><span class="lab-big">${esc(f.outcome_tr)}</span>
+        <span class="muted">N = ${f.n}</span>
+        <span>gerçekleşen <b>${pctv(f.actual)}</b> · beklenti <b>${pctv(f.market)}</b></span>
+        <span class="${solid ? "yes" : ""}">Δ <b>${ppv(f.edge)}</b> <small class="muted">${ciTxt(f.ci)} · q=${num(f.q, 3)}</small></span>
+        ${f.detail ? `<small class="muted">${esc(f.detail)}</small>` : ""}</div>
+      <button type="button" class="btn ghost" data-open="${esc(SCAN_ANCHOR[f.source] || "twins")}">İNCELE</button></div>`;
+  }
+
+  function contextCard(c, m) {
+    const go = c.source === "sequence"
+      ? `<button type="button" class="btn ghost" data-cycle="${esc(c.data?.now?.match_id || m.id)}">İNCELE</button>`
+      : `<button type="button" class="btn ghost" data-open="move">İNCELE</button>`;
+    return `<div class="lab-card is-ctx">
+      <div class="lab-card-top"><b>${esc(c.source_tr)}</b><span class="ev ev-ctx">BAĞLAM</span></div>
+      <div class="lab-card-body"><span class="lab-big">${esc(c.label)}</span><span>${c.source === "sequence" ? "Benzerlik " : ""}<b>${esc(c.value)}</b></span>
+        <small class="muted">${esc(c.note)}</small></div>${go}</div>`;
+  }
+
+  function renderScan(d, m) {
+    const box = $("#lm-scan");
+    const n = d.after_correction, ctx = (d.context || []).length;
+    const head = `<p class="sentence"><b>${d.scanned} pattern tarandı</b> (${d.too_thin} tanesi 200 maçın altında kaldı, gerisi tek ailede
+        çoklu test düzeltmesinden geçti). <b>${n + ctx} araştırılabilir durum bulundu</b>${n === 0 && ctx ? " — hepsi bağlam, hiçbiri fiyattan ayrılan bir ölçüm değil" : ""}.
+        ${n === 0 ? "Bu maçta piyasadan ayrılan bir ölçüm yok; bu bir hata değil, çoğu maçta doğru cevap budur." : ""}</p>`;
+    const cards = (d.findings || []).map((f) => findingCard(f, m)).join("") + (d.context || []).map((c) => contextCard(c, m)).join("");
+    const near = (d.near_misses || []);
+    box.innerHTML = head + `<div class="lab-cards">${cards || ""}</div>` + (near.length
+      ? `<details class="ex-more"><summary>Eşiğe en çok yaklaşanlar <span class="muted">— gösterilmeyen ${near.length} ölçüm</span></summary>
+         <div class="table-wrap"><table><thead><tr><th>Kaynak</th><th>Sonuç</th><th class="num">N</th><th class="num">Δ</th><th class="num hide-sm">%95</th><th class="num">q</th></tr></thead><tbody>
+         ${near.map((f) => `<tr class="thin"><td class="wrap">${esc(f.source_tr)}</td><td>${esc(f.outcome_tr)}</td><td class="num">${f.n}</td>
+           <td class="num">${pp1(f.edge)}</td><td class="num hide-sm">${ciTxt(f.ci)}</td><td class="num">${num(f.q, 3)}</td></tr>`).join("")}</tbody></table></div>
+         <p class="note">q, Benjamini-Hochberg ile düzeltilmiş p değeri: bu maçın ${d.scanned} ölçümlük ailesinde ${d.alpha} eşiğini geçmedi.</p></details>` : "");
+    box.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openSheetAt(m, b.dataset.open)));
+    box.querySelectorAll("[data-cycle]").forEach((b) => (b.onclick = () => { labShow("cycle"); lcRun(d.match.home, b.dataset.cycle); }));
+  }
+
+  function openSheetAt(m, anchor) {
+    openSheet(m);
+    const target = $("#sheet-body").querySelector(`[data-anchor="${anchor}"]`);
+    if (target) setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
+  }
+
+  async function lmTarget(key) {
+    const m = state.lab.picked; if (!m) return;
+    const box = $("#lm-out");
+    box.innerHTML = `<p class="note">Katmanlar bu sonuç için yeniden ölçülüyor…</p>`;
+    try {
+      const d = await api(`/api/lab/hedef/${encodeURIComponent(m.id)}?target=${encodeURIComponent(key)}`);
+      state.lab.target = d;
+      box.innerHTML = targetHTML(d, m);
+      box.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openSheetAt(m, b.dataset.open)));
+      box.querySelectorAll("[data-cycle]").forEach((b) => (b.onclick = () => { labShow("cycle"); lcRun(d.match.home, b.dataset.cycle); }));
+    } catch (e) { box.innerHTML = `<p class="note">Hesaplanamadı: ${esc(e.message)}</p>`; }
+  }
+
+  const REF_TR = { market: "piyasa", matched: "benzer fiyatlı maçlar" };
+
+  function layerRows(layers) {
+    return layers.map((l) => {
+      const solid = l.ci && l.ci[0] != null && (l.ci[0] > 0 || l.ci[1] < 0);
+      return `<tr class="${l.n < 200 ? "thin" : ""}"><td class="wrap">${esc(l.label)}${l.note ? `<br><small class="muted">${esc(l.note)}</small>` : ""}</td>
+        <td class="num">${l.n || "–"}</td><td class="num">${pctv(l.actual)}</td>
+        <td class="num">${pctv(l.expected)}${l.reference ? `<br><small class="muted">${REF_TR[l.reference]}</small>` : ""}</td>
+        <td class="num ${solid ? "yes" : ""}"><b>${l.edge == null ? "–" : pp1(l.edge)}</b></td>
+        <td class="num hide-sm">${ciTxt(l.ci)}</td><td>${ciBar(l.edge, l.ci?.[0], l.ci?.[1])}</td><td>${evBadge(l.evidence_tr)}</td></tr>`;
+    }).join("");
+  }
+
+  function targetHTML(d, m) {
+    const t = d.target, mk = d.market, est = d.estimate, sim = d.similarity;
+    const top = `<div class="lab-top">
+      <div class="lab-stat"><small>PİYASA OLASILIĞI</small><b class="num">${mk.p == null ? "yok" : pctv(mk.p)}</b>
+        <span class="muted">${mk.p == null ? esc(mk.note || "") : mk.source === "nesine" ? `nesine oranı ${num(mk.odds)} (marjsız)` : "Football-Data konsensüsü"}</span></div>
+      <div class="lab-stat"><small>PATTERN TAHMİNİ</small><b class="num">${est ? pctv(est.p) : "–"}</b><span class="muted">${est ? esc(est.basis) : "200 maça ulaşan katman yok"}</span></div>
+      <div class="lab-stat"><small>FARK</small><b class="num ${d.difference_ci?.[0] != null && (d.difference_ci[0] > 0 || d.difference_ci[1] < 0) ? "yes" : ""}">${d.difference == null ? "–" : ppv(d.difference)}</b>
+        <span class="muted">%95 aralık ${ciTxt(d.difference_ci)}</span></div>
+      <div class="lab-stat is-sim" title="${esc(SIM_TIP)}"><small>PATTERN BENZERLİĞİ <i class="tip" aria-hidden="true">?</i></small><b class="num">${sim?.median == null ? "–" : pctv(sim.median, 0)}</b>
+        <span class="muted">ikizlerin ortancası — olasılık değil</span></div></div>`;
+    const reasons = `<div class="lab-why"><div><h4>Destekleyenler</h4>${d.reasons.pro.length ? `<ul>${d.reasons.pro.map((x) => `<li>✓ ${esc(x)}</li>`).join("")}</ul>` : `<p class="note">Fiyattan ayrılan bir katman yok.</p>`}</div>
+      <div><h4>Dikkat edilmesi gerekenler</h4>${d.reasons.con.length ? `<ul>${d.reasons.con.map((x) => `<li>✕ ${esc(x)}</li>`).join("")}</ul>` : `<p class="note">—</p>`}</div></div>`;
+    const mv = d.movement ? `<p class="note"><b>Oran hareketi:</b> ${esc((MOVE_TR[d.movement.type] || [d.movement.type])[0])}${d.movement.total_pp != null ? ` (${pp1(d.movement.total_pp)} puan)` : ""}
+        · ${esc(d.movement.note)} <button type="button" class="linkbtn" data-open="move">ayrıntı</button></p>` : "";
+    const seq = d.sequence ? `<p class="note"><b>Fikstür döngüsü:</b> ${esc(d.sequence.kind_tr)} · ±${d.sequence.window} · benzerlik %${d.sequence.similarity} (${d.sequence.past.season})
+        — benzerlik, olasılık değildir <button type="button" class="linkbtn" data-cycle="${esc(m.id)}">döngüyü aç</button></p>` : "";
+    const disc = d.discovery ? `<p class="note"><b>Keşif taraması (hedefe göre):</b> bu hedefle ilgili ${d.discovery.n_claims} iddia üç pencereden geçirildi;
+        ${d.discovery.survived.length ? `sağ kalan: ${d.discovery.survived.map((s) => `${esc(s.label)} (${pp1(s.edge)} puan, q=${num(s.q, 3)})`).join(" · ")}` : "hiçbiri üç pencereden de geçemedi"}.
+        Ayrıntı aşağıdaki "Desen taraması" bölümünde.</p>` : `<p class="note"><b>Keşif taraması:</b> bu hedef için çevrimdışı tarama sonucu yok.</p>`;
+    return `<p class="sentence"><b>${esc(t.group_label)} → ${esc(t.label)}</b>: ${esc(t.explain)} ${evBadge(d.evidence.label)} <small class="muted">${esc(d.evidence.why)}</small></p>
+      ${top}
+      <div class="table-wrap"><table><thead><tr><th>Katman</th><th class="num">N</th><th class="num">Gerçekleşen</th><th class="num">Beklenti</th>
+        <th class="num">Δ</th><th class="num hide-sm">%95</th><th>Sıfıra göre</th><th>Kanıt</th></tr></thead><tbody>${layerRows(d.layers)}</tbody></table></div>
+      <p class="note"><b>Beklenti</b>: piyasanın fiyatı olan marketlerde o maçların kendi fiyatı; olmayan marketlerde (İY, İY/MS, 1,5/3,5 üst, KG)
+        <b>aynı fiyattaki maçlarda</b> aynı şeyin ne sıklıkta olduğu. Gri satırlar 200 maçın altında; okunmamalı.</p>
+      <h4 class="lab-h4">Neden?</h4>${reasons}${mv}${seq}${disc}
+      <ul class="lab-notes">${(d.notes || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  }
+
+  // ---------------------------------------------------------------- MOD 2 — bu sonuca uyan maç bul
+  function lfInit() {
+    state.lab.lfTp = tpBuild($("#lf-tp"), (key) => { state.lab.find.target = key; $("#lf-go").disabled = false; });
+    labDates($("#lf-date"), () => {});
+    $("#lf-go").onclick = lfGo;
+  }
+
+  async function lfGo() {
+    const target = state.lab.find.target, date = $("#lf-date").value;
+    if (!target) return;
+    clearInterval(state.lab.find.timer);
+    const box = $("#lf-out");
+    box.innerHTML = `<p class="note">Tarama başlatılıyor…</p>`;
+    try { await api(`/api/lab/tara?date=${date}&target=${encodeURIComponent(target)}`, { method: "POST" }); }
+    catch (e) { box.innerHTML = `<p class="note">Başlatılamadı: ${esc(e.message)}</p>`; return; }
+    const poll = async () => {
+      try {
+        const d = await api(`/api/lab/tara?date=${date}&target=${encodeURIComponent(target)}`);
+        renderFind(d, target, date);
+        if (d.state === "done" || d.state === "none") clearInterval(state.lab.find.timer);
+      } catch (e) { box.innerHTML = `<p class="note">Okunamadı: ${esc(e.message)}</p>`; clearInterval(state.lab.find.timer); }
+    };
+    state.lab.find.timer = setInterval(poll, 1500);
+    poll();
+  }
+
+  function renderFind(d, target, date) {
+    const box = $("#lf-out");
+    const t = (state.lab.targets?.groups || []).flatMap((g) => g.targets).find((x) => x.key === target) || { label: target };
+    const rows = (d.rows || []).slice().sort((a, b) => (b.relevance?.score || 0) - (a.relevance?.score || 0));
+    const prog = d.state === "running" ? `<p class="note">${d.done} / ${d.total} maç tarandı… (her maçta takım, rakip, benzer durumlar, ikizler)</p>`
+      : d.state === "none" ? `<p class="note">Tarama bulunamadı.</p>` : `<p class="note">${d.total} maç tarandı${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</p>`;
+    if (!rows.length) { box.innerHTML = prog + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
+    box.innerHTML = `<p class="sentence"><b>${esc(t.label)}</b> — ${fmtDate(date)}. ${esc(t.explain || "")}</p>${prog}
+      <div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-sm">Lig</th><th class="num hide-sm">Saat</th><th class="num">Oran</th>
+        <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Kanıt</th><th></th></tr></thead><tbody>
+        ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b></td>
+          <td class="hide-sm nw">${esc(r.league_name || r.league || "")}</td><td class="num hide-sm">${esc(r.time || "")}</td>
+          <td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
+          <td class="num">${r.market?.p == null ? "<small class=\"muted\">yok</small>" : pctv(r.market.p)}</td>
+          <td class="num">${r.estimate ? pctv(r.estimate.p) : "–"}</td>
+          <td class="num ${r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0) ? "yes" : ""}"><b>${r.difference == null ? "–" : pp1(r.difference)}</b><br><small class="muted">${ciTxt(r.difference_ci)}</small></td>
+          <td class="num">${r.similarity == null ? "–" : pctv(r.similarity, 0)}</td>
+          <td>${evBadge(r.evidence?.label)}</td>
+          <td><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="note">${esc(d.note || "")} Piyasa sütunu boşsa o market için fiyat yok (İY ve İY/MS fiyatları yalnızca nesine bülteninden gelir).
+        Benzerlik, maçın geçmiş koşullara ne kadar benzediğidir — sonucun olasılığı değil.</p>`;
+    box.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => labOpenTarget(b.dataset.detail, date, target)));
+  }
+
+  /** Mode 2's "Detay": mode 1's target screen for that match. */
+  async function labOpenTarget(id, date, target) {
+    labShow("match");
+    if ($("#lm-date").value !== date) { $("#lm-date").value = date; await lmLoad(date); }
+    if (!state.lab.dayList.some((m) => m.id === id)) { toast("Maç bu günün listesinde bulunamadı."); return; }
+    lmPick(id);
+    state.lab.pendingTarget = target;
+    lmScan();
+  }
+
+  // ---------------------------------------------------------------- MOD 3 — kendi patternini test et
+  // The old explorer's engine (/api/desen) is kept; this is its wider front: team, opponent, match,
+  // goals and market conditions, each added as its own row so the reader sees what moved the number.
+  const EX_LET = { W: "G", D: "B", L: "M", "?": "?" };
+  const EX_WORD = { W: "kazanmış", D: "berabere kalmış", L: "kaybetmiş", "?": "farketmez" };
+  const EX_STR = { weak: "zayıf", mid: "orta", strong: "güçlü", top: "çok güçlü" };
+  const EX_GOALS = [["gf5", "Attığı gol (toplam)"], ["ga5", "Yediği gol (toplam)"], ["btts5", "Karşılıklı gol olan maç"],
+                    ["ov15_5", "1,5 üst biten maç"], ["ov25_5", "2,5 üst biten maç"], ["ov35_5", "3,5 üst biten maç"]];
+  const EX_PRESETS = [
+    ["Üst üste 3 galibiyet", { side: "home", seq: "WWW" }],
+    ["3 maçtır kazanamıyor", { side: "home", seq: "??DL" }],
+    ["Son 3'ünü kazanan güçlü ev sahibi", { side: "home", seq: "WWW", str: "strong" }],
+    ["Deplasmanda 3 mağlubiyet", { side: "away", seq: "LLL", venue: true }],
+    ["Güçlü favori (oran 1,20–1,50)", { side: "home", seq: "", o_lo: 1.2, o_hi: 1.5 }],
+    ["Çok güçlü takım, zayıf rakip", { side: "home", seq: "", str: "top", ostr: "weak" }],
+    ["Son 5'te hep KG, oran düştü", { side: "home", seq: "", goals: { btts5: [4, 5] }, move: "steam" }],
+  ];
+  state.ex = { asked: 0, cleared: 0, side: "home", seq: "WWW", vseq: "", oseq: "", ovseq: "", str: "", ostr: "", role: "", move: "", outcome: "win" };
+
+  function exWire() {
+    const go = $("#ex-go");
+    if (!go || go._wired) return;
+    go._wired = true;
+    const presets = $("#ex-presets");
+    EX_PRESETS.forEach(([label, cfg]) => {
+      const b = el("button", "chip", label); b.type = "button";
+      b.onclick = () => {
+        Object.assign(state.ex, { side: cfg.side || "home", seq: cfg.seq || "", vseq: "", oseq: "", ovseq: "", str: cfg.str || "", ostr: cfg.ostr || "", role: cfg.role || "", move: cfg.move || "" });
+        $("#ex-venue").checked = !!cfg.venue; $("#ex-slack").checked = false;
+        $("#ex-o-lo").value = cfg.o_lo ?? ""; $("#ex-o-hi").value = cfg.o_hi ?? ""; $("#ex-gap-lo").value = ""; $("#ex-gap-hi").value = "";
+        EX_GOALS.forEach(([k]) => { const r = (cfg.goals || {})[k]; $(`#ex-g-${k}-lo`).value = r ? r[0] : ""; $(`#ex-g-${k}-hi`).value = r ? r[1] : ""; });
+        exPaint(); exRun();
+      };
+      presets.appendChild(b);
+    });
+    $("#ex-goals").innerHTML = EX_GOALS.map(([k, label]) => `<div class="ex-goal"><span>${label}</span>
+      <div class="ex-pair"><input id="ex-g-${k}-lo" type="number" min="0" max="30" inputmode="numeric" placeholder="en az">
+      <span>–</span><input id="ex-g-${k}-hi" type="number" min="0" max="30" inputmode="numeric" placeholder="en çok"></div></div>`).join("");
+    const seg = (id, key, attr) => $(id).querySelectorAll("button").forEach((b) => (b.onclick = () => {
+      state.ex[key] = b.dataset[attr]; $(id).querySelectorAll("button").forEach((x) => x.classList.toggle("is-on", x === b)); exPaint();
+    }));
+    seg("#ex-side-seg", "side", "v"); seg("#ex-str", "str", "s"); seg("#ex-ostr", "ostr", "s"); seg("#ex-role", "role", "r"); seg("#ex-move", "move", "m");
+    const keys = (attr, key) => document.querySelectorAll(`#lab-own [data-${attr}]`).forEach((b) => (b.onclick = () => {
+      const v = b.dataset[attr]; state.ex[key] = v === "del" ? state.ex[key].slice(0, -1) : (state.ex[key] + v).slice(-6); exPaint();
+    }));
+    keys("k", "seq"); keys("vk", "vseq"); keys("ok", "oseq"); keys("ovk", "ovseq");
+    const lg = $("#ex-league");
+    Object.entries(state.meta?.leagues || {}).sort((a, b) => a[1].localeCompare(b[1], "tr")).forEach(([code, name]) => { const o = el("option", "", esc(name)); o.value = code; lg.appendChild(o); });
+    document.querySelectorAll("#lab-own input, #lab-own select").forEach((n) => { n.oninput = n.onchange = exPaint; });
+    go.onclick = exRun;
+    exPaint();
+  }
+
+  function exChips(seq, id) {
+    const box = $(id); if (!box) return;
+    box.innerHTML = seq ? seq.split("").map((c) => `<span class="fchip f-${c}">${EX_LET[c] || c}</span>`).join("") : `<span class="muted">boş — koşul yok</span>`;
+  }
+
+  const exWords = (s) => s.split("").map((c) => EX_WORD[c]).join(", ");
+
+  /** The query, written back in Turkish. If this sentence is not what you meant, the answer is not either. */
+  function exSentence() {
+    const s = state.ex, who = s.side === "home" ? "Ev sahibi" : "Deplasman";
+    const venue = $("#ex-venue")?.checked, bits = [];
+    if (s.seq) bits.push(`son ${s.seq.length} ${venue ? (s.side === "home" ? "iç saha " : "deplasman ") : ""}maçında sırayla ${exWords(s.seq)}`);
+    if (s.vseq) bits.push(`kendi sahasındaki son ${s.vseq.length} maçında ${exWords(s.vseq)}`);
+    if (s.str) bits.push(`liginde ${EX_STR[s.str]} bir takım`);
+    if (s.oseq) bits.push(`rakibi son ${s.oseq.length} maçında ${exWords(s.oseq)}`);
+    if (s.ovseq) bits.push(`rakibi kendi sahasında ${exWords(s.ovseq)}`);
+    if (s.ostr) bits.push(`rakibi ${EX_STR[s.ostr]}`);
+    const gl = $("#ex-gap-lo")?.value, gh = $("#ex-gap-hi")?.value;
+    if (gl !== "" && gh !== "" && gl != null && gh != null) bits.push(`güç farkı ${gl} ile ${gh} puan arasında`);
+    const lg = $("#ex-league")?.value; if (lg) bits.push(`${leagueName(lg)} liginde`);
+    EX_GOALS.forEach(([k, label]) => { const lo = $(`#ex-g-${k}-lo`)?.value, hi = $(`#ex-g-${k}-hi`)?.value; if (lo !== "" && hi !== "") bits.push(`son 5'te ${label.toLocaleLowerCase("tr")} ${lo}–${hi}`); });
+    if (s.role) bits.push(s.role === "favorite" ? "piyasanın favorisi" : "piyasanın sürpriz adayı");
+    const ol = $("#ex-o-lo")?.value, oh = $("#ex-o-hi")?.value; if (ol && oh) bits.push(`oranı ${ol}–${oh} arasında`);
+    if (s.move) bits.push({ steam: "oranı kapanışa doğru düşmüş", drift: "oranı kapanışa doğru yükselmiş", stable: "oranı sabit kalmış" }[s.move]);
+    if ($("#ex-slack")?.checked) bits.push("<span class=\"muted\">(dizide bir maç tutmasa da sayılır)</span>");
+    return bits.length ? `<b>Soru:</b> ${who}, ${bits.join(" · ")} olan maçlarda ne olmuş?`
+      : `<b>Soru:</b> hiç koşul yok — veritabanındaki bütün maçlar. Yukarıdan bir şeyler seç.`;
+  }
+
+  function exPaint() {
+    exChips(state.ex.seq, "#ex-seq"); exChips(state.ex.vseq, "#ex-vseq"); exChips(state.ex.oseq, "#ex-oseq"); exChips(state.ex.ovseq, "#ex-ovseq");
+    const q = $("#ex-q"); if (q) q.innerHTML = exSentence();
+  }
+
+  function exQuery() {
+    const s = state.ex;
+    const q = new URLSearchParams({ side: s.side, approx: $("#ex-slack")?.checked ? "1" : "0" });
+    if (s.seq) { if ($("#ex-venue")?.checked && !s.vseq) q.set("venue_form", s.seq); else q.set("form", s.seq); }
+    if (s.vseq) q.set("venue_form", s.vseq);
+    if (s.str) q.set("strength", s.str);
+    if (s.oseq) q.set("opp_form", s.oseq);
+    if (s.ovseq) q.set("opp_venue_form", s.ovseq);
+    if (s.ostr) q.set("opp_strength", s.ostr);
+    const gl = $("#ex-gap-lo")?.value, gh = $("#ex-gap-hi")?.value;
+    if (gl !== "" && gh !== "") { q.set("gap_lo", gl); q.set("gap_hi", gh); }
+    const lg = $("#ex-league")?.value; if (lg) q.set("leagues", lg);
+    const goals = EX_GOALS.map(([k]) => { const lo = $(`#ex-g-${k}-lo`)?.value, hi = $(`#ex-g-${k}-hi`)?.value; return lo !== "" && hi !== "" ? `${k}:${lo}-${hi}` : null; }).filter(Boolean);
+    if (goals.length) q.set("goals", goals.join(","));
+    if (s.role) q.set("role", s.role);
+    const ol = Number($("#ex-o-lo")?.value), oh = Number($("#ex-o-hi")?.value);
+    if (ol > 1 && oh > 1) { q.set("p_lo", (1 / Math.max(ol, oh)).toFixed(4)); q.set("p_hi", (1 / Math.min(ol, oh)).toFixed(4)); }
+    if (s.move) q.set("movement", s.move);
+    if (s.outcome && !EX_OUT[s.outcome]) q.set("outcome", s.outcome);
+    return q;
+  }
+
+  async function exRun() {
+    const out = $("#ex-out");
+    out.innerHTML = `<p class="note">Ölçülüyor… koşullar tek tek ekleniyor.</p>`;
+    try {
+      const d = await api(`/api/lab/kendi?${exQuery()}`);
+      state.ex.asked++;
+      state.ex.last = d;
+      renderOwn(d);
+    } catch (err) { out.innerHTML = `<p class="note">Ölçülemedi: ${esc(err.message)}</p>`; }
+  }
+
+  function renderOwn(d) {
+    const oc = state.ex.outcome in EX_OUT || d.outcomes.includes(state.ex.outcome) ? state.ex.outcome : "win";
+    const cell = (x) => {
+      if (!x || !x.n) return { edge: null, ci: [null, null] };
+      return { edge: x.edge != null ? x.edge : x.vs_ref, ci: x.edge_ci || x.vs_ref_ci || [null, null], x };
+    };
+    const casc = d.rows.map((r, i) => {
+      const c = cell(r.outcomes[oc]); const x = c.x || {};
+      const solid = c.ci[0] != null && (c.ci[0] > 0 || c.ci[1] < 0);
+      return `<tr class="${(x.n || 0) < 200 ? "thin" : ""}"><td class="wrap">${i ? "↓ " : ""}${esc(r.step)}</td>
+        <td class="num">${r.n}${r.n_lost ? `<br><small class="muted">−${r.n_lost}</small>` : ""}</td>
+        <td class="num">${x.actual == null ? "–" : "%" + num(x.actual, 1)}</td>
+        <td class="num">${(x.market ?? x.ref) == null ? "–" : "%" + num(x.market ?? x.ref, 1)}</td>
+        <td class="num ${solid ? "yes" : ""}"><b>${c.edge == null ? "–" : pp1(c.edge)}</b></td>
+        <td class="num hide-sm">${ciTxt(c.ci)}</td><td>${ciBar(c.edge, c.ci[0], c.ci[1])}</td></tr>`;
+    }).join("");
+    const last = d.rows[d.rows.length - 1];
+    const allRows = d.outcomes.map((o) => {
+      const c = cell(last.outcomes[o]); const x = c.x; if (!x) return "";
+      const solid = c.ci[0] != null && (c.ci[0] > 0 || c.ci[1] < 0);
+      return `<tr class="${x.n < 200 ? "thin" : ""}"><td>${esc(EX_OUT[o] || (state.lab.targets?.groups || []).flatMap((g) => g.targets).find((t) => t.key === o)?.label || o)}</td>
+        <td class="num hide-sm">${x.n}</td><td class="num">%${num(x.actual, 1)}</td><td class="num">${(x.market ?? x.ref) == null ? "–" : "%" + num(x.market ?? x.ref, 1)}</td>
+        <td class="num ${solid ? "yes" : ""}"><b>${c.edge == null ? "–" : pp1(c.edge)}</b></td><td class="num hide-sm">${ciTxt(c.ci)}</td><td>${ciBar(c.edge, c.ci[0], c.ci[1])}</td></tr>`;
+    }).join("");
+    const solidN = d.outcomes.filter((o) => { const c = cell(last.outcomes[o]); return c.ci[0] != null && (c.ci[0] > 0 || c.ci[1] < 0); }).length;
+    state.ex.cleared += solidN;
+    const tests = state.ex.asked * d.outcomes.length;
+    const chips = d.outcomes.map((o) => `<button type="button" data-oc="${esc(o)}" class="${o === oc ? "is-on" : ""}">${esc(EX_OUT[o] || o)}</button>`).join("");
+    $("#ex-out").innerHTML = `<p class="sentence">${exSentence()}</p>
+      <p class="sentence">Son koşulda <b>${last.n.toLocaleString("tr")} maç</b> kaldı — ${d.pool.toLocaleString("tr")} maçlık havuzda, ${d.span[0]} ile ${d.span[1]} arası.</p>
+      ${last.n < 200 ? `<p class="ex-warn">Örneklem 200'ün altında. Son satırlar okunmamalı; hangi koşulun örneklemi bitirdiğine bak.</p>` : ""}
+      <h4 class="lab-h4">Koşulların etkisi</h4>
+      <div class="kseg ex-ocs">${chips}</div>
+      <div class="table-wrap"><table><thead><tr><th>Koşul</th><th class="num">N</th><th class="num">Oldu</th><th class="num">Fiyat</th><th class="num">Fark</th><th class="num hide-sm">%95</th><th>Sıfıra göre</th></tr></thead><tbody>${casc}</tbody></table></div>
+      <p class="note">${esc(d.note)}</p>
+      <h4 class="lab-h4">Son koşulda bütün sonuçlar</h4>
+      <div class="table-wrap"><table><thead><tr><th>Sonuç</th><th class="num hide-sm">N</th><th class="num">Oldu</th><th class="num">Fiyat</th><th class="num">Fark</th><th class="num hide-sm">%95 aralık</th><th>Sıfıra göre</th></tr></thead><tbody>${allRows}</tbody></table></div>
+      <p class="note"><b>Fiyat</b> sütunu: piyasanın fiyatı olan marketlerde (1X2, 2,5 üst) o maçların kendi fiyatı; olmayan marketlerde
+        <b>aynı fiyattaki maçlarda</b> aynı şeyin ne sıklıkta olduğu — havuz ortalaması değil. Fark, havuz geneli sapma çıkarıldıktan sonradır.
+        <b>Aralık sıfırı içeriyorsa desen, piyasanın zaten bildiği bir şeyi söylüyor.</b></p>
+      <p class="ex-warn">Bu oturumda <b>${state.ex.asked} sorgu</b> çalıştırdın, her biri ${d.outcomes.length} sonucu ölçtü: <b>${tests} test</b>.
+        %95 aralıkla, hiçbir gerçek desen olmasa bile bunların yaklaşık <b>${Math.max(1, Math.round(tests * 0.05))} tanesinin</b> sıfırı dışlaması beklenir —
+        şu ana kadar ${state.ex.cleared} tanesi dışladı. Buradan çıkan bir fikir bulgu değil, <b>adaydır</b> (KEŞİF): gerçek sınav üç pencereli tarama ve çoklu test düzeltmesidir.</p>`;
+    $("#ex-out").querySelectorAll("[data-oc]").forEach((b) => (b.onclick = () => { state.ex.outcome = b.dataset.oc; renderOwn(state.ex.last); }));
+  }
+
+  // ---------------------------------------------------------------- MOD 4 — döngü ara
+  function lcInit() {
+    const q = $("#lc-q"), sug = $("#lc-suggest");
+    let t = null;
+    q.oninput = () => {
+      state.lab.cycle.team = null; $("#lc-go").disabled = true;
+      clearTimeout(t);
+      const v = q.value.trim();
+      if (v.length < 2) { sug.hidden = true; return; }
+      t = setTimeout(async () => {
+        try {
+          const d = await api(`/api/lab/takimlar?q=${encodeURIComponent(v)}&limit=12`);
+          if (q.value.trim() !== v || state.lab.cycle.team) return;      // typed on, or already chosen
+          sug.hidden = !d.teams.length;
+          sug.innerHTML = d.teams.map((x) => `<button type="button" data-team="${esc(x.team)}"><b>${esc(x.team)}</b><small class="muted">${esc(leagueName(x.league))} · ${x.n} maç · son ${fmtShort(x.last)}</small></button>`).join("");
+          sug.querySelectorAll("[data-team]").forEach((b) => (b.onclick = () => lcChoose(b.dataset.team)));
+        } catch (_) { sug.hidden = true; }
+      }, 250);
+    };
+    $("#lc-go").onclick = () => lcRun(state.lab.cycle.team, $("#lc-centre").value);
+  }
+
+  async function lcChoose(team) {
+    state.lab.cycle.team = team; $("#lc-q").value = team; $("#lc-suggest").hidden = true; $("#lc-go").disabled = false;
+    const sel = $("#lc-centre"); sel.innerHTML = `<option value="">Son maç (varsayılan)</option>`;
+    try {
+      const today = state.meta?.today || isoDay(new Date());
+      const to = new Date(today + "T12:00:00"); to.setDate(to.getDate() + 7);
+      const d = await api(`/api/lab/maclar?from=${today}&to=${isoDay(to)}`);
+      d.matches.filter((m) => m.home === team || m.away === team).forEach((m) => {
+        const o = el("option", "", `${esc(m.home)} – ${esc(m.away)} · ${fmtShort(m.date)}`); o.value = m.id; sel.appendChild(o);
+      });
+      if (sel.options.length > 1) sel.selectedIndex = 1;      // the coming match is what the reader came to ask about
+    } catch (_) {}
+  }
+
+  async function lcRun(team, matchId) {
+    if (!team) return;
+    state.lab.cycle.team = team; $("#lc-q").value = team; $("#lc-go").disabled = false;
+    const box = $("#lc-out");
+    box.innerHTML = `<p class="note">±2, ±3, ±4 pencereleri, bütün geçmiş sezonlar, dört dizi türü taranıyor…</p>`;
+    try {
+      const d = await api(`/api/dongu?team=${encodeURIComponent(team)}${matchId ? `&match_id=${encodeURIComponent(matchId)}` : ""}&min_similarity=60`);
+      state.lab.cycle.data = d;
+      renderCycles(d);
+    } catch (e) { box.innerHTML = `<p class="note">Aranamadı: ${esc(e.message)}</p>`; }
+  }
+
+  const chain = (opps, centre) => `<div class="chain">${opps.map((o, i) => `<span class="chain-o ${i === centre ? "is-c" : ""}">${esc(o)}</span>`).join('<span class="chain-a">→</span>')}</div>`;
+
+  function renderCycles(d) {
+    const box = $("#lc-out");
+    const c = d.centre;
+    const head = c ? `<p class="sentence"><b>${esc(d.team)}</b> · merkez maç: ${esc(c.home || "")}${c.home ? " – " + esc(c.away) : esc(c.opponent)} (${fmtShort(c.date)}, ${c.season.slice(0, 2)}/${c.season.slice(2)} sezonu).
+        ${d.searched} geçmiş dizi, ${d.windows.map((w) => "±" + w).join(" / ")} pencerelerinde, dört türde karşılaştırıldı.</p>` : `<p class="note">${esc(d.note || "merkez maç bulunamadı")}</p>`;
+    if (!d.cycles.length) { box.innerHTML = head + `<div class="day-empty">%60'ın üstünde benzeyen bir döngü bulunamadı. Bu da bir cevaptır: bu takımın fikstürü geçmiş sezonlarını tekrarlamıyor.</div>`; return; }
+    const best = d.cycles[0];
+    const centreIdx = (run) => run.opponents.length - 1 - (run.opponents.length - 1 - Math.min(best.window, run.opponents.indexOf(run.opponents[Math.min(best.window, run.opponents.length - 1)])));
+    const pastC = Math.min(best.window, best.past.opponents.length - 1), nowC = Math.min(best.window, best.now.opponents.length - 1);
+    const headline = `<div class="lab-cycle">
+      <div class="lab-top">
+        <div class="lab-stat"><small>DİZİ TÜRÜ</small><b>${esc(best.kind_tr)}</b><span class="muted">${esc(best.kind.replace("_", " "))}</span></div>
+        <div class="lab-stat"><small>PENCERE</small><b class="num">±${best.window}</b><span class="muted">${best.n_compared} pozisyon karşılaştırıldı</span></div>
+        <div class="lab-stat is-sim" title="${esc(SIM_TIP)}"><small>BENZERLİK <i class="tip" aria-hidden="true">?</i></small><b class="num">%${best.similarity}</b><span class="muted">konum konum %${best.positional} · kanat %${best.wing}</span></div>
+        <div class="lab-stat"><small>KARŞILAŞTIRILAN SEZON</small><b>${best.past.season.slice(0, 2)}/${best.past.season.slice(2)}</b><span class="muted">${fmtShort(best.past.date)}</span></div>
+      </div>
+      <div class="chains"><div><small class="muted">${best.past.season.slice(0, 2)}/${best.past.season.slice(2)}</small>${chain(best.past.opponents, pastC)}</div>
+        <div><small class="muted">${best.now.season.slice(0, 2)}/${best.now.season.slice(2)}</small>${chain(best.now.opponents, nowC)}</div></div>
+      <p class="ex-warn"><b>%${best.similarity} dizi benzerliği, %${best.similarity} sonuç olasılığı DEĞİLDİR.</b> Bu bir fikstür listesi benzerliğidir; merkez maçın sonucu hakkında bir şey söyleyip söylemediği ayrı ölçülür — aşağıdaki düğme onu yapar.</p>
+      <p class="note">İki puan birlikte okunur: <b>konum konum</b> aynı sıradaki rakip eşleşiyor mu; <b>kanat</b> merkezden önceki ve sonraki kulüpler aynı mı (sıra fark etmeksizin). Grafikler ikinciyi %100 diye alıntılar; ikisini birden göstermek dürüst olanı.</p>
+      <div class="lab-actions"><button type="button" class="btn ex-go" data-measure="0">BU DÖNGÜ GEÇMİŞTE İŞE YARAMIŞ MI?</button></div>
+      <div id="lc-measure"></div></div>`;
+    const others = d.cycles.length > 1 ? `<details class="ex-more"><summary>Bulunan bütün döngüler <span class="muted">— ${d.cycles.length} tane; her tür için en iyi üçü</span></summary>
+      <div class="table-wrap"><table><thead><tr><th>Tür</th><th class="num">Pencere</th><th class="num">Benzerlik</th><th class="num hide-sm">Konum</th><th class="num hide-sm">Kanat</th><th class="num">Karş.</th><th>Sezon</th><th></th></tr></thead><tbody>
+      ${d.cycles.map((x, i) => `<tr class="${i === 0 ? "ac-alive" : ""}"><td>${esc(x.kind_tr)}</td><td class="num">±${x.window}</td><td class="num"><b>%${x.similarity}</b></td>
+        <td class="num hide-sm">%${x.positional}</td><td class="num hide-sm">%${x.wing}</td><td class="num">${x.n_compared}</td><td>${x.past.season.slice(0, 2)}/${x.past.season.slice(2)} · ${fmtShort(x.past.date)}</td>
+        <td><button type="button" class="linkbtn" data-measure="${i}">ölç</button></td></tr>`).join("")}</tbody></table></div></details>` : "";
+    const pairs = d.pairs || {};
+    box.innerHTML = head + headline + others + (pairs.n_pairs ? `<p class="note">Döngü çiftleri tablosu: ${Number(pairs.n_pairs).toLocaleString("tr")} çift, ${pairs.generated_at ? ntAgo(pairs.generated_at) : ""}.</p>`
+      : `<p class="note">Bütün veritabanı için döngü çiftleri tablosu henüz kurulmadı; ilk ölçüm isteği kurar (bir dakikaya kadar sürebilir).</p>`);
+    box.querySelectorAll("[data-measure]").forEach((b) => (b.onclick = () => lcMeasure(d.cycles[Number(b.dataset.measure)], d)));
+  }
+
+  async function lcMeasure(cyc, d) {
+    const box = $("#lc-measure");
+    box.innerHTML = `<p class="note">Bütün veritabanı taranıyor: ${esc(cyc.kind_tr)}, ±${cyc.window}, benzerlik ≥ %${cyc.similarity} …</p>`;
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const tsi = d.centre?.tsi;
+    try {
+      const q = new URLSearchParams({ kind: cyc.kind, window: cyc.window, similarity: cyc.similarity, team: d.team });
+      if (tsi != null) q.set("tsi", tsi);
+      const m = await api(`/api/lab/dongu-olc?${q}`);
+      state.lab.cycle.measure = m;
+      renderMeasure(m, cyc, d, m.bands[0]?.hypothesis);
+    } catch (e) { box.innerHTML = `<p class="note">Ölçülemedi: ${esc(e.message)}</p>`; }
+  }
+
+  const RES_TR = { W: "G", D: "B", L: "M" };
+
+  function renderMeasure(m, cyc, d, hyp) {
+    const box = $("#lc-measure");
+    const bands = m.bands || [];
+    const bandHTML = (b) => `<div class="lab-band"><h4 class="lab-h4">Benzerlik ≥ %${b.min_similarity} <small class="muted">· ${b.n_pairs.toLocaleString("tr")} döngü çifti · hipotez: ${esc(b.hypothesis_tr)}</small></h4>
+      <div class="table-wrap"><table><thead><tr><th>Katman</th><th class="num">N</th><th class="num">Gerçekleşen</th><th class="num">Piyasa</th><th class="num">Δ</th><th class="num hide-sm">%95</th><th>Sıfıra göre</th><th>Kanıt</th></tr></thead><tbody>
+      ${b.layers.map((l) => { const solid = l.ci && l.ci[0] != null && (l.ci[0] > 0 || l.ci[1] < 0); return `<tr class="${l.n < 200 ? "thin" : ""}"><td>${esc(l.label)}</td><td class="num">${l.n}</td>
+        <td class="num">${pctv(l.actual)}</td><td class="num">${pctv(l.market ?? l.ref)}${l.market == null && l.ref != null ? "<br><small class=\"muted\">havuz oranı</small>" : ""}</td>
+        <td class="num ${solid ? "yes" : ""}"><b>${l.edge == null ? "–" : pp1(l.edge)}</b></td><td class="num hide-sm">${ciTxt(l.ci)}</td><td>${ciBar(l.edge, l.ci?.[0], l.ci?.[1])}</td><td>${evBadge(l.evidence_tr)}</td></tr>`; }).join("")}
+      </tbody></table></div>
+      ${b.ht_mirror ? `<p class="note"><b>İY/MS aynası</b> (${esc(b.ht_mirror.hypothesis_tr)}): önceki merkez maç 1/2 ya da 2/1 bittiyse yeni merkez maç bunun aynası oldu mu? N = ${b.ht_mirror.n}, gerçekleşen ${pctv(b.ht_mirror.actual)}, havuz oranı ${pctv(b.ht_mirror.ref)}, fark ${b.ht_mirror.edge == null ? "–" : pp1(b.ht_mirror.edge)} ${ciTxt(b.ht_mirror.ci)}.</p>` : ""}`;
+    const ex = bands[0]?.examples || [];
+    const examples = ex.length ? `<h4 class="lab-h4">Benzer döngüler <small class="muted">— gerçek örnekler, önce bu kulübünkiler</small></h4>
+      <div class="table-wrap"><table><thead><tr><th>Tarih</th><th>Takım</th><th class="hide-sm">Sezon A</th><th class="hide-sm">Sezon B</th><th>Tür</th><th class="num">Benz.</th><th class="num">Önceki merkez</th><th class="num">Yeni merkez</th><th class="num">Piyasa</th><th class="num">CLV</th></tr></thead><tbody>
+      ${ex.map((r) => `<tr class="${r.own ? "ac-alive" : ""}"><td class="num">${fmtShort(r.date)}</td><td class="wrap">${esc(r.team)}<small class="muted"> – ${esc(r.opponent)}</small></td>
+        <td class="hide-sm">${r.season_a.slice(0, 2)}/${r.season_a.slice(2)}</td><td class="hide-sm">${r.season_b.slice(0, 2)}/${r.season_b.slice(2)}</td><td>${esc(r.kind_tr)} ±${r.window}</td>
+        <td class="num">%${r.similarity}</td><td class="num">${RES_TR[r.past_result] || "–"}${r.past_htft ? ` <small class="muted">${esc(r.past_htft)}</small>` : ""}</td>
+        <td class="num">${RES_TR[r.new_result] || "–"}${r.new_htft ? ` <small class="muted">${esc(r.new_htft)}</small>` : ""} ${r.held == null ? "" : r.held ? '<span class="ok">✓</span>' : '<span class="bad">✗</span>'}</td>
+        <td class="num">${r.market_p == null ? "–" : pctv(r.market_p)}</td><td class="num ${r.clv > 0 ? "pos" : r.clv < 0 ? "neg" : ""}">${r.clv == null ? "–" : signedPct(r.clv)}</td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="note">Sonuçlar takımın gözünden (G/B/M); ✓ hipotezin tuttuğu satır. Piyasa: hipotezin söylediği sonucun o maçtaki fiyatı. CLV: o sonucun konsensüs oranının kapanış oranına göre değeri (2019/20'den beri kapanış oranı olan maçlar).</p>` : "";
+    const other = hyp === "mirror" ? "repeat" : "mirror";
+    box.innerHTML = `<p class="sentence"><b>Hipotez:</b> ${esc(bands[0]?.hypothesis_tr || "")}. ${cyc.kind === "EXACT_REVERSE"
+        ? "Fikstür sırası tersine döndüyse merkez maçın sonucunun yönü de tersine dönüyor mu? Bu, grafiklerdeki fikirdir — doğru kabul edilmedi, veri üzerinde test edildi."
+        : "Aynı dizi tekrarladıysa merkez maçın sonucu da tekrarlıyor mu?"} Her katmanda gerçekleşen, o maçlarda hipotezin söylediği sonucun <b>piyasa fiyatının</b> yanında.
+      <button type="button" class="linkbtn" data-hyp="${other}">${other === "mirror" ? "ayna hipotezini" : "tekrar hipotezini"} de ölç</button></p>
+      ${bands.map(bandHTML).join("")}
+      <p class="note">${esc(m.evidence_tr ? "Kanıt etiketleri: KEŞİF = havuzda sıfırı dışlıyor; DOĞRULANDI = doğrulama penceresinde aynı işaretle tekrarladı; İLERİ TESTTE = dokunulmamış test penceresinde de tuttu; YETERSİZ VERİ = 200 çiftin altı." : "")}</p>
+      ${examples}`;
+    box.querySelector("[data-hyp]").onclick = async (ev) => {
+      const b = ev.currentTarget; b.disabled = true;
+      try {
+        const q = new URLSearchParams({ kind: cyc.kind, window: cyc.window, similarity: cyc.similarity, team: d.team, hypothesis: other });
+        if (d.centre?.tsi != null) q.set("tsi", d.centre.tsi);
+        renderMeasure(await api(`/api/lab/dongu-olc?${q}`), cyc, d, other);
+      } catch (e) { toast("Ölçülemedi: " + e.message); b.disabled = false; }
+    };
   }
 
   // ------------------------------------------------------------------ boot
