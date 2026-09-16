@@ -16,6 +16,7 @@ from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from ..config import Settings
@@ -168,6 +169,31 @@ def _pool_stats(df: pd.DataFrame, key: tuple, side: str, year: int) -> tuple[dic
     return _POOL_STATS[ck]
 
 
+_OUT_CACHE: dict[tuple, dict] = {}
+
+
+def _cache_for(df: pd.DataFrame, key: tuple, side: str) -> dict:
+    from . import engine
+
+    ck = (*key, side)
+    if ck not in _OUT_CACHE:
+        if len(_OUT_CACHE) > 8:
+            _OUT_CACHE.clear()
+        _OUT_CACHE[ck] = engine.outcome_cache(df, side, PATTERN_OUTCOMES)
+    return _OUT_CACHE[ck]
+
+
+def _refs_fast(df: pd.DataFrame, sub: pd.DataFrame, side: str, key: tuple, fallback: dict) -> dict:
+    """Price-matched references off the cached arrays — the same answer, without the scan."""
+    from . import engine
+
+    if sub is None or not len(sub):
+        return dict(fallback)
+    mask = np.zeros(len(df), dtype=bool)
+    mask[df.index.get_indexer(sub.index)] = True
+    return {**fallback, **engine.matched_rates_cached(_cache_for(df, key, side), mask)}
+
+
 def _refs(frame: pd.DataFrame, sub: pd.DataFrame, side: str, fallback: dict) -> dict:
     """Price-matched reference rates for the outcomes the market does not quote.
 
@@ -213,7 +239,7 @@ def patterns_for(settings: Settings, match_id: str, side: str = "home", approx: 
     p_ = state.state_path(settings)
     base, naive = _pool_stats(df, (str(p_), p_.stat().st_mtime), side, int(pd.Timestamp(as_of).year))
     pattern = engine.Pattern(form=form, side=side, approx=approx)
-    refs = _refs(pool, engine.select(pool, pattern, as_of=as_of), side, naive)
+    refs = _refs_fast(pool, engine.select(pool, pattern, as_of=as_of), side, (str(p_), p_.stat().st_mtime), naive)
     out = engine.levels(pool, pattern, team=team, tsi_pct=tsi, band=band, as_of=as_of,
                         outcomes=PATTERN_OUTCOMES, sample=sample, base=base, refs=refs)
     exact = engine.select(pool, engine.Pattern(form=form, side=side, approx=0), as_of=as_of)
@@ -305,7 +331,7 @@ def combined_for(settings: Settings, match_id: str, side: str = "home", approx: 
         at = replace(at, gap=(round(lo, 1), round(hi, 1)))
         steps.append((f"+ güç farkı {sign * gap:+.0f} ± {gap_band:g}", at))
 
-    refs = _refs(pool, engine.select(pool, steps[0][1], as_of=as_of), side, naive)
+    refs = _refs_fast(pool, engine.select(pool, steps[0][1], as_of=as_of), side, (str(sp), sp.stat().st_mtime), naive)
     rows = engine.cascade(pool, steps, as_of=as_of, outcomes=PATTERN_OUTCOMES, base=base, refs=refs)
     return {
         "match": {"id": match_id, "date": str(row["date"])[:10], "league": str(row["league"]),
@@ -387,7 +413,7 @@ def explore(settings: Settings, form: str = "", side: str = "home", approx: int 
     base, naive = _pool_stats(df, (str(sp), sp.stat().st_mtime), side, year)
     sub = engine.select(df, pattern)
     res = engine.run(df, pattern, outcomes=PATTERN_OUTCOMES, sample=sample, base=base,
-                     refs=_refs(df, sub, side, naive))
+                     refs=_refs_fast(df, sub, side, (str(sp), sp.stat().st_mtime), naive))
     exact = pattern if not approx else engine.Pattern(**{**pattern.__dict__, "approx": 0})
     res["n_exact"] = int(len(engine.select(df, exact))) if form else res["n"]
     res["pool"] = int(len(df))

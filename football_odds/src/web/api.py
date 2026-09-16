@@ -628,6 +628,22 @@ def kombine(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
     return out
 
 
+@app.get("/api/tarama/{match_id}")
+def tarama(match_id: str, side: str = Query("home", pattern="^(home|away)$")) -> dict:
+    """Pattern Lab's scan of one match: every engine, then most of the answers thrown away.
+
+    Eight engines across nine outcomes produce seventy-odd measurements, and with a 95 % interval
+    several clear zero by chance in a match where nothing is happening. The family is therefore
+    corrected with Benjamini-Hochberg before anything is shown, and the number scanned is reported
+    next to the number kept. In most matches nothing survives, and that is the answer."""
+    from ..patterns import lab
+
+    out = lab.scan(settings, match_id, side=side)
+    if out is None:
+        raise HTTPException(404, "bu maç için durum tablosu hazır değil")
+    return out
+
+
 @app.get("/api/dongu")
 def dongu(team: str = Query(..., min_length=2, max_length=60), match_id: str = Query(""),
           min_similarity: float = Query(50.0, ge=0, le=100)) -> dict:

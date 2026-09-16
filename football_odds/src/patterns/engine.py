@@ -347,6 +347,50 @@ def matched_rates(frame: pd.DataFrame, sub: pd.DataFrame, side: str, outcomes: t
     return out
 
 
+def outcome_cache(frame: pd.DataFrame, side: str, outcomes: tuple[str, ...],
+                  step: float = 0.025) -> dict:
+    """Everything `matched_rates` recomputes on every call, computed once for a whole frame.
+
+    Pattern Lab asks for price-matched references several times per match, and each ask was walking
+    all 180.000 rows nine times to rebuild the same two arrays: what happened, and which price bin
+    the match sat in. Cached, a reference costs a groupby instead of a scan."""
+    side_col = "p_home" if side == "home" else "p_away"
+    if side_col not in frame:
+        return {}
+    has_ou = "p_over25" in frame and frame["p_over25"].notna().any()
+    cache: dict = {"side": side, "step": step, "n": len(frame), "outcomes": {}}
+    for o in outcomes:
+        col = "p_over25" if (o in GOAL_OUTCOMES and has_ou) else side_col
+        hit, _ = outcome_columns(frame, side, o)
+        bins = (pd.to_numeric(frame[col], errors="coerce") / step).round().to_numpy()
+        cache["outcomes"][o] = {"hit": np.asarray(hit, dtype=float), "bin": bins}
+    return cache
+
+
+def matched_rates_cached(cache: dict, mask: np.ndarray) -> dict[str, float]:
+    """The price-matched reference for the rows `mask` selects, read off a cache.
+
+    Identical in meaning to `matched_rates`: the selected matches are excluded from the reference so
+    a group is never compared with itself, and the reference is the selection's own price mix."""
+    out: dict[str, float] = {}
+    if not cache or not mask.any():
+        return out
+    for o, arr in cache["outcomes"].items():
+        hit, bins = arr["hit"], arr["bin"]
+        ok = np.isfinite(hit) & np.isfinite(bins)
+        oth = ok & ~mask
+        sel = ok & mask
+        if not oth.any() or not sel.any():
+            continue
+        rates = pd.Series(hit[oth]).groupby(bins[oth]).mean()
+        w = pd.Series(1.0, index=bins[sel]).groupby(level=0).sum()
+        common = rates.index.intersection(w.index)
+        if not len(common) or w[common].sum() == 0:
+            continue
+        out[o] = float((rates[common] * w[common]).sum() / w[common].sum())
+    return out
+
+
 def baseline(frame: pd.DataFrame, side: str, outcomes: tuple[str, ...]) -> dict[str, float]:
     """The same difference measured over the WHOLE pool — the offset every pattern has to clear.
 

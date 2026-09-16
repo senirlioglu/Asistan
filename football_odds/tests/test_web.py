@@ -324,3 +324,21 @@ def test_the_cycle_endpoint_takes_a_team_and_nothing_else(research_client):
     unknown = research_client.get("/api/dongu?team=Yok").json()
     assert unknown["cycles"] == [] and unknown.get("note")
     assert research_client.get("/api/dongu?team=T").status_code == 422
+
+
+def test_the_scan_corrects_across_the_whole_family_before_showing_anything(research_client):
+    """Eight engines times nine outcomes is a search, and a screen that shows its winners shows
+    noise forever. The correction is the product, so the denominator has to survive to the payload."""
+    d = research_client.get("/api/tarama/s59").json()
+    assert d["match"]["id"] == "s59"
+    assert d["scanned"] >= d["after_correction"]                  # the funnel only ever narrows
+    assert d["after_correction"] == len(d["findings"])
+    assert d["alpha"] == 0.05 and d["min_n"] >= 100
+    for f in d["findings"]:
+        assert f["q"] <= d["alpha"] and abs(f["edge"]) >= d["min_edge"]
+        assert f["n"] >= d["min_n"] and f["evidence"] in ("DOĞRULANDI", "İLERİ TESTTE")
+        assert f["ci"][0] is not None
+    # context never enters the family: a similarity and a shape are not claims that took a test
+    for c in d["context"]:
+        assert c["source"] in ("sequence", "movement") and "q" not in c
+    assert research_client.get("/api/tarama/yok").status_code == 404
