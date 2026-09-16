@@ -171,6 +171,19 @@
     return `<i class="mv ${mv.dir > 0 ? "up" : "down"}" title="${esc(t)}">${mv.dir > 0 ? "▲" : "▼"}</i>`;
   }
 
+  /** One note hit: its evidence with the movement arrows, what it expects, and a warning when its own price moved. */
+  function ntHit(m, x) {
+    const ev = Object.entries(x.evidence || {}).map(([k, v]) =>
+      `<span class="nt-ev"><span>${esc(k)}</span><b class="num">${fmtOdd(v)}${ntArrow(m, (x.paths || {})[k])}</b></span>`).join("");
+    // note 5 says it outright ("oran değişmişse oynama"): if the price the note read has moved since we
+    // first saw it, the note was written about a price that is no longer on the board.
+    const ch = Object.entries(x.paths || {}).map(([k, p]) => [k, (m.moves || {})[p]]).filter(([, mv]) => mv && mv.open !== mv.now);
+    const drift = ch.length
+      ? `<p class="nt-drift">Notun baktığı oran açılıştan beri değişti: ${ch.map(([k, mv]) => `${esc(k)} ${mv.open.toFixed(2)} → ${mv.now.toFixed(2)}`).join(" · ")}</p>`
+      : "";
+    return `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev}</div><p class="nt-expect">${esc(x.expect)}</p>${drift}</div>`;
+  }
+
   const NT_GRID = [
     ["MS", ["ms.1", "ms.X", "ms.2"], ["1", "X", "2"]],
     ["İlk yarı", ["iy.1", "iy.X", "iy.2"], ["1", "X", "2"]],
@@ -244,23 +257,11 @@
     if (!ms.length) { body.innerHTML = `<div class="day-empty">Bu filtrelere uyan maç yok. Üstteki seçimi "Tüm maçlar" yapmayı ya da oran filtresini temizlemeyi dene.</div>`; return; }
     body.innerHTML = ms.slice(0, 250).map((m) => {
       const hits = m.hits.filter((x) => !s.rules.size || s.rules.has(x.id));
-      const ev = (x) => Object.entries(x.evidence || {}).map(([k, v]) =>
-        `<span class="nt-ev"><span>${esc(k)}</span><b class="num">${fmtOdd(v)}${ntArrow(m, (x.paths || {})[k])}</b></span>`).join("");
-      // note 5 says it outright ("oran değişmişse oynama"): if the price the note read has moved
-      // since we first saw it, the note was written about a price that is no longer on the board.
-      const drift = (x) => {
-        const ch = Object.entries(x.paths || {})
-          .map(([k, p]) => [k, (m.moves || {})[p]])
-          .filter(([, mv]) => mv && mv.open !== mv.now);
-        if (!ch.length) return "";
-        const txt = ch.map(([k, mv]) => `${esc(k)} ${mv.open.toFixed(2)} → ${mv.now.toFixed(2)}`).join(" · ");
-        return `<p class="nt-drift">Notun baktığı oran açılıştan beri değişti: ${txt}</p>`;
-      };
       const ours = m.ours ? `<p class="note nt-ours">Bizim analiz (${esc(m.ours.league_name)}): piyasa ${pct(m.ours.market.h)} / ${pct(m.ours.market.d)} / ${pct(m.ours.market.a)} · geçmiş ${pct(m.ours.adj.h)} / ${pct(m.ours.adj.d)} / ${pct(m.ours.adj.a)} · 2,5 üst ${pct(m.ours.over25)} · ${m.ours.n} benzer maç</p>` : "";
       const msLine = ["1", "X", "2"].map((k) => `${fmtOdd(m.ms[k] ?? "–")}${ntArrow(m, "ms." + k)}`).join(" / ");
       return `<div class="nt-card"><div class="card-top"><span>${esc(m.league)} · ${esc(m.time)}</span><span class="num">MS ${msLine}</span></div>
         <div class="teams"><span>${esc(m.home)}</span><span class="vs">–</span><span>${esc(m.away)}</span></div>
-        ${hits.map((x) => `<div class="nt-hit"><div class="nt-hit-head"><b>${x.no}. ${esc(x.title)}</b></div><div class="nt-evs">${ev(x)}</div><p class="nt-expect">${esc(x.expect)}</p>${drift(x)}</div>`).join("")}
+        ${hits.map((x) => ntHit(m, x)).join("")}
         ${s.mode === "hits" && hits.length ? "" : ntOddsGrid(m)}
         ${ours}
         <div class="nt-actions"><button type="button" class="btn ghost" data-analyse="${m.code}">Bu maçı analiz et</button></div></div>`;
@@ -274,7 +275,7 @@
     try {
       const d = await api(`/api/nesine-analiz?code=${code}&k=25`);
       const m = d.match;
-      m._analogues = d.analogues; m._analogueK = 25; m._teams = d.teams;
+      m._analogues = d.analogues; m._analogueK = 25; m._teams = d.teams; m._nesine = d.nesine;
       openSheet(m);
     } catch (e) { toast("Analiz edilemedi: " + e.message); }
     if (btn) { btn.disabled = false; btn.textContent = label; }
@@ -349,7 +350,8 @@
       }).join("");
       return `<div class="cp-mk"><span class="cp-mk-label">${label}</span><div class="cp-btns">${btns}</div></div>`;
     }).join("");
-    return `<div class="cp-row"><div class="cp-head"><b>${esc(m.home)} – ${esc(m.away)}</b><span class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · oran ${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}</span></div><div class="cp-mks">${cells}</div></div>`;
+    return `<div class="cp-row"><div class="cp-head"><div><b>${esc(m.home)} – ${esc(m.away)}</b><span class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · oran ${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}</span></div>
+      <button type="button" class="infobtn" data-info="${esc(m.id)}" title="Analiz, sapma, nesine oranları ve notlar" aria-label="${esc(m.home)} – ${esc(m.away)} bilgi">i</button></div><div class="cp-mks">${cells}</div></div>`;
   }
 
   function renderCouponDay() {
@@ -357,6 +359,8 @@
     const ms = (state.cp.day?.matches || []).slice().sort((a, b) => (a.time || "").localeCompare(b.time || "") || a.league_name.localeCompare(b.league_name, "tr"));
     if (!ms.length) { box.innerHTML = `<div class="day-empty">Bu gün için analiz edilmiş maç yok. Football-Data yeni haftanın maçlarını genellikle Salı–Çarşamba yükler.</div>`; }
     else box.innerHTML = ms.map(cpRow).join("");
+    const byId = new Map(ms.map((m) => [m.id, m]));
+    box.querySelectorAll("[data-info]").forEach((b) => (b.onclick = () => openSheet(byId.get(b.dataset.info))));
     box.querySelectorAll(".cp-btn").forEach((b) => (b.onclick = () => {
       const key = b.dataset.key, pick = b.dataset.pick;
       if (state.cp.picks.get(key) === pick) state.cp.picks.delete(key); else state.cp.picks.set(key, pick);
@@ -402,7 +406,7 @@
       <p class="note">Piyasa yalnızca maç sonucu ve 2,5 golde görüş bildirir; 1,5 gol ve yarı başlıklarında sadece sen ve geçmiş sayılır. Kâr: seçim başına 1 birim, o tarafın kendi seçiminin oranıyla.</p></div>` : "";
     box.innerHTML = head + list.map((c) => {
       const [st, cls] = statusTr[c.status] || [c.status, ""];
-      const rows = c.picks.map((p) => `<tr><td class="wrap">${esc(p.home)} – ${esc(p.away)}<small class="muted"> · ${fmtShort(p.date)}${p.time ? " " + esc(p.time) : ""}${p.score ? ` · <b>${esc(p.score)}</b>${p.ht_score ? ` (${esc(p.ht_score)})` : ""}` : ""}</small></td><td class="wrap">${esc(p.market_label)}</td>
+      const rows = c.picks.map((p) => `<tr><td class="wrap"><button type="button" class="infobtn" data-mid="${esc(p.match_id)}" title="Analiz, sapma, nesine oranları ve notlar" aria-label="${esc(p.home)} – ${esc(p.away)} bilgi">i</button> ${esc(p.home)} – ${esc(p.away)}<small class="muted"> · ${fmtShort(p.date)}${p.time ? " " + esc(p.time) : ""}${p.score ? ` · <b>${esc(p.score)}</b>${p.ht_score ? ` (${esc(p.ht_score)})` : ""}` : ""}</small></td><td class="wrap">${esc(p.market_label)}</td>
         <td class="num">${esc(p.pick_label)} ${okMark(p.user_ok)}${p.odds ? `<small class="muted"> @${num(p.odds)}</small>` : ""}</td>
         <td class="num">${p.hist_pick ? `${CP_PICK[p.hist_pick]} ${okMark(p.hist_ok)}` : "–"}</td>
         <td class="num hide-sm">${p.market_pick ? `${CP_PICK[p.market_pick]} ${okMark(p.market_ok)}` : "–"}</td>
@@ -411,10 +415,22 @@
         <div class="cp-tally"><span><b>Sen</b> ${tallyTxt(c.tally.user)}</span><span><b class="c-hist">Geçmiş</b> ${tallyTxt(c.tally.hist)}</span><span><b class="c-market">Piyasa</b> ${tallyTxt(c.tally.market)}</span></div>
         <div class="table-wrap"><table><thead><tr><th>Maç</th><th>Başlık</th><th class="num">Sen</th><th class="num">Geçmiş</th><th class="num hide-sm">Piyasa</th><th class="num hide-sm">Skor (İY)</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
     }).join("");
+    box.querySelectorAll("[data-mid]").forEach((b) => (b.onclick = () => openMatchById(b.dataset.mid, b)));
     box.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
       if (!window.confirm("Bu kupon silinsin mi?")) return;
       try { await api(`/api/coupons/${b.dataset.del}`, { method: "DELETE" }); await loadCoupons(); } catch (e) { toast("Silinemedi: " + e.message); }
     }));
+  }
+
+  /** A coupon row knows only the match id: fetch the analysis (and its nesine side) and open the sheet. */
+  async function openMatchById(id, btn) {
+    if (btn) btn.disabled = true;
+    try {
+      const d = await api(`/api/match/${encodeURIComponent(id)}`);
+      const m = d.match; m._nesine = d.nesine;
+      openSheet(m);
+    } catch (e) { toast("Maç açılamadı: " + e.message); }
+    if (btn) btn.disabled = false;
   }
 
   // ------------------------------------------------------------------ paper trading (Sanal oyun)
@@ -998,6 +1014,7 @@
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
       ${tol ? `<section><h3>Tolerans eşleşmesi</h3><p class="note">Üç ihtimalin hepsi bu kadar yakın olan geçmiş maç sayısı: ${tol}</p></section>` : ""}
+      <section><h3>Nesine oranları ve defter notları</h3><div id="sheet-nesine">Yükleniyor…</div></section>
       <section><h3>Aynı takımlar</h3><div id="teams">Yükleniyor…</div></section>
       <section><h3>En benzer geçmiş maçlar</h3><div class="kseg" id="kseg">${[25, 50, 100, 250, 500].map((k) => `<button type="button" data-k="${k}" class="${k === 25 ? "is-on" : ""}">${k}</button>`).join("")}</div><div id="analogues">Yükleniyor…</div></section>`;
     $("#sheet").hidden = false; $("#sheet-backdrop").hidden = false; document.body.style.overflow = "hidden";
@@ -1006,6 +1023,30 @@
     body.querySelectorAll("#kseg button").forEach((b) => { b.onclick = () => { body.querySelectorAll("#kseg button").forEach((x) => x.classList.toggle("is-on", x === b)); load(Number(b.dataset.k)); }; });
     load(25);
     loadTeams(m);
+    loadNesineFor(m);
+  }
+
+  /** The same match on nesine: its odds with the movement arrows and every notebook note it fires. */
+  async function loadNesineFor(m) {
+    const box = $("#sheet-nesine");
+    if (!box) return;
+    try {
+      // opened from the Nesine tab the bulletin entry rides along; from Maçlar/Oyun it is fetched by match id
+      const n = m._nesine !== undefined ? m._nesine
+        : m.source === "nesine" ? null
+        : (await api(`/api/match/${encodeURIComponent(m.id)}`)).nesine;
+      m._nesine = n;
+      if (n && n.error) { box.innerHTML = `<p class="note">Nesine bülteni okunamadı: ${esc(n.error)}</p>`; return; }
+      if (!n) {
+        box.innerHTML = `<p class="note">Bu maç nesine bülteninde bulunamadı — kupondan kaldırılmış, oynanmış ya da takım adları eşleşmemiş olabilir.</p>`;
+        return;
+      }
+      const hits = n.hits || [];
+      box.innerHTML = `<p class="note">nesine: ${esc(n.league)} · ${esc(n.time)} · kod ${n.code} · oranlar ${ntAgo(n.fetched_at)}${n.watch?.running ? " (canlı yenileniyor)" : ""}</p>`
+        + ntOddsGrid(n)
+        + (hits.length ? hits.map((x) => ntHit(n, x)).join("")
+                       : `<p class="note">Bu maç defterdeki notların hiçbirinin şartını sağlamıyor.</p>`);
+    } catch (e) { box.innerHTML = `<p class="note">Nesine tarafı yüklenemedi: ${esc(e.message)}</p>`; }
   }
 
   const OUTCOME_BADGE = { G: ["G", "Galibiyet", "win"], B: ["B", "Beraberlik", "draw"], M: ["M", "Mağlubiyet", "loss"] };

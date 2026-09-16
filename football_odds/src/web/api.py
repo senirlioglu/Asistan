@@ -516,6 +516,56 @@ def _ours_lookup(matches: list[dict]) -> dict[int, dict]:
     return out
 
 
+def _nesine_payload(m: dict, hits: list, store: dict) -> dict:
+    """One bulletin match as the page consumes it: odds, the notes it fires, and how its prices moved."""
+    from ..nesine import watcher
+
+    return {**{k: v for k, v in m.items() if k != "korner"}, "korner_n": len(m.get("korner") or {}),
+            "hits": hits, "moves": watcher.movement(store, m["code"], changed_only=True)}
+
+
+def _nesine_brief(date_tr: str, home: str, away: str) -> dict | None:
+    """The bulletin entry for one of OUR fixtures (reverse of `_ours_lookup`), or None when it is not quoted."""
+    from ..nesine import watcher
+    from ..nesine.bulletin import load_matches
+    from ..nesine.history import team_hits
+    from ..nesine.rules import evaluate
+    from .live import name_score
+
+    try:
+        matches, meta = load_matches(settings)
+    except Exception as exc:  # noqa: BLE001 - the analysis must open even when nesine is unreachable
+        return {"error": str(exc)}
+    best, best_s = None, 0.0
+    for m in matches:
+        if m["date"] != date_tr:
+            continue
+        s = (name_score(home, m["home"]) + name_score(away, m["away"])) / 2
+        if s > best_s:
+            best, best_s = m, s
+    if best is None or best_s < 0.6:
+        return None
+    index = _team_index()
+    hits = evaluate(best, team_hits(best, index) if index is not None else {})
+    out = _nesine_payload(best, hits, watcher.load_store(settings))
+    return {**out, "name_score": round(best_s, 2), "fetched_at": meta.get("fetched_at"), "watch": watcher.status()}
+
+
+@app.get("/api/match/{match_id}")
+def match_detail(match_id: str) -> dict:
+    """Everything the site can say about one analysed fixture: our analysis plus its nesine odds and notes.
+
+    The Oyun tab opens this from a coupon row, where only the match id is at hand."""
+    df = _all_matches()
+    sub = df[df["match_id"].astype(str) == match_id] if not df.empty else df
+    if sub.empty:
+        raise HTTPException(404, "maç bulunamadı")
+    row = sub.iloc[-1]
+    det = _load_details(_str(row["stamp"])).get("matches", {}).get(match_id, {})
+    payload = _match_payload(row, det)
+    return {"match": payload, "nesine": _nesine_brief(payload["date"], payload["home"], payload["away"])}
+
+
 @app.get("/api/notlar")
 def notlar(date: str | None = None, refresh: bool = False) -> dict:
     """nesine.com bulletin filtered by the user's notes: every football match with the notes it satisfies."""
@@ -541,10 +591,7 @@ def notlar(date: str | None = None, refresh: bool = False) -> dict:
     out_matches = []
     for m in matches:
         hh = team_hits(m, index) if index is not None else {}
-        hits = evaluate(m, hh)
-        out_matches.append({**{k: v for k, v in m.items() if k != "korner"}, "korner_n": len(m.get("korner") or {}),
-                            "hits": hits, "ours": ours.get(m["code"]),
-                            "moves": watcher.movement(store, m["code"], changed_only=True)})
+        out_matches.append({**_nesine_payload(m, evaluate(m, hh), store), "ours": ours.get(m["code"])})
     rules = [{k: v for k, v in r.items() if k != "fn"} | {"applied": r.get("applied", True) and (r.get("fn") is not None or r["id"] in ("n2", "n14"))} for r in RULES]
     return {"meta": meta, "dates": dates, "date": date, "rules": rules, "history": cached_backtest(settings),
             "matches": out_matches, "n_hits": sum(1 for m in out_matches if m["hits"])}
@@ -612,7 +659,14 @@ def nesine_analiz(code: int, k: int = Query(25, ge=1, le=500)) -> dict:
                         "shown": len(h2h_rows)},
                 "resolved": {"home": h, "away": a},
             }
-    return {"match": payload, "analogues": _analogue_rows(res["analogues"], {hit["home"], hit["away"]}, k), "teams": teams_payload, "meta": meta}
+    from ..nesine import watcher
+    from ..nesine.history import team_hits
+    from ..nesine.rules import evaluate
+
+    hits = evaluate(hit, team_hits(hit, index) if index is not None else {})
+    nesine = {**_nesine_payload(hit, hits, watcher.load_store(settings)), "fetched_at": meta.get("fetched_at"), "watch": watcher.status()}
+    return {"match": payload, "analogues": _analogue_rows(res["analogues"], {hit["home"], hit["away"]}, k), "teams": teams_payload,
+            "nesine": nesine, "meta": meta}
 
 
 @app.get("/robots.txt", include_in_schema=False)

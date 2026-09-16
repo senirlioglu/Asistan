@@ -306,8 +306,14 @@ td .no { color: var(--ink-3); }
 /* coupons (Oyun) */
 #cp-build .sc-controls input[type="text"] { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: var(--radius-s); padding: 6px 8px; font: inherit; min-width: 0; width: 100%; max-width: 260px; }
 .cp-row { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; min-width: 0; }
-.cp-head { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; margin-bottom: 6px; }
+.cp-head { display: flex; flex-wrap: wrap; gap: 2px 10px; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
 .cp-head .muted { font-size: 0.8rem; }
+.cp-head > div { min-width: 0; display: flex; flex-direction: column; }
+/* "i": the whole analysis of that match — deviation, history, nesine odds and the notebook notes */
+.infobtn { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface-2);
+  color: var(--ink-2); font-family: var(--font-display); font-size: 0.82rem; font-style: italic; line-height: 1; cursor: pointer; }
+.infobtn:hover { color: var(--ink); border-color: var(--ink-3); }
+td .infobtn { width: 22px; height: 22px; font-size: 0.75rem; vertical-align: middle; margin-right: 4px; }
 .cp-mks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .cp-mk { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .cp-mk.is-na { opacity: 0.6; }

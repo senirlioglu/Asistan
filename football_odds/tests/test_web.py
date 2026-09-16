@@ -119,3 +119,31 @@ def test_refresh_requires_key_when_set(client, monkeypatch):
     assert client.post("/api/refresh").status_code == 401
     monkeypatch.setattr(web, "start_background", lambda *a, **k: object())
     assert client.post("/api/refresh", headers={"X-Admin-Key": "s3cret"}).json()["started"] is True
+
+
+def test_match_detail_carries_the_nesine_side(client, monkeypatch):
+    """The Oyun tab opens a coupon row by match id and expects the analysis plus the nesine odds/notes."""
+    from src.nesine import bulletin, watcher
+
+    sample = {"code": 4242, "date": "2026-09-14", "time": "22:00", "home": "Arsenal FC", "away": "Everton",
+              "league": "İngiltere Premier Lig", "league_code": 1, "ms": {"1": 1.72, "X": 3.8, "2": 4.7},
+              "iyms": {}, "iy": {}, "iy05": {"alt": 1.64, "ust": 2.2}, "h1_15": {}, "h2_15": {}, "o25": {"alt": 1.9, "ust": 1.8},
+              "o35": {}, "o45": {}, "gol_araligi": {}, "iy_kg": {}, "y2_kg": {}, "iy_y2_kg": {}, "iy_sonucu_kg": {},
+              "ilk_gol": {}, "iki_yari_15_ust": {}, "iy_skor": {}, "skor": {}, "korner": {"9,5 Korner Alt/Üst · Üst": 1.9}}
+    monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([sample], {"fetched_at": "2026-09-14T18:00:00+00:00"}))
+    monkeypatch.setattr(watcher, "load_store", lambda *a, **k: {"matches": {"4242": {"odds": {"ms.1": [["t0", 1.80], ["t1", 1.72]]}}}})
+
+    d = client.get("/api/match/abc").json()
+    assert d["match"]["home"] == "Arsenal" and d["match"]["edge"]["h"] == 4.7      # our analysis rides along
+    n = d["nesine"]
+    assert n["code"] == 4242 and n["ms"]["1"] == 1.72 and n["name_score"] >= 0.6
+    assert "korner" not in n and n["korner_n"] == 1                                 # the corner list stays server-side
+    assert n["moves"]["ms.1"] == {"open": 1.80, "now": 1.72, "prev": 1.80, "dir": -1, "changed_at": "t1", "n": 2}
+    # note 5 reads exactly 1.64 in the İY 0,5 market: it fires, and says which odds it read
+    n5 = next(h for h in n["hits"] if h["id"] == "n5")
+    assert n5["evidence"]["İY 0,5 alt"] == 1.64 and n5["paths"]["İY 0,5 alt"] == "iy05.alt"
+
+    assert client.get("/api/match/yok-boyle-bir-mac").status_code == 404
+    # a bulletin without this match: the sheet says so instead of guessing
+    monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([{**sample, "home": "Chelsea", "away": "Fulham"}], {}))
+    assert client.get("/api/match/abc").json()["nesine"] is None
