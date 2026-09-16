@@ -581,6 +581,19 @@ def twins(match_id: str, k: int = Query(50, ge=5, le=500), side: str = Query("ho
     return out
 
 
+@app.get("/api/hareket/{code}")
+def hareket(code: int, paths: str = Query("ms.1,ms.X,ms.2"), days: int = Query(4, ge=1, le=14)) -> dict:
+    """What one nesine match's price did on the way to kick-off, in margin-free probability.
+
+    Answers only about matches the archive was running for — it started on 15 September 2026 — and
+    reports how much of the run-up it actually saw next to every verdict, so a STABLE produced
+    during an outage can be read as one."""
+    from ..nesine import movement
+
+    want = tuple(p.strip() for p in paths.split(",") if p.strip())[:8]
+    return movement.for_match(settings, code, paths=want, cfg=movement.config_from_env(), days=days)
+
+
 @app.get("/api/patterns/{match_id}")
 def patterns(match_id: str, side: str = Query("home", pattern="^(home|away)$"),
              approx: int = Query(0, ge=0, le=2)) -> dict:

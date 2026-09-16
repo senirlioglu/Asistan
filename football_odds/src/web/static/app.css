@@ -414,3 +414,30 @@ tr.same-team td { background: var(--hist-soft); }
   padding: 1px 6px; border-radius: var(--radius-s); }
 @media (max-width: 520px) { .dna-row { grid-template-columns: 1fr auto auto; } .dna-k { font-size: 0.72rem; } }
 td.num.yes, .sentence .yes, p .yes { color: var(--good); font-weight: 600; }
+
+/* odds movement: the verdict, the numbers behind it, and a small trajectory. Deliberately plain —
+   the sparkline is orientation, the percentage points above it are the content. */
+.mvb { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; margin: 0 0 10px; background: var(--surface); }
+.mvb-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.mv-verdict { font-size: 0.78rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); }
+.mv-verdict.up { background: #dcefe2; color: var(--good); }
+.mv-verdict.down { background: #fae3da; color: var(--hist); }
+.mv-verdict.warn { background: var(--surface-2); color: var(--ink); }
+.mvb-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.mvb-grid > div { display: flex; flex-direction: column; gap: 1px; padding: 5px 6px; background: var(--ground); border-radius: var(--radius-s); }
+.mvb-grid small { color: var(--ink-3); font-size: 0.68rem; }
+.mvb-grid b { font-size: 0.95rem; }
+.mvb-grid .num.up { color: var(--good); } .mvb-grid .num.down { color: var(--hist); }
+.mv-spark { display: block; width: 100%; height: 54px; margin: 10px 0 2px; color: var(--market); }
+.mv-spark .sp-open { fill: var(--ink-3); } .mv-spark .sp-now { fill: var(--market); }
+.mv-axis { display: flex; justify-content: space-between; color: var(--ink-3); font-size: 0.68rem; }
+.mvb-win { display: flex; gap: 10px; flex-wrap: wrap; margin: 8px 0 0; font-size: 0.8rem; }
+.mvb-win small { color: var(--ink-3); margin-right: 2px; }
+.chip.warn { background: var(--surface-2); border: 1px solid var(--line-strong); font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; }
+@media (max-width: 560px) { .mvb-grid { grid-template-columns: repeat(3, 1fr); } }
+:root[data-theme="dark"] .mv-verdict.up { background: #1d3a27; }
+:root[data-theme="dark"] .mv-verdict.down { background: #4a2a1b; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .mv-verdict.up { background: #1d3a27; }
+  :root:not([data-theme="light"]) .mv-verdict.down { background: #4a2a1b; }
+}

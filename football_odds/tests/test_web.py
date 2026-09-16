@@ -226,3 +226,37 @@ def test_pattern_endpoint_answers_at_three_levels_with_both_match_counts(researc
     assert loose["levels"]["all"]["n"] >= d["levels"]["all"]["n"]   # slack can only widen the net
     assert research_client.get("/api/patterns/yok").status_code == 404
     assert research_client.get("/api/patterns/s59?approx=9").status_code == 422
+
+
+def test_movement_endpoint_answers_in_probability_and_admits_what_it_lacks(client, tmp_path, monkeypatch):
+    """The page must never receive a verdict without the data quality that produced it."""
+    import datetime as dt
+    import json as _json
+
+    from src.nesine import archive, movement as mv
+
+    monkeypatch.setattr(web.settings, "raw", web.settings.with_overrides(
+        **{"data.results_dir": str(tmp_path)}).raw)
+    mv._CACHE.clear()
+    ko = dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=30)   # every snapshot below is in the past
+    day = ko.date()
+    local = ko.astimezone(dt.timezone(dt.timedelta(hours=3)))
+    meta = {"code": 91, "date": local.strftime("%Y-%m-%d"), "time": local.strftime("%H:%M"),
+            "home": "Ev", "away": "Dep", "league": "L"}
+    archive.archive_dir(web.settings).mkdir(parents=True, exist_ok=True)
+    with archive.day_path(web.settings, day).open("w", encoding="utf-8") as fh:
+        for mins, h, a in ((240, 2.05, 4.00), (180, 1.96, 4.30), (60, 1.81, 4.90)):
+            ts = (ko - dt.timedelta(minutes=mins)).isoformat(timespec="seconds")
+            fh.write(_json.dumps({"ts": ts, "k": "run", "n": 1, "ch": 3}) + "\n")
+            for path, o in (("ms.1", h), ("ms.X", 3.4), ("ms.2", a)):
+                fh.write(_json.dumps({"ts": ts, "c": 91, "p": path, "o": o, "m": mins}) + "\n")
+    archive.meta_path(web.settings, day).write_text(_json.dumps({"91": meta}), encoding="utf-8")
+
+    d = client.get("/api/hareket/91").json()
+    s = d["selections"]["ms.1"]
+    assert d["started"] is False and s["closing"] is None          # not a closing price until kick-off
+    assert s["movement"]["type"] == "STEAM" and s["movement"]["total_pp"] > 0
+    assert s["open"]["p"] < s["current"]["p"]                      # probability, not raw odds
+    assert s["quality"]["snapshots"] == 3 and s["quality"]["runs"] >= 3
+    assert "config" in d and d["config"]["movement_min_pp"] > 0    # thresholds are data, not code
+    assert client.get("/api/hareket/91?days=99").status_code == 422

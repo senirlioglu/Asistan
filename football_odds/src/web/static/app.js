@@ -1165,6 +1165,7 @@
       ${vbars(Object.fromEntries(top), "En sık skorlar (benzer maçlar)")}
       ${scopes ? `<section><h3>Farklı havuzlarla aynı hesap</h3><div class="table-wrap"><table><thead><tr><th>Havuz</th><th class="num">Maç</th><th class="num">Ev / Ber. / Dep.</th><th class="num">Düzeltilmiş</th><th class="num">Benzerlik</th></tr></thead><tbody>${scopes}</tbody></table></div></section>` : ""}
       ${tol ? `<section><h3>Tolerans eşleşmesi</h3><p class="note">Üç ihtimalin hepsi bu kadar yakın olan geçmiş maç sayısı: ${tol}</p></section>` : ""}
+      <section><h3>Oran hareketi <small class="muted">(nesine, kick-off'a doğru)</small></h3><div data-move>Yükleniyor…</div></section>
       <section><h3>Maç künyesi <small class="muted">(maç öncesi bilinenler)</small></h3><div data-dna>Yükleniyor…</div></section>
       <section><h3>Çok boyutlu ikizler <small class="muted">(araştırma)</small></h3>
         <div class="kseg" data-twink>${[25, 50, 100, 250].map((k) => `<button type="button" data-k="${k}" class="${k === 50 ? "is-on" : ""}">${k}</button>`).join("")}</div>
@@ -1192,9 +1193,95 @@
     });
     loadAnalogues(m, 25, root);
     loadTeams(m, root);
-    loadNesineFor(m, root);
+    // the movement engine is keyed by nesine's match code, which the nesine lookup is what resolves
+    Promise.resolve(loadNesineFor(m, root)).then(() => loadMovement(m, root));
     loadTwins(m, root, 50);
     loadPatterns(m, root);
+  }
+
+  const MOVE_TR = {
+    STEAM: ["Para geliyor (STEAM)", "up"], DRIFT: ["Para çekiliyor (DRIFT)", "down"],
+    REVERSAL: ["Dönüş (REVERSAL)", "warn"], STABLE: ["Sabit", "flat"], NOISY: ["Dağınık", "flat"],
+    LATE_STEAM: ["son anda geldi", ""], LATE_DRIFT: ["son anda çekildi", ""],
+    ACCELERATING: ["hızlanıyor", ""], DECELERATING: ["yavaşlıyor", ""],
+  };
+  const MOVE_SEL = { "ms.1": "Ev sahibi", "ms.X": "Beraberlik", "ms.2": "Deplasman" };
+
+  /** The odds movement engine. Everything is in margin-free probability points, because a 0.15 drop
+      in the raw price means different things at 1.80 and at 6.00 — and the raw number still carries
+      nesine's margin. A verdict is never shown without the data quality that produced it. */
+  async function loadMovement(m, root) {
+    const box = root.querySelector("[data-move]");
+    if (!box) return;
+    const code = m.nesine_code || m._nesine?.code || (m.source === "nesine" ? m.code : null);
+    if (!code) {
+      box.innerHTML = `<p class="note">Bu maç nesine bülteninde eşleşmedi, oran hareketi geçmişi yok.</p>`;
+      return;
+    }
+    try {
+      const d = m._move !== undefined ? m._move : await api(`/api/hareket/${code}`);
+      m._move = d;
+      const rows = Object.entries(d.selections).map(([path, s]) => mvBlock(path, s, d)).filter(Boolean);
+      box.innerHTML = rows.length
+        ? rows.join("")
+          + `<p class="note">Arşiv ${d.archive_from || "—"} tarihinde başladı; o günden öncesi için oran geçmişi <b>yok</b>,
+             uydurulmuyor. Eşikler ayarlanabilir (şu an: hareket ≥ ${d.config.movement_min_pp} puan,
+             tutarlılık ≥ %${Math.round(100 * d.config.direction_consistency)}, sabit &lt; ${d.config.stable_max_pp} puan).</p>`
+        : `<p class="note">Bu maç için henüz kayıtlı oran hareketi yok.</p>`;
+    } catch (e) {
+      box.innerHTML = `<p class="note">Oran hareketi yüklenemedi: ${esc(e.message)}</p>`;
+    }
+  }
+
+  function mvBlock(path, s, d) {
+    if (s.missing) return "";
+    const mvv = s.movement, q = s.quality;
+    const [label, tone] = MOVE_TR[mvv.type] || ["—", "flat"];
+    const tags = (mvv.tags || []).map((t) => (MOVE_TR[t] || [t])[0]).join(" · ");
+    const low = mvv.confidence === "low";
+    const win = (k) => { const w = s.windows[k]; return w && !w.insufficient ? pp1(w.delta_p) : "–"; };
+    return `<div class="mvb">
+      <div class="mvb-top"><b>${MOVE_SEL[path] || esc(path)}</b>
+        ${low ? `<span class="chip warn">DÜŞÜK GÜVEN</span>`
+              : `<span class="mv-verdict ${tone}">${label}</span>${tags ? ` <small class="muted">${tags}</small>` : ""}`}</div>
+      <div class="mvb-grid">
+        <div><small>Açılış</small><b class="num">${num(s.open?.odds)}</b><small class="muted">%${num(s.open?.p, 1)}</small></div>
+        <div><small>Şimdi</small><b class="num">${num(s.current?.odds)}</b><small class="muted">%${num(s.current?.p, 1)}</small></div>
+        <div><small>Kapanış</small><b class="num">${s.closing ? num(s.closing.odds) : "—"}</b>
+          <small class="muted">${s.closing ? "%" + num(s.closing.p, 1) : (d.started ? "yok" : "maç başlamadı")}</small></div>
+        <div><small>Hareket</small><b class="num ${mvv.total_pp > 0 ? "up" : mvv.total_pp < 0 ? "down" : ""}">${mvv.total_pp == null ? "–" : pp1(mvv.total_pp)}</b><small class="muted">puan</small></div>
+        <div><small>Tutarlılık</small><b class="num">${mvv.consistency == null ? "–" : "%" + Math.round(100 * mvv.consistency)}</b><small class="muted">tek yönlülük</small></div>
+        <div><small>Hız (1s)</small><b class="num">${s.velocity_1h == null ? "–" : pp1(s.velocity_1h)}</b><small class="muted">puan/saat</small></div>
+      </div>
+      ${mvSpark(s)}
+      <div class="mvb-win">${["6h", "3h", "1h", "30m", "15m"].map((k) => `<span><small>${k}</small> ${win(k)}</span>`).join("")}</div>
+      ${mvv.reversal ? `<p class="note">Önce ${pp1(mvv.reversal.initial_pp)} puan gitti, sonra ${pp1(mvv.reversal.reversal_pp)} puan geri döndü
+        (başlangıcın %${num(mvv.reversal.recovery_pct, 0)}'i kadar).</p>` : ""}
+      <p class="note">Snapshot ${q.snapshots} (${q.changes} değişim) · ilk kayıt ${ntAgo(q.first)} · son ${ntAgo(q.last)}
+        ${q.coverage == null ? "" : ` · son 24 saatin %${Math.round(100 * q.coverage)}'ünde izleniyorduk`}
+        ${q.novig ? "" : " · <b>marj atılamadı</b> (bu markette tüm sonuçlar izlenmiyor)"}
+        ${low ? ` · <b>${mvv.reason || "veri az"}</b> — sınıflandırma yapılmadı` : ""}</p>
+    </div>`;
+  }
+
+  /** Probability against time-to-kick-off. Small on purpose: the numbers above are the content. */
+  function mvSpark(s) {
+    const pts = (s.chart || []).filter((p) => p.minutes != null && p.p != null);
+    if (pts.length < 3) return "";
+    const W = 280, H = 54, pad = 3;
+    const xs = pts.map((p) => Math.max(p.minutes, 0)), ys = pts.map((p) => p.p);
+    const x0 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const span = Math.max(y1 - y0, 0.5);
+    const X = (m) => pad + (W - 2 * pad) * (1 - Math.max(m, 0) / Math.max(x0, 1));
+    const Y = (p) => H - pad - (H - 2 * pad) * ((p - y0) / span);
+    const dAttr = pts.map((p, i) => `${i ? "L" : "M"}${X(p.minutes).toFixed(1)},${Y(p.p).toFixed(1)}`).join(" ");
+    const last = pts[pts.length - 1];
+    return `<svg class="mv-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img"
+        aria-label="Kick-off'a doğru marjsız olasılık: %${ys[0].toFixed(1)} → %${last.p.toFixed(1)}">
+      <path d="${dAttr}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="${X(pts[0].minutes).toFixed(1)}" cy="${Y(pts[0].p).toFixed(1)}" r="2.5" class="sp-open"/>
+      <circle cx="${X(last.minutes).toFixed(1)}" cy="${Y(last.p).toFixed(1)}" r="2.5" class="sp-now"/>
+    </svg><div class="mv-axis"><small>açılış · ${Math.round(x0 / 60)} sa önce</small><small>%${y0.toFixed(1)}–%${y1.toFixed(1)}</small><small>kick-off</small></div>`;
   }
 
   /** The state table's own numbers for this match: strength, form, goals, rest — what the twin and
