@@ -575,6 +575,29 @@ reddedildi" aynı şey değil.
 | 6 | Sadece nesine'de olan notların (1, 5, 6, 7, 12, 13, 15) ileriye dönük ölçümü | Arşiv birikmesini bekliyor |
 | — | Avrupa / kupa fikstür bağlamı | **Yapılamaz** — o maçlar veri setinde hiç yok |
 
+### "Dakikalık hareket geçmişi için başka bir kaynak alalım mı?" — ölçüldü, hayır
+
+Nesine arşivi 15 Eylül 2026'da başladığı için dakikalık hareket geçmişi yok, ve bu "yıllarca
+geçmiş veren bir kaynak satın alalım/kazıyalım mı" sorusunu doğuruyor. Soru **hiçbir şey almadan**
+cevaplanabilir: veritabanında **54.125 maçta iki fiyat** zaten var — açılış ortalaması ve kapanış
+ortalaması (2019-07 → 2026-09). Tek adım, dakika detayı yok, ama yedi yıl derinlikte.
+
+Karar veren tek test: *açılış→kapanış hareketi, **kapanış fiyatının** bilmediği bir şey söylüyor mu?*
+
+| ölçüm | sonuç |
+|---|---|
+| kapanış vs açılış (Brier) | 0,59717 vs 0,59953 — kapanış daha iyi, p ≈ 0 |
+| **açılış** fiyatına karşı, büyük yükseliş / büyük düşüş | **+6,2** / **−5,6** puan — ölçüm hareketi net görüyor |
+| **kapanış** fiyatına karşı, aynı kovalar | −0,8 … +1,3 puan; 14 hücrede en küçük q = **0,20** |
+| iki zaman penceresinde (2019–23 / 2023–26) | hiçbir hücre ayakta kalmıyor, **işaret değiştiriyor** |
+
+Kontrol satırı (açılışa karşı ±6 puan) bu sonucun anlamını taşıyan şey: ölçüm kördür diye değil,
+**kapanış fiyatı hareketin bildiğini zaten içerdiği için** sessiz kalıyor. Dolayısıyla yıllara
+yayılan dakikalık veri **tahmine** bir şey katmaz — katabileceği tek şey **zamanlama** (fiyat
+hareketini tamamlamadan girebilmek), o da nesinenin kendi fiyatı üzerinde **ileriye dönük** bir
+sorudur ve geçmiş satın alarak cevaplanamaz. Kod: `backtest/movement.py`, çıktı
+`results/backtest/movement_steam_vs_drift.csv` (`q_value` sütunu).
+
 **Yapıldı, ölçüldü, veri "kullanma" dedi** (eksik değil, sonuç):
 
 | konu | ölçüm | karar |
