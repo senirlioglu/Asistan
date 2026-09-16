@@ -510,3 +510,8 @@ tr.thin td { color: var(--ink-3); }          /* under 200 matches: visible, but 
   border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.84rem; line-height: 1.5; margin: 12px 0 0; }
 .ex-check > span { line-height: 1.35; }
 .ex-check .muted { font-size: 0.76rem; }
+.ac-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 10px 0; }
+.ac-filters label { display: flex; flex-direction: column; gap: 3px; font-size: 0.76rem; color: var(--ink-3); }
+.ac-filters select { font: inherit; font-size: 0.85rem; padding: 4px 7px; border: 1px solid var(--line-strong);
+  border-radius: var(--radius-s); background: var(--ground); color: var(--ink); }
+tr.ac-alive td { background: var(--surface-2); font-weight: 600; }

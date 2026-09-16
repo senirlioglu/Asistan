@@ -347,6 +347,24 @@
       <p class="note">Aday listesi kodda önceden yazılıdır, yani kaç test yapıldığı sayılabilir. Üç pencere:
       keşif → doğrulama → hiç dokunulmamış test; sonda çoklu test düzeltmesi (Benjamini-Hochberg).</p>
       <div id="rs-discovery">—</div>
+
+      <details class="ex-more" id="rs-all">
+        <summary><b>Taranan bütün desenleri gör</b> <span class="muted">— hangisi nerede elendi</span></summary>
+        <div class="ex-more-body">
+          <p class="note">Huni yalnızca kaç tanesinin geçtiğini söyler. Asıl bilgi hangilerinin <b>elendiği</b>:
+          aklına gelen fikir büyük ihtimalle bu listede, ve nerede öldüğü yazıyor.</p>
+          <div class="ac-filters">
+            <label>Nerede <select id="ac-stage"><option value="">hepsi</option></select></label>
+            <label>Sonuç <select id="ac-outcome"><option value="">hepsi</option></select></label>
+            <label>Taraf <select id="ac-side"><option value="">hepsi</option>
+              <option value="home">ev</option><option value="away">deplasman</option></select></label>
+            <label>Sırala <select id="ac-sort">
+              <option value="abs">en büyük fark</option><option value="n">en çok maç</option>
+              <option value="p">en küçük p</option></select></label>
+          </div>
+          <div id="ac-out">Yükleniyor…</div>
+        </div>
+      </details>
     </section>
 
     <section class="rs-block">

@@ -284,6 +284,54 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
         aşağıdaki üç pencereli tarama ve çoklu test düzeltmesidir.</p>`;
   }
 
+
+  // ---------------------------------------------------------------- taranan bütün desenler
+  // The funnel says 658 -> 65 -> 4 -> 1 and hides the useful half: WHICH ideas died and where.
+  // A reader who wants to try every pattern mostly wants this table, because their idea is
+  // probably already in it with a cause of death attached.
+  function acRender() {
+    const all = (state.rs?.discovery?.claims) || [];
+    const names = state.rs?.discovery?.stage_names || {};
+    const out = $("#ac-out");
+    if (!out) return;
+    if (!all.length) { out.innerHTML = `<p class="note">Tarama sonucu henüz yok (<code>cli discover</code>).</p>`; return; }
+    const fill = (id, vals, label) => {
+      const sel = $(id);
+      if (!sel || sel._filled) return;
+      sel._filled = true;
+      vals.forEach((v) => { const o = el("option", "", label(v)); o.value = v; sel.appendChild(o); });
+      sel.onchange = acRender;
+    };
+    fill("#ac-stage", [...new Set(all.map((r) => r.stage))], (v) => names[v] || v);
+    fill("#ac-outcome", [...new Set(all.map((r) => r.outcome))], (v) => EX_OUT[v] || v);
+    const sortSel = $("#ac-sort"); if (sortSel && !sortSel._w) { sortSel._w = true; sortSel.onchange = acRender; }
+    const sideSel = $("#ac-side"); if (sideSel && !sideSel._w) { sideSel._w = true; sideSel.onchange = acRender; }
+
+    const st = $("#ac-stage")?.value, oc = $("#ac-outcome")?.value, sd = $("#ac-side")?.value;
+    let rows = all.filter((r) => (!st || r.stage === st) && (!oc || r.outcome === oc) && (!sd || r.side === sd));
+    const how = $("#ac-sort")?.value || "abs";
+    rows.sort((a, b) => how === "n" ? b.n_train - a.n_train
+      : how === "p" ? (a.p_train ?? 1) - (b.p_train ?? 1)
+      : Math.abs(b.edge_train) - Math.abs(a.edge_train));
+    const shown = rows.slice(0, 120);
+    out.innerHTML = `<p class="note">${all.length} iddia ölçüldü · filtreye uyan ${rows.length}${rows.length > shown.length ? `, ilk ${shown.length} gösteriliyor` : ""}.</p>
+      <div class="table-wrap"><table><thead><tr><th>Desen</th><th>Sonuç</th><th class="num hide-sm">N</th>
+        <th class="num">Keşif</th><th class="num hide-sm">Doğrulama</th><th class="num hide-sm">Test</th>
+        <th>Nerede elendi</th></tr></thead><tbody>
+        ${shown.map((r) => `<tr class="${r.stage === "survived" ? "ac-alive" : ""}">
+          <td class="wrap">${esc(r.side === "home" ? "ev · " : "dep · ")}${esc(r.label)}</td>
+          <td>${EX_OUT[r.outcome] || r.outcome}</td>
+          <td class="num hide-sm">${r.n_train}</td>
+          <td class="num"><b>${pp1(r.edge_train)}</b></td>
+          <td class="num hide-sm">${r.edge_val == null ? "–" : pp1(r.edge_val)}</td>
+          <td class="num hide-sm">${r.edge_test == null ? "–" : pp1(r.edge_test)}${r.q_test != null ? `<br><small class="muted">q=${num(r.q_test, 3)}</small>` : ""}</td>
+          <td class="wrap"><small>${esc(names[r.stage] || r.stage)}</small></td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="note">Sütunlar üç pencerenin farkı (puan). Bir desenin keşif penceresinde büyük çıkıp
+        doğrulamada küçülmesi ya da <b>işaret değiştirmesi</b> beklenen bir şeydir — tek pencerede ölçüp
+        inanmanın neden yanlış olduğunu bu tablo gösterir.</p>`;
+  }
+
   function renderResearch() {
     exWire();
     const d = state.rs || {};
@@ -314,6 +362,7 @@ ${d.n_exact !== d.n ? ` (tam eşleşen ${d.n_exact.toLocaleString("tr")})` : ""}
          ve uzun vadede kârın tek güvenilir erken göstergesidir.</p>`
       : `<p class="note">Model karşılaştırması henüz çalıştırılmadı (<code>cli models</code>).</p>`;
 
+    acRender();
     const fw = d.forward || {};
     const fwRows = fw.rows || [];
     $("#rs-forward").innerHTML = fw.n_frozen

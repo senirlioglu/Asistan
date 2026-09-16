@@ -29,6 +29,16 @@ def _parse_list(value: str | None) -> list[str] | None:
     return [v.strip() for v in value.split(",") if v.strip()]
 
 
+def _round_claims(df) -> list[dict]:
+    """The full claims table, rounded so the file stays small enough to ship to a phone."""
+    out = df.copy()
+    for c in out.columns:
+        if out[c].dtype.kind == "f":
+            out[c] = out[c].round(3)
+    keep = [c for c in out.columns if c != "key"]
+    return out[keep].to_dict("records")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="football-odds", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--config", help="path to settings.yaml", default=None)
@@ -149,9 +159,14 @@ def main(argv: list[str] | None = None) -> int:
         print("\n" + discovery.report(res))
         out = settings.results_dir / "backtest" / "discovery.json"
         out.parent.mkdir(parents=True, exist_ok=True)
+        claims = res.get("claims")
         payload = {"stages": res["stages"],
                    "survivors": [] if not len(res["survivors"]) else res["survivors"].drop(columns=["pattern"]).to_dict("records"),
-                   "confirmed": [] if not len(res["confirmed"]) else res["confirmed"].drop(columns=["pattern"]).to_dict("records")}
+                   "confirmed": [] if not len(res["confirmed"]) else res["confirmed"].drop(columns=["pattern"]).to_dict("records"),
+                   # every claim the scan measured, with the window it reached: the funnel counts
+                   # alone hide which ideas died, which is the answer to most readers' questions
+                   "claims": [] if claims is None or not len(claims) else _round_claims(claims),
+                   "stage_names": discovery.STAGES}
         out.write_text(json.dumps(payload, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
         log.info("wrote %s", out)
         return 0

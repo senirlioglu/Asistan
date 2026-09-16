@@ -119,13 +119,20 @@ def prepare(state: pd.DataFrame, matches: pd.DataFrame) -> pd.DataFrame:
     """Join the pre-match state with what the market said and what actually happened.
 
     The raw consensus odds ride along too: the owner's notes are written about the printed price
-    ("favoriye 1,20 altı", "tam 1,67"), not about a margin-free probability."""
+    ("favoriye 1,20 altı", "tam 1,67"), not about a margin-free probability.
+
+    The state table carries some of these columns already (`state.PASSTHROUGH`), and a plain merge
+    then suffixes both sides into `ftr_x` / `ftr_y` — leaving no `ftr` at all and breaking every
+    measurement downstream with a KeyError. The match database is the authority on what happened,
+    so its copy wins and the state table's duplicate is dropped before the join."""
     cols = ["match_id", "p_home", "p_draw", "p_away", "p_over25", "ftr", "htr", "fthg", "ftag", "hthg", "htag",
             "total_goals", "cons_h", "cons_d", "cons_a", "p_under25", "result_code",
             "avgc_h", "avgc_d", "avgc_a",                     # closing prices: the CLV benchmark
             "delta_p_home", "delta_p_draw", "delta_p_away"]   # pre-close -> close, the only movement history there is
     have = [c for c in cols if c in matches.columns]
-    out = state.merge(matches[have], on="match_id", how="inner", validate="one_to_one")
+    dupes = [c for c in have if c != "match_id" and c in state.columns]
+    left = state.drop(columns=dupes) if dupes else state
+    out = left.merge(matches[have], on="match_id", how="inner", validate="one_to_one")
     if {"cons_h", "cons_a"} <= set(out.columns):
         out["odds_gap"] = (out["cons_h"] - out["cons_a"]).abs()
         out["fav_odds"] = out[["cons_h", "cons_a"]].min(axis=1)

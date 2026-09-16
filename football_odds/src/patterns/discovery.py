@@ -159,7 +159,66 @@ def discover(frame: pd.DataFrame, windows: Windows = DEFAULT_WINDOWS, min_n: int
               "passed_train": int(len(keep)), "validation_too_small": int(unmeasured_val),
               "validation_measured": int(len(merged)), "passed_validation": int(len(confirmed)),
               "test_too_small": int(unmeasured_test), "survived_test": int(len(survivors))}
-    return {"stages": stages, "train": train, "confirmed": confirmed, "survivors": survivors, "windows": windows}
+    return {"stages": stages, "train": train, "confirmed": confirmed, "survivors": survivors,
+            "claims": _claims(train, keep, merged, confirmed, locals().get("test"), survivors),
+            "windows": windows}
+
+
+# where a claim stopped. The funnel counts alone say 658 -> 65 -> 4 -> 1 and hide the useful half of
+# the story: WHICH ideas died, and at which window. A reader who wants to try "all the patterns"
+# wants this table, because the ones that died are the answer to most of their ideas.
+STAGES = {
+    "train_small": "keşifte yeterli maç yok",
+    "train_out": "keşifte elendi",
+    "val_small": "doğrulamada yeterli maç yok",
+    "val_out": "doğrulamada elendi",
+    "test_small": "testte yeterli maç yok",
+    "test_out": "testte elendi",
+    "survived": "üç pencereden de geçti",
+}
+
+
+def _claims(train, keep, merged, confirmed, test, survivors) -> pd.DataFrame:
+    """Every claim the scan measured, with the window it reached and the numbers from each one."""
+    if train is None or train.empty:
+        return pd.DataFrame()
+    out = train[["key", "label", "side", "form", "outcome", "n", "actual", "market", "ref",
+                 "edge", "lo", "hi", "p", "priced"]].copy()
+    out = out.rename(columns={"n": "n_train", "edge": "edge_train", "lo": "lo_train", "hi": "hi_train",
+                              "p": "p_train"})
+    idx = ["key", "outcome"]
+
+    def _add(df, cols, suffix):
+        if df is None or not len(df):
+            for c in cols:
+                out[f"{c}_{suffix}"] = None
+            return
+        take = df[[*idx, *cols]].rename(columns={c: f"{c}_{suffix}" for c in cols})
+        for c in cols:
+            out[f"{c}_{suffix}"] = out.merge(take, on=idx, how="left")[f"{c}_{suffix}"].to_numpy()
+
+    _add(merged, ["n", "edge", "p"], "val")
+    _add(test, ["n", "edge", "p", "q"], "test")
+
+    passed_train = {(r["key"], r["outcome"]) for _, r in keep.iterrows()} if len(keep) else set()
+    passed_val = {(r["key"], r["outcome"]) for _, r in confirmed.iterrows()} if len(confirmed) else set()
+    alive = {(r["key"], r["outcome"]) for _, r in survivors.iterrows()} if survivors is not None and len(survivors) else set()
+
+    def stage(r):
+        pair = (r["key"], r["outcome"])
+        if pair not in passed_train:
+            return "train_out"
+        if pd.isna(r.get("edge_val")):
+            return "val_small"
+        if pair not in passed_val:
+            return "val_out"
+        if pd.isna(r.get("edge_test")):
+            return "test_small"
+        return "survived" if pair in alive else "test_out"
+
+    out["stage"] = out.apply(stage, axis=1)
+    out["stage_tr"] = out["stage"].map(STAGES)
+    return out.sort_values("edge_train", key=lambda c: c.abs(), ascending=False).reset_index(drop=True)
 
 
 def report(result: dict) -> str:

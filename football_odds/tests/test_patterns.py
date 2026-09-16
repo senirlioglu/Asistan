@@ -681,3 +681,18 @@ def test_an_unpriced_outcome_is_compared_with_matches_at_the_same_price():
     vs_price = engine.measure(sub, "home", "ht_win", ref=matched)
     assert vs_pool["vs_ref"] > 20                          # a discovery, made of nothing
     assert abs(vs_price["vs_ref"]) < 1                     # and it is gone when the price is matched
+
+
+def test_prepare_survives_a_state_table_that_already_carries_the_result_columns():
+    """The state builder passes some result and price columns through, so a plain merge suffixed both
+    sides into ftr_x / ftr_y and left no `ftr` at all — every measurement downstream then died on a
+    KeyError. Caught when the discovery scan crashed after the state table was rebuilt."""
+    st = pd.DataFrame({"match_id": ["a", "b"], "h_form": ["WWW", "LLL"],
+                       "ftr": ["H", "A"], "fthg": [9, 9], "p_home": [0.1, 0.1]})   # stale copies
+    m = pd.DataFrame({"match_id": ["a", "b"], "ftr": ["D", "H"], "fthg": [1, 2], "ftag": [1, 0],
+                      "p_home": [0.5, 0.6], "p_draw": [0.25, 0.25], "p_away": [0.25, 0.15]})
+    out = engine.prepare(st, m)
+    assert "ftr_x" not in out.columns and "ftr_y" not in out.columns
+    assert list(out["ftr"]) == ["D", "H"]                 # the match database is the authority
+    assert list(out["fthg"]) == [1, 2] and list(out["p_home"]) == [0.5, 0.6]
+    assert list(out["h_form"]) == ["WWW", "LLL"]          # and the state's own columns survive
