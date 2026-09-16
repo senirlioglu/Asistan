@@ -302,17 +302,21 @@
     // the filters apply in order: mode -> league -> search -> odds -> note
     const byMode = d.matches.filter((m) => (s.mode === "all" ? true : s.mode === "ours" ? !!m.ours : m.hits.length));
     const q = s.q.trim().toLocaleLowerCase("tr");
+    // Typing a team name is asking "where is THIS match", not "browse the current mode". The mode
+    // defaults to "nota uyanlar", which hides two thirds of the bulletin — a match that fires no
+    // note was unfindable by search, which reads as "the site does not have it".
+    const base = q ? d.matches : byMode;
     const match = (m) => (!q || `${m.home} ${m.away} ${m.league}`.toLocaleLowerCase("tr").includes(q))
       && (!s.leagues.size || s.leagues.has(m.league))
       && (!s.market || (() => { const v = ntValue(m, s.market); return v != null && (s.min == null || v >= s.min - 1e-9) && (s.max == null || v <= s.max + 1e-9); })())
       && (!s.rules.size || m.hits.some((x) => s.rules.has(x.id)));
 
-    const leagues = [...new Map(byMode.map((m) => [m.league, 0])).keys()].sort((a, b) => a.localeCompare(b, "tr"));
+    const leagues = [...new Map(base.map((m) => [m.league, 0])).keys()].sort((a, b) => a.localeCompare(b, "tr"));
     const lwrap = $("#nt-leagues"); lwrap.innerHTML = "";
     const lall = el("button", "chip" + (s.leagues.size === 0 ? " is-on" : ""), `Tüm ligler <small>${leagues.length}</small>`); lall.type = "button";
     lall.onclick = () => { s.leagues = new Set(); renderNotes(); }; lwrap.appendChild(lall);
     leagues.forEach((lg) => {
-      const n = byMode.filter((m) => m.league === lg).length;
+      const n = base.filter((m) => m.league === lg).length;
       const b = el("button", "chip" + (s.leagues.has(lg) ? " is-on" : ""), `${esc(lg)} <small>${n}</small>`); b.type = "button";
       b.onclick = () => { if (s.leagues.has(lg)) s.leagues.delete(lg); else s.leagues.add(lg); renderNotes(); };
       lwrap.appendChild(b);
@@ -322,13 +326,13 @@
     const all = el("button", "chip" + (s.rules.size === 0 ? " is-on" : ""), "Tüm notlar"); all.type = "button";
     all.onclick = () => { s.rules = new Set(); renderNotes(); }; chips.appendChild(all);
     d.rules.filter((r) => r.applied).forEach((r) => {
-      const n = byMode.filter((m) => m.hits.some((x) => x.id === r.id)).length;
+      const n = base.filter((m) => m.hits.some((x) => x.id === r.id)).length;
       const b = el("button", "chip" + (s.rules.has(r.id) ? " is-on" : ""), `${r.no}. ${esc(r.title)} <small>${n}</small>`); b.type = "button";
       b.onclick = () => { if (s.rules.has(r.id)) s.rules.delete(r.id); else s.rules.add(r.id); renderNotes(); };
       chips.appendChild(b);
     });
 
-    let ms = byMode.filter(match);
+    let ms = base.filter(match);
     const key = { ms1: (m) => m.ms["1"] ?? 99, ms2: (m) => m.ms["2"] ?? 99 }[s.sort];
     if (key) ms.sort((a, b) => key(a) - key(b));
     else if (s.sort === "hits") ms.sort((a, b) => b.hits.length - a.hits.length || (a.time || "").localeCompare(b.time || ""));
@@ -340,10 +344,16 @@
     $("#nt-count").textContent = `${fmtDate(d.date)} · nesine'de ${d.matches.length} maç, ${d.n_hits} tanesi bir nota uyuyor · gösterilen ${ms.length}`
       + ` · oranlar ${ntAgo(meta.fetched_at)}${meta.error ? " · yenileme başarısız, eski oranlar" : ""}`
       + (meta.watch?.running ? (meta.watch.interval ? ` · her ${Math.round(meta.watch.interval / 60)} dk'da bir canlı yenileniyor` : " · canlı yenileme açık") : "")
-      + (moved ? ` · ${moved} maçta oran oynadı` : "");
+      + (moved ? ` · ${moved} maçta oran oynadı` : "")
+      + (q && s.mode !== "all" ? " · arama bültenin tamamında yapıldı" : "");
 
     const body = $("#nt-body");
-    if (!ms.length) { body.innerHTML = `<div class="day-empty">Bu filtrelere uyan maç yok. Üstteki seçimi "Tüm maçlar" yapmayı ya da oran filtresini temizlemeyi dene.</div>`; return; }
+    if (!ms.length) {
+      const why = q ? `"${esc(s.q.trim())}" bugünün nesine bülteninde (${d.matches.length} maç) bulunamadı — maç başka bir güne ait olabilir, ya da takım adı nesine'de farklı yazılıyordur.`
+        : `Bu filtrelere uyan maç yok. Üstteki seçimi "Tüm maçlar" yapmayı ya da oran filtresini temizlemeyi dene.`;
+      body.innerHTML = `<div class="day-empty">${why}</div>`;
+      return;
+    }
     body.innerHTML = ms.slice(0, 250).map((m) => {
       const hits = m.hits.filter((x) => !s.rules.size || s.rules.has(x.id));
       const ours = m.ours ? `<p class="note nt-ours">Bizim analiz (${esc(m.ours.league_name)}): piyasa ${pct(m.ours.market.h)} / ${pct(m.ours.market.d)} / ${pct(m.ours.market.a)} · geçmiş ${pct(m.ours.adj.h)} / ${pct(m.ours.adj.d)} / ${pct(m.ours.adj.a)} · 2,5 üst ${pct(m.ours.over25)} · ${m.ours.n} benzer maç</p>` : "";
