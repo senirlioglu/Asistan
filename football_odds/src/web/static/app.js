@@ -2116,11 +2116,16 @@
   async function lmLoad(date) {
     state.lab.picked = null; $("#lm-picked").hidden = true; $("#lm-scan").innerHTML = ""; $("#lm-target").hidden = true;
     $("#lm-list").innerHTML = `<p class="note">Yükleniyor…</p>`;
-    let day = { matches: [] }, ready = {};
+    // two sources: the analysed fixtures (full payload, opens the match sheet as-is) and the nesine
+    // bulletin's matches that got a state row (a week ahead, every league nesine prices)
+    let day = { matches: [] }, lab = { matches: [] };
     try { day = await api(`/api/day/${date}`); } catch (_) {}
-    try { (await api(`/api/lab/maclar?from=${date}&to=${date}`)).matches.forEach((m) => (ready[m.id] = m.ready)); } catch (_) {}
+    try { lab = await api(`/api/lab/maclar?from=${date}&to=${date}`); } catch (_) {}
     if ($("#lm-date").value !== date) return;
-    state.lab.day = day; state.lab.dayList = day.matches.map((m) => ({ ...m, _ready: ready[m.id] !== false }));
+    const payload = new Map(day.matches.map((m) => [m.id, m]));
+    state.lab.day = day;
+    state.lab.dayList = lab.matches.map((m) => ({ ...m, _ready: m.ready !== false, _m: payload.get(m.id) || null,
+      odds: { h: m.odds?.[0], d: m.odds?.[1], a: m.odds?.[2] } }));
     state.lab.leagues = new Set(state.lab.dayList.map((m) => m.league));
     const wrap = $("#lm-leagues"); wrap.innerHTML = "";
     const leagues = [...new Map(state.lab.dayList.map((m) => [m.league, m.league_name])).entries()].sort((a, b) => a[1].localeCompare(b[1], "tr"));
@@ -2146,8 +2151,10 @@
       return;
     }
     if (!ms.length) { box.innerHTML = `<p class="note">Filtreye uyan maç yok.</p>`; return; }
-    box.innerHTML = ms.slice(0, 120).map((m) => `<button type="button" class="lab-row${m._ready ? "" : " is-na"}" data-pick="${esc(m.id)}" ${m._ready ? "" : 'title="Bu maç için durum tablosu henüz hazır değil (günlük iş)"'}>
-        <span class="lab-row-main"><b>${esc(m.home)} – ${esc(m.away)}</b><small class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}</small></span>
+    const nNes = ms.filter((m) => m.source === "nesine").length;
+    box.innerHTML = (nNes ? `<p class="note">${ms.length} maç; ${nNes} tanesi yalnızca nesine bülteninden (fiyatı nesine'nin, marj çıkarılmış; Maçlar sekmesindeki analiz yok, Pattern Lab motorları çalışır).</p>` : "")
+      + ms.slice(0, 200).map((m) => `<button type="button" class="lab-row${m._ready ? "" : " is-na"}" data-pick="${esc(m.id)}" ${m._ready ? "" : 'title="Bu maç için durum tablosu henüz hazır değil (günlük iş)"'}>
+        <span class="lab-row-main"><b>${esc(m.home)} – ${esc(m.away)}</b><small class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}${m.source === "nesine" ? ' · <span class="ev ev-ctx">nesine</span>' : ""}</small></span>
         <span class="num muted">${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}</span></button>`).join("");
     box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => lmPick(b.dataset.pick)));
   }
@@ -2231,8 +2238,21 @@
     box.querySelectorAll("[data-cycle]").forEach((b) => (b.onclick = () => { labShow("cycle"); lcRun(d.match.home, b.dataset.cycle); }));
   }
 
-  function openSheetAt(m, anchor) {
-    openSheet(m);
+  async function openSheetAt(m, anchor) {
+    let mm = m._m || m;
+    if (!m._m && m.source === "nesine") {
+      if (!m._sheet) {
+        if (!m.code) { toast("Bu maçın nesine kodu yok."); return; }
+        try {
+          const d = await api(`/api/nesine-analiz?code=${m.code}&k=25`);
+          mm = d.match; mm.id = m.id; mm.source = "nesine-state";       // the state row exists: every engine may run
+          mm._analogues = d.analogues; mm._analogueK = 25; mm._teams = d.teams; mm._nesine = d.nesine;
+          mm.league_name = m.league_name; m._sheet = mm;
+        } catch (e) { toast("Maç açılamadı: " + e.message); return; }
+      }
+      mm = m._sheet;
+    }
+    openSheet(mm);
     const target = $("#sheet-body").querySelector(`[data-anchor="${anchor}"]`);
     if (target) setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   }

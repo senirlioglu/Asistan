@@ -143,7 +143,17 @@ def _build_state(settings: Settings, table) -> None:
     try:
         from ..patterns.state import build
 
-        out = build(settings, fixtures=table)
+        fixtures = table
+        try:  # nesine's bulletin runs a week ahead over every league it prices: those matches get state rows too
+            from ..nesine import fixtures as nf
+
+            extra, meta = nf.nesine_fixture_table(settings)
+            nf.write_meta(settings, meta)
+            fixtures = nf.merge_fixtures(table, extra)
+            log.info("state fixtures: %d analysed + %d from the nesine bulletin", len(table) if table is not None else 0, len(extra))
+        except Exception as exc:  # noqa: BLE001 - the bulletin is optional; the analysed fixtures alone still build
+            log.warning("nesine fixtures skipped: %s", exc)
+        out = build(settings, fixtures=fixtures)
         log.info("match state rebuilt: %d rows", len(out))
     except Exception as exc:  # noqa: BLE001 - derived data, never fatal
         log.warning("match state build skipped: %s", exc)

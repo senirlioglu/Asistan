@@ -527,8 +527,9 @@ def _nesine_payload(m: dict, hits: list, store: dict) -> dict:
             "hits": hits, "moves": watcher.movement(store, m["code"], changed_only=True)}
 
 
-def _nesine_brief(date_tr: str, home: str, away: str) -> dict | None:
-    """The bulletin entry for one of OUR fixtures (reverse of `_ours_lookup`), or None when it is not quoted."""
+def _nesine_brief(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
+    """The bulletin entry for one of OUR fixtures (reverse of `_ours_lookup`), or None when it is not quoted.
+    A bulletin fixture already knows its nesine code, so it is looked up by code, not by name."""
     from ..nesine import watcher
     from ..nesine.bulletin import load_matches
     from ..nesine.history import team_hits
@@ -541,6 +542,11 @@ def _nesine_brief(date_tr: str, home: str, away: str) -> dict | None:
         return {"error": str(exc)}
     best, best_s = None, 0.0
     for m in matches:
+        if code is not None:
+            if m.get("code") == code:
+                best, best_s = m, 1.0
+                break
+            continue
         if m["date"] != date_tr:
             continue
         s = (name_score(home, m["home"]) + name_score(away, m["away"])) / 2
@@ -724,25 +730,43 @@ def lab_targets() -> dict:
 
 @app.get("/api/lab/maclar")
 def lab_matches(from_: str | None = Query(default=None, alias="from"), to: str | None = None) -> dict:
-    """The analysed fixtures of a date range (Turkey dates) that the state table knows — the lab's match picker."""
+    """The fixtures of a date range (Turkey dates) the lab can analyse: the analysed ones from the
+    prediction files, plus the nesine bulletin's matches that got a state row (source "nesine")."""
+    from ..nesine import fixtures as nf
     from ..patterns import service
 
     df = _all_matches()
-    if df.empty:
-        return {"matches": []}
     today = dt.date.today().isoformat()
     lo, hi = from_ or today, to or from_ or today
-    sub = df[(df["date_tr"].astype(str) >= lo) & (df["date_tr"].astype(str) <= hi)]
     frame = service.frame(settings)
     known = set(frame["match_id"].astype(str)) if frame is not None else set()
     out = []
-    for _, r in sub.iterrows():
-        mid = _str(r["match_id"])
-        out.append({"id": mid, "date": _str(r["date_tr"]), "time": _str(r["time_tr"]), "league": _str(r["league"]),
-                    "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": _str(r["home"]),
-                    "away": _str(r["away"]), "odds": [_num(r.get("odds_h")), _num(r.get("odds_d")), _num(r.get("odds_a"))],
-                    "market": [_num(r.get("market_h")), _num(r.get("market_d")), _num(r.get("market_a"))],
-                    "ready": mid in known})
+    if not df.empty:
+        sub = df[(df["date_tr"].astype(str) >= lo) & (df["date_tr"].astype(str) <= hi)]
+        for _, r in sub.iterrows():
+            mid = _str(r["match_id"])
+            out.append({"id": mid, "date": _str(r["date_tr"]), "time": _str(r["time_tr"]), "league": _str(r["league"]),
+                        "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": _str(r["home"]),
+                        "away": _str(r["away"]), "odds": [_num(r.get("odds_h")), _num(r.get("odds_d")), _num(r.get("odds_a"))],
+                        "market": [_num(r.get("market_h")), _num(r.get("market_d")), _num(r.get("market_a"))],
+                        "ready": mid in known, "source": "football-data"})
+    if frame is not None:
+        meta = nf.read_meta(settings)
+        have = {m["id"] for m in out}
+        pairs = {(m["home"], m["away"], nf._shift(m["date"], k)) for m in out for k in (-1, 0, 1)}
+        up = frame[frame["ftr"].isna() & (frame["date"].astype(str).str[:10] >= lo) & (frame["date"].astype(str).str[:10] <= hi)]
+        for _, r in up.iterrows():
+            mid, h, a, d = _str(r["match_id"]), _str(r["home_team"]), _str(r["away_team"]), str(r["date"])[:10]
+            if mid in have or (h, a, d) in pairs:
+                continue
+            info = meta.get(mid, {})
+            out.append({"id": mid, "date": d, "time": info.get("time", ""), "league": _str(r["league"]),
+                        "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": h, "away": a,
+                        "odds": [_num(r.get("cons_h")), _num(r.get("cons_d")), _num(r.get("cons_a"))],
+                        "market": [_num(100 * float(r["p_home"])) if pd.notna(r.get("p_home")) else None,
+                                   _num(100 * float(r["p_draw"])) if pd.notna(r.get("p_draw")) else None,
+                                   _num(100 * float(r["p_away"])) if pd.notna(r.get("p_away")) else None],
+                        "ready": True, "source": "nesine", "code": info.get("code"), "nesine_league": info.get("league_name", "")})
     out.sort(key=lambda m: (m["date"], m["time"], m["league_name"]))
     return {"from": lo, "to": hi, "matches": out, "state_ready": frame is not None}
 
@@ -755,13 +779,23 @@ def lab_target(match_id: str, target: str = Query(..., min_length=3, max_length=
 
     if target not in tg.TARGETS:
         raise HTTPException(422, "bilinmeyen hedef")
+    from ..patterns import service
+
     df = _all_matches()
     nesine = None
-    if not df.empty:
-        sub = df[df["match_id"].astype(str) == match_id]
-        if not sub.empty:
-            r = sub.iloc[-1]
-            nesine = _nesine_brief(_str(r["date_tr"]), _str(r["home"]), _str(r["away"]))
+    sub = df[df["match_id"].astype(str) == match_id] if not df.empty else df
+    if not df.empty and not sub.empty:
+        r = sub.iloc[-1]
+        nesine = _nesine_brief(_str(r["date_tr"]), _str(r["home"]), _str(r["away"]))
+    else:                                   # a bulletin fixture: the state row knows the clubs and the (Turkey) date
+        frame = service.frame(settings)
+        hit = frame[frame["match_id"].astype(str) == match_id] if frame is not None else None
+        if hit is not None and not hit.empty:
+            r = hit.iloc[0]
+            from ..nesine import fixtures as nf
+
+            info = nf.read_meta(settings).get(match_id, {})
+            nesine = _nesine_brief(str(r["date"])[:10], _str(r["home_team"]), _str(r["away_team"]), code=info.get("code"))
     out = tg.analyse(settings, match_id, target, side=side, nesine=nesine)
     if out is None:
         raise HTTPException(404, "bu maç için durum tablosu hazır değil")
