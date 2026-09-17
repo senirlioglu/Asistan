@@ -517,6 +517,7 @@ geldiğinde listeler. Nesine bülteni ise her maçı ve **çok daha fazla market
 | **Arşiv** | `nesine/archive.py` | **Kalıcı, sadece-ekleyen geçmiş:** `results/odds_snapshots/<GG-AA-YYYY>.jsonl`. İzleyici çalışan bir görünüm tutar ve buduyor; arşiv hiçbir şeyi silmez. "Bu tarihçe kesinlikle kaybolmamalı" şartının karşılığı budur |
 | **Notlar** | `nesine/rules.py` | 16 el yazısı notun filtre hâli. Her kural artık `paths` da döndürür (kanıt etiketi → oran yolu), böylece notun yanında **oranın ne yöne gittiği** ok olarak görünür |
 | **Not geçmişi** | `nesine/history.py` | Notların veritabanında ne dediğini sayar: `team_hits` (takıma bağlı notlar 2 ve 14), `backtest` (oranla ifade edilebilen notların tüm veritabanındaki gerçekleşme oranı + taban oran) |
+| **Bülten → durum tablosu** | `nesine/fixtures.py` | Bültenin her maçı, iki kulübü veritabanımızda çözülüyorsa ve ligleri yerleştirilebiliyorsa (iki kulübün son ligi aynı), günlük yapıda `state.build`e fikstür olarak verilir: maça bir **maç-öncesi durum satırı** açılır (form, güç, gol, marjsız nesine fiyatı; sonucu yok, hiçbir kulübün geçmişini oynatmaz). Football-Data fikstürü ancak oranı gelince ve sadece 38 lig için yayımlar; bu köprü sayesinde Pattern Lab'in maç seçicisi bültenin tamamını (bir hafta ileri, her lig) görür. Kod/saat `results/nesine_fixtures.json`da; `/api/lab/maclar` bu satırları `source: "nesine"` ile döndürür |
 | **Nesine analizi** | `nesine/analyze.py` | Nesine'nin oranını piyasa kabul edip **kendi ikiz/benzerlik analizimizi** herhangi bir nesine maçında çalıştırır — ligimizde olmayan maçlar için de |
 
 **Yapmaz:** nesine marjını temizlemez (oran olduğu gibi kullanılır). İddaa fiyatı veri setinde yok;
@@ -550,7 +551,7 @@ geldiğinde listeler. Nesine bülteni ise her maçı ve **çok daha fazla market
 /api/lab/hedef/{id}        mod 1 hedef analizi: katmanlar, piyasa, pattern tahmini, neden
 /api/lab/tara              mod 2: günün maçlarını bir hedef için tara (POST başlatır, GET izler)
 /api/lab/kendi             mod 3: kendi koşulların, koşul koşul kaskad
-/api/lab/maclar, /api/lab/takimlar   maç ve takım seçiciler
+/api/lab/maclar, /api/lab/takimlar   maç ve takım seçiciler (maçlar: Football-Data + nesine bülteni, kaynak etiketli)
 /api/dongu                 mod 4: bir takımın fikstür döngüleri (pencere/sezon/tür otomatik)
 /api/lab/dongu-olc         "bu döngü geçmişte işe yaramış mı" — üç katman, piyasa yanında
 /api/notlar                nesine notları + oran hareketi
