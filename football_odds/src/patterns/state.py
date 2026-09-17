@@ -179,20 +179,28 @@ def build_state(df: pd.DataFrame, progress_every: int = 40000) -> pd.DataFrame:
         hs, as_ = states[home], states[away]
         hs.new_season(season)
         as_.new_season(season)
-        league_teams[league].update((home, away))
-        key = (league, date)
-        if key not in tables:
+        # a cup or European tie names each club's own league (home_league / away_league): the clubs stay
+        # in their domestic tables and their standings come from there, not from a two-club "league"
+        lg_h = getattr(r, "home_league", None) or league
+        lg_a = getattr(r, "away_league", None) or league
+        lg_h = league if not isinstance(lg_h, str) else lg_h
+        lg_a = league if not isinstance(lg_a, str) else lg_a
+        league_teams[lg_h].add(home)
+        league_teams[lg_a].add(away)
+        if tables and next(iter(tables))[1] != date:
             tables.clear()                       # only the current day is ever needed
-            tables[key] = _table_positions(states, league_teams[league], season)
-        table = tables[key]
+        for lg in (lg_h, lg_a):
+            if (lg, date) not in tables:
+                tables[(lg, date)] = _table_positions(states, league_teams[lg], season)
+        table_h, table_a = tables[(lg_h, date)], tables[(lg_a, date)]
 
         row: dict[str, object] = {"match_id": r.match_id, "date": date, "league": league, "season": season,
                                   "home_team": home, "away_team": away}
         for col in PASSTHROUGH:
             if col in passthrough:
                 row[col] = getattr(r, col, None)
-        for prefix, st, venue in (("h_", hs, "H"), ("a_", as_, "A")):
-            for k, v in _side_features(st, venue, date, table.get(home if prefix == "h_" else away, {})).items():
+        for prefix, st, venue, table, team in (("h_", hs, "H", table_h, home), ("a_", as_, "A", table_a, away)):
+            for k, v in _side_features(st, venue, date, table.get(team, {})).items():
                 row[prefix + k] = v
         row["strength_gap"] = round(hs.elo - as_.elo, 1)
         if row["h_tsi_pct"] is not None and row["a_tsi_pct"] is not None:
@@ -273,6 +281,9 @@ def fixture_rows(table: pd.DataFrame) -> pd.DataFrame:
         "cons_h": table.get("odds_h"), "cons_d": table.get("odds_d"), "cons_a": table.get("odds_a"),
         "p_over25": pd.to_numeric(table.get("market_over25"), errors="coerce") / 100,
     })
+    for col in ("home_league", "away_league"):     # a cup tie: each club's own league for its standings
+        if col in table.columns:
+            out[col] = table[col]
     return out[~out["match_id"].isna()]
 
 

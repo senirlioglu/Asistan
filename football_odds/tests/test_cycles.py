@@ -64,3 +64,33 @@ def test_measure_reports_three_layers_and_the_examples():
     ex = m["examples"]
     assert ex and ex[0]["own"] and ex[0]["held"] is True and ex[0]["market_p"] == 50.0
     assert ex[0]["season_a"] == "2324" and ex[0]["season_b"] == "2627"
+
+
+def test_a_cup_fixture_keeps_each_club_in_its_own_table():
+    """A tie between clubs of two leagues names each club's league; positions come from those tables,
+    and the CUP row never makes a two-club league."""
+    import numpy as np
+    import pandas as pd
+
+    from src.patterns.state import build_state, fixture_rows
+
+    rows = []
+    d = pd.Timestamp("2025-08-01")
+    for k in range(6):                                              # two leagues, three rounds each
+        for lg, teams in (("E0", ["E1", "E2", "E3", "E4"]), ("SP1", ["S1", "S2", "S3", "S4"])):
+            h, a = teams[k % 4], teams[(k + 1) % 4]
+            rows.append({"match_id": f"{lg}{k}", "date": d + pd.Timedelta(days=7 * k), "league": lg, "season": "2526",
+                         "home_team": h, "away_team": a, "fthg": 2.0 if lg == "E0" else 0.0, "ftag": 0.0 if lg == "E0" else 1.0,
+                         "ftr": "H" if lg == "E0" else "A", "p_home": 0.5, "p_draw": 0.25, "p_away": 0.25})
+    df = pd.DataFrame(rows)
+    fx = pd.DataFrame([{"match_id": "cup1", "date": "2025-09-20", "league": "CUP", "home": "E1", "away": "S2",
+                        "home_league": "E0", "away_league": "SP1", "market_h": 50.0, "market_d": 25.0, "market_a": 25.0}])
+    extra = fixture_rows(fx)
+    assert list(extra["home_league"]) == ["E0"] and list(extra["away_league"]) == ["SP1"]
+    st = build_state(pd.concat([df, extra], ignore_index=True), progress_every=0)
+    cup = st[st["match_id"] == "cup1"].iloc[0]
+    last_e = st[(st["league"] == "E0")].iloc[-1]
+    # the home club's position is its E0 position (a four-club table), not 1 or 2 of a two-club "CUP" league
+    assert cup["h_pos"] is not None and not np.isnan(float(cup["h_pos"])) and 1 <= float(cup["h_pos"]) <= 4
+    assert cup["a_pos"] is not None and not np.isnan(float(cup["a_pos"])) and 1 <= float(cup["a_pos"]) <= 4
+    assert cup["league"] == "CUP" and last_e["league"] == "E0"

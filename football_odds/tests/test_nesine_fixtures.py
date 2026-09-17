@@ -44,14 +44,17 @@ def test_fixture_table_resolves_and_prices(settings, history):
     assert r["match_id"] == nf._match_id("E0", "2030-01-05", "H1", "A2")
 
 
-def test_cup_ties_are_not_placed(settings, history):
+def test_cup_ties_are_placed_with_each_clubs_own_league(settings, history):
     hist = history.copy()
     hist.loc[hist["home_team"] == "H1", "league"] = "E0"
     hist.loc[hist["away_team"] == "A2", "league"] = "SP1"
     hist.loc[hist["home_team"] == "A2", "league"] = "SP1"
     hist.loc[hist["away_team"] == "H1", "league"] = "E0"
     table, meta = nf.nesine_fixture_table(settings, hist=hist, matches=_bulletin()[:1], today=dt.date(2030, 1, 1))
-    assert table.empty and meta == {}
+    assert len(table) == 1
+    r = table.iloc[0]
+    assert (r["league"], r["home_league"], r["away_league"]) == (nf.CUP, "E0", "SP1")
+    assert r["match_id"] == nf._match_id(nf.CUP, "2030-01-05", "H1", "A2")
 
 
 def test_merge_prefers_the_analysed_row():

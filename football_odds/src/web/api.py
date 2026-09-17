@@ -760,8 +760,9 @@ def lab_matches(from_: str | None = Query(default=None, alias="from"), to: str |
             if mid in have or (h, a, d) in pairs:
                 continue
             info = meta.get(mid, {})
-            out.append({"id": mid, "date": d, "time": info.get("time", ""), "league": _str(r["league"]),
-                        "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": h, "away": a,
+            lg = _str(r["league"])
+            out.append({"id": mid, "date": d, "time": info.get("time", ""), "league": lg,
+                        "league_name": LEAGUE_TR.get(lg) or info.get("league_name") or lg, "home": h, "away": a,
                         "odds": [_num(r.get("cons_h")), _num(r.get("cons_d")), _num(r.get("cons_a"))],
                         "market": [_num(100 * float(r["p_home"])) if pd.notna(r.get("p_home")) else None,
                                    _num(100 * float(r["p_draw"])) if pd.notna(r.get("p_draw")) else None,

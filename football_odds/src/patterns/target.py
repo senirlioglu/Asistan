@@ -563,6 +563,7 @@ def teams(settings: Settings, q: str = "", limit: int = 20) -> list[dict]:
         h = df[["home_team", "league", "season", "date"]].rename(columns={"home_team": "team"})
         a = df[["away_team", "league", "season", "date"]].rename(columns={"away_team": "team"})
         both = pd.concat([h, a], ignore_index=True)
+        both = both[both["league"].astype(str) != "CUP"]          # a cup tie does not move a club to a "CUP" league
         both["team"] = both["team"].astype(str)
         g = both.sort_values("date").groupby("team", sort=False)
         rows = pd.DataFrame({"league": g["league"].last().astype(str), "season": g["season"].last().astype(str),

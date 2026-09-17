@@ -2,12 +2,13 @@
 Football-Data fixture file has not published yet.
 
 Football-Data lists a fixture only once the bookmakers' odds are in, usually two or three days
-ahead and only for the 38 leagues it covers. nesine's pre-bulletin runs a week ahead over every
-league it prices. The research engines need one thing to analyse a match: a row in the pre-match
+ahead and only for the 38 leagues it covers. nesine's pre-bulletin holds today's and tomorrow's
+programme over every league it prices, cups and European ties included. The research engines need one thing to analyse a match: a row in the pre-match
 state table (form, strength, goals, price), and `state.build` writes that row for any upcoming
 fixture it is handed. This module hands it the bulletin — every match whose two clubs resolve to
-clubs in our database and whose league we can name — in the same shape the daily analysis table
-has, so the two sources merge into one build.
+clubs in our database — in the same shape the daily analysis table has, so the two sources merge into
+one build. A tie between clubs of two leagues (a European night, a cup across divisions) is placed
+under the code `CUP` and names each club's own league, so its standings come from its own table.
 
 Nothing here predicts anything and nothing is folded into a club's history: an upcoming row has
 no result, so it never moves a rating or a form string. Its price is nesine's, margin removed,
@@ -32,6 +33,7 @@ from ..logging_setup import get_logger
 log = get_logger("nesine.fixtures")
 
 META_NAME = "nesine_fixtures.json"
+CUP = "CUP"          # the league code of a tie between clubs of two leagues (European cups, domestic cups across divisions)
 
 
 def _novig(group: dict | None, keys: tuple[str, ...]) -> list[float | None]:
@@ -59,7 +61,7 @@ def nesine_fixture_table(settings: Settings, hist: pd.DataFrame | None = None,
     from .bulletin import load_matches
     from .history import TeamIndex, load_history
 
-    empty = pd.DataFrame(columns=["match_id", "date", "time", "league", "home", "away", "odds_h", "odds_d", "odds_a",
+    empty = pd.DataFrame(columns=["match_id", "date", "time", "league", "home", "away", "home_league", "away_league", "odds_h", "odds_d", "odds_a",
                                   "market_h", "market_d", "market_a", "market_over25", "odds_o25", "odds_u25"])
     if matches is None:
         try:
@@ -86,18 +88,20 @@ def nesine_fixture_table(settings: Settings, hist: pd.DataFrame | None = None,
         if not h or not a or h == a:
             continue
         lg_h, lg_a = league_of.get(h), league_of.get(a)
-        if not lg_h or lg_h != lg_a:
-            continue                                    # a cup or a European tie: not a league fixture we can place
+        if not lg_h or not lg_a:
+            continue
+        league = lg_h if lg_h == lg_a else CUP          # a cup or a European tie: each club keeps its own table
         p_h, p_d, p_a = _novig(m.get("ms"), ("1", "X", "2"))
         if p_h is None:
             continue
         p_over, _ = _novig(m.get("o25"), ("ust", "alt"))
-        mid = _match_id(lg_h, date, h, a)
+        mid = _match_id(league, date, h, a)
         if mid in seen:
             continue
         seen.add(mid)
         ms, o25 = m.get("ms") or {}, m.get("o25") or {}
-        rows.append({"match_id": mid, "date": date, "time": str(m.get("time") or ""), "league": lg_h, "home": h, "away": a,
+        rows.append({"match_id": mid, "date": date, "time": str(m.get("time") or ""), "league": league, "home": h, "away": a,
+                     "home_league": lg_h, "away_league": lg_a,
                      "odds_h": ms.get("1"), "odds_d": ms.get("X"), "odds_a": ms.get("2"),
                      "market_h": round(p_h, 2), "market_d": round(p_d, 2), "market_a": round(p_a, 2),
                      "market_over25": None if p_over is None else round(p_over, 2),
