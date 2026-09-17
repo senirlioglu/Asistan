@@ -149,8 +149,18 @@ def download_fixtures(settings: Settings, force: bool = False, max_age_hours: fl
         age_h = (time.time() - path.stat().st_mtime) / 3600.0
         if age_h < max_age_hours:
             return path
-    content = _http_get(url or settings.get("current.fixtures_url"), int(settings.get("data.http_timeout_s", 60)),
-                        int(settings.get("data.http_retries", 3)))
+    try:
+        content = _http_get(url or settings.get("current.fixtures_url"), int(settings.get("data.http_timeout_s", 60)),
+                            int(settings.get("data.http_retries", 3)))
+    except Exception as exc:  # noqa: BLE001 - the source is down or misrouted: the last file we have beats no file
+        if not path.exists():
+            raise
+        age_h = (time.time() - path.stat().st_mtime) / 3600.0
+        # 17 Sep 2026: football-data.co.uk answered every request with a redirect to http://127.0.0.1/ for
+        # hours; the daily job died on this line and nothing after it (state table, cycle pairs, notes)
+        # ran. A stale fixture list is a known, visible degradation; an aborted job is a silent one.
+        log.warning("%s: download failed (%s); using the cached file from %.1f h ago", name, exc, age_h)
+        return path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
