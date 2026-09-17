@@ -2367,19 +2367,40 @@
   }
 
 
+  /** A target in this match's terms: "ft_2" is "Villarreal kazanır", never a bare "2". */
+  function targetMeaning(key, home, away) {
+    const ft = { "1": `${home} kazanır`, X: "beraberlik", "2": `${away} kazanır` };
+    const ht = { "1": `${home} önde`, X: "berabere", "2": `${away} önde` };
+    if (key.startsWith("ft_")) return ft[key.slice(3)] || key;
+    if (key.startsWith("ht_")) return `ilk yarı ${ht[key.slice(3)] || key}`;
+    if (key.startsWith("htft_")) { const [h, f] = key.slice(5).split("/"); return `İY ${ht[h]} → MS ${ft[f]}`; }
+    return { over15: "en az 2 gol", over25: "en az 3 gol", over35: "en az 4 gol", btts: "iki takım da gol atar" }[key] || key;
+  }
+
+  /** What a row's Δ says, in words: the outcome came more or less often than priced, or nothing. */
+  function deltaMeaning(diff, ci) {
+    if (diff == null || !ci || ci[0] == null) return "";
+    if (ci[0] > 0) return "geçmişte piyasadan <b>daha sık</b> gelmiş — fiyat ucuz kalmış";
+    if (ci[1] < 0) return "geçmişte piyasadan <b>daha seyrek</b> gelmiş — fiyat pahalı kalmış";
+    return "fiyattan ayırt edilemiyor";
+  }
+
   function renderFind(d, target, date) {
     const box = $("#lf-out");
+    const tLabel = ((state.lab.targets?.groups || []).flatMap((g) => g.targets).find((x) => x.key === target) || {}).label || target;
     const rows = (d.rows || []).slice().sort((a, b) => (b.relevance?.score || 0) - (a.relevance?.score || 0));
     const running = d.state === "running";
     const clearN = rows.filter((r) => r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0)).length;
     const verdict = `<div class="lab-verdict">${evBadge(running ? "YETERSİZ VERİ" : clearN ? "KEŞİF" : "FARK YOK")}<p>${running
         ? `<b>${d.done} / ${d.total} maç tarandı…</b> Her maçta takım, rakip, benzer durumlar ve ikizler ölçülüyor; satırlar geldikçe sıralanır.`
-        : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${clearN ? `${clearN} maçta birleşik aralık sıfırı dışlıyor — keşif, doğrulama değil.` : "Hiçbir maçta birleşik aralık sıfırı dışlamıyor."}`}</p></div>`;
+        : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${clearN ? `${clearN} maçta birleşik aralık sıfırı dışlıyor — keşif, doğrulama değil.` : "Hiçbir maçta birleşik aralık sıfırı dışlamıyor."}
+        <small class="muted">Hiçbir satır kazananı söylemez. Her satır, o maçın bugünkü durumunda <b>${esc(tLabel)}</b> sonucunun geçmişte fiyata göre daha sık mı, daha seyrek mi geldiğini ölçer; Δ artıysa fiyat ucuz, eksiyse pahalı kalmış demektir.</small>`}</p></div>`;
     if (!rows.length) { box.innerHTML = verdict + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
     const dom = fpDomain(rows.map((r) => ({ edge: r.difference, ci: r.difference_ci })));
     box.innerHTML = verdict + `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
         <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Kanıt</th><th></th></tr></thead><tbody>
-        ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b></td>
+        ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br>
+            <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small></td>
           <td class="hide-md nw">${esc(r.league_name || r.league || "")}</td><td class="num hide-md">${esc(r.time || "")}</td>
           <td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
           <td class="num">${r.market?.p == null ? "<small class=\"muted\">yok</small>" : pctv(r.market.p)}</td>

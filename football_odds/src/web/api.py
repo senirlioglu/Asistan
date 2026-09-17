@@ -828,7 +828,7 @@ def lab_scan_start(date: str = Query(..., min_length=10, max_length=10), target:
     if tg.NESINE_PATH.get(target, ("", ""))[0] not in ("ms", ""):      # only where the price has to come from nesine
         for m in matches:
             try:
-                nesine_by_id[m["id"]] = _nesine_brief(m["date"], m["home"], m["away"])
+                nesine_by_id[m["id"]] = _nesine_brief(m["date"], m["home"], m["away"], code=m.get("code"))   # a bulletin row knows its code
             except Exception:  # noqa: BLE001 - no bulletin, no price; the row says so
                 pass
     job = tg.start_day_scan(settings, date, target, matches, nesine_by_id)

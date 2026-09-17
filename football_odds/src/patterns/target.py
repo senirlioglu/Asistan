@@ -288,8 +288,10 @@ def analyse(settings: Settings, match_id: str, target: str, side: str = "home", 
 def _movement(settings: Settings, row: pd.Series, target: str) -> dict | None:
     """The odds-movement class on the selection the target belongs to, when the archive saw it."""
     try:
+        from ..nesine import fixtures as nf                 # noqa: PLC0415
         from ..web.api import _nesine_brief                # noqa: PLC0415
-        brief = _nesine_brief(str(row["date"])[:10], str(row["home_team"]), str(row["away_team"]))
+        known = nf.read_meta(settings).get(str(row.get("match_id", "")), {}).get("code")   # a bulletin fixture knows its code
+        brief = _nesine_brief(str(row["date"])[:10], str(row["home_team"]), str(row["away_team"]), code=known)
     except Exception:                                       # noqa: BLE001 - context is never load-bearing
         return None
     code = (brief or {}).get("code")
