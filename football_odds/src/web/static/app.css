@@ -684,7 +684,9 @@ td.fp-td { width: 140px; }
 .lab-actions { margin: 10px 0; }
 .lab-actions .ex-go { width: auto; padding: 10px 18px; background: var(--lab); border-color: var(--lab); color: #fff; }
 .lab-band { margin: 10px 0 14px; }
-.rs-reports { margin: 8px 0 4px; }
+.rs-reports { margin: 8px 0 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rs-break { margin: 36px 0 14px; padding-top: 14px; border-top: 3px double var(--line-strong); color: var(--ink-3); font-size: 0.78rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.verdict-tag { display: block; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 4px; }
 td.nw { white-space: nowrap; }
 .lab-stage table { font-size: 0.78rem; }
 .lab-stage th, .lab-stage td { padding: 6px 5px; }

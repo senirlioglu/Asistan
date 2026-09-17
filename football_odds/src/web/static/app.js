@@ -173,11 +173,11 @@
     const market = sum.find((r) => r.model.startsWith("A"));
     const best = sum.filter((r) => r.brier_diff != null).sort((a, b) => a.brier_diff - b.brier_diff)[0];
     const st = d.state || {};
-    $("#rs-verdict").innerHTML = market
+    $("#rs-verdict").innerHTML = `<span class="verdict-tag">HAVUZ GENELİ · seçtiğin maça özel değil</span>` + (market
       ? `Havuz: <b>${st.matches?.toLocaleString("tr")} maç</b> (${st.from} – ${st.to}). ${market.n.toLocaleString("tr")} maçlık
          ileriye dönük testte <b>hiçbir motor piyasayı geçemedi</b>; en iyisi ${esc(best?.model || "–")} ve o bile piyasadan
          ${pp1(1000 * (best?.brier_diff ?? 0))} binde Brier kadar geride. Bu sekmedeki her şey bu cümlenin altında okunmalı.`
-      : `Havuz: <b>${st.matches?.toLocaleString("tr") || "?"} maç</b>. Model karşılaştırması henüz çalıştırılmadı.`;
+      : `Havuz: <b>${st.matches?.toLocaleString("tr") || "?"} maç</b>. Model karşılaştırması henüz çalıştırılmadı.`);
 
     $("#rs-models").innerHTML = sum.length
       ? `<div class="table-wrap"><table><thead><tr><th>Model</th><th class="num">Brier</th><th class="num">Fark</th>
@@ -2358,7 +2358,7 @@
     const clearN = rows.filter((r) => r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0)).length;
     const verdict = `<div class="lab-verdict">${evBadge(running ? "YETERSİZ VERİ" : clearN ? "KEŞİF" : "FARK YOK")}<p>${running
         ? `<b>${d.done} / ${d.total} maç tarandı…</b> Her maçta takım, rakip, benzer durumlar ve ikizler ölçülüyor; satırlar geldikçe sıralanır.`
-        : `<b>${d.total} maç tarandı${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${clearN ? `${clearN} maçta birleşik aralık sıfırı dışlıyor — keşif, doğrulama değil.` : "Hiçbir maçta birleşik aralık sıfırı dışlamıyor."}`}</p></div>`;
+        : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${clearN ? `${clearN} maçta birleşik aralık sıfırı dışlıyor — keşif, doğrulama değil.` : "Hiçbir maçta birleşik aralık sıfırı dışlamıyor."}`}</p></div>`;
     if (!rows.length) { box.innerHTML = verdict + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
     const dom = fpDomain(rows.map((r) => ({ edge: r.difference, ci: r.difference_ci })));
     box.innerHTML = verdict + `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
