@@ -150,7 +150,7 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
     nes = _movement_context(settings, quoted)
     if nes:
         context.append(nes)
-    context += _note_context(settings, quoted)
+    context += sorted(_note_context(settings, quoted), key=_note_rank)
 
     # ---- the funnel ------------------------------------------------------------------------
     scanned = len(candidates)
@@ -279,6 +279,16 @@ def _mark_tested(settings: Settings, findings: list[Finding], side: str) -> None
     for f in findings:
         if (f.source.startswith("pattern") or f.source == "combined") and f.outcome in alive:
             f.evidence = "tested"
+
+
+def _note_rank(card: dict) -> tuple:
+    """Notes with a claim still standing after the correction first, then the rest; a note whose
+    best claim beat the price outranks one whose best claim merely differed from similar prices."""
+    claims = (card.get("data") or {}).get("claims") or []
+    alive = [c for c in claims if c.get("q") is not None and c["q"] <= ALPHA]
+    priced = [c for c in alive if c.get("edge") is not None and c["edge"] > 0]
+    best_q = min((c.get("q", 1.0) for c in claims), default=1.0)
+    return (0 if priced else 1 if alive else 2, best_q)
 
 
 def _note_context(settings: Settings, quoted: dict) -> list[dict]:

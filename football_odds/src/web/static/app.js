@@ -242,9 +242,15 @@
             : `<p class="note">Hiçbir desen üç pencereden de geçemedi.</p>`}`
       : `<p class="note">Tarama henüz çalıştırılmadı (<code>cli discover</code>).</p>`;
 
-    const notes = d.notes || [];
+    const noteRank = (r) => {
+      const alive = (r.claims || []).filter((c) => c.q != null && c.q <= 0.05);
+      const priced = alive.filter((c) => c.edge != null && c.edge > 0);
+      const bestQ = Math.min(1, ...(r.claims || []).map((c) => (c.q == null ? 1 : c.q)));
+      return [priced.length ? 0 : alive.length ? 1 : 2, bestQ];
+    };
+    const notes = (d.notes || []).slice().sort((a, b) => { const x = noteRank(a), y = noteRank(b); return x[0] - y[0] || x[1] - y[1]; });
     $("#rs-notes").innerHTML = notes.length
-      ? notes.map((r) => `<div class="rs-note"><h4>${r.no}. ${esc(r.title)} <small class="muted">· ${esc(r.side)} · N=${r.n}</small></h4>
+      ? `<p class="note">Sıralama: önce düzeltmeden sonra ayakta kalan iddiası olan notlar (piyasadan iyi olanlar en başta), sonra gerisi. Sıra kanıt gücünü değil, yalnızca düzeltilmiş q değerini izler.</p>` + notes.map((r) => `<div class="rs-note"><h4>${r.no}. ${esc(r.title)} <small class="muted">· ${esc(r.side)} · N=${r.n}</small></h4>
           <p class="nt-note">“${esc(r.note)}”</p>
           <div class="table-wrap"><table><thead><tr><th>İddia</th><th class="num">N</th><th class="num">Gerçekleşen</th>
             <th class="num">Kıyas</th><th class="num">Fark</th><th>Sonuç</th></tr></thead><tbody>

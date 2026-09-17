@@ -604,7 +604,7 @@ Bu bölüm motor listesi kadar önemlidir.
    `backtest_ok = false` ve sistem bu yüzden STRONG sinyal üretmiyor.
 2. **396 desen adayından 1'i hayatta kaldı** ve o da "fiyattan ~2 puan daha az kaybediyor" diyor —
    kâr değil, daha az zarar.
-3. **26 not iddiasından 24'ü fiyatla açıklanıyor.**
+3. **26 not iddiasından 25'i fiyatla açıklanıyor.** (Testin ham farka değil düzeltilmiş farka yapılmasıyla 16. notun ev galibiyeti iddiası da düştü; keşif taraması `cli discover` ile aynı düzeltmeyle yeniden koşulmalı.)
 4. Bu bir başarısızlık değil, **ölçüm altyapısının çalıştığının kanıtı.** Aynı taramayı fiyat
    eşlemesi, üç zaman penceresi ve FDR olmadan yapsaydık 65 "keşif" ilan ederdik.
 

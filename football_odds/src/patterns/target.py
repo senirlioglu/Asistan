@@ -225,6 +225,7 @@ def analyse(settings: Settings, match_id: str, target: str, side: str = "home", 
         if m.get("diff") is not None and target in base:
             m["edge"] = round(m["diff"] - base[target], 1)
             m["edge_ci"] = [round(m["diff_ci"][0] - base[target], 1), round(m["diff_ci"][1] - base[target], 1)]
+            m["p"] = engine.p_from_ci(m["diff"] - base[target], [m["diff_ci"][0] - base[target], m["diff_ci"][1] - base[target]])
         similarity = {"median": res.diagnostics.get("median"), "best": res.diagnostics.get("best"),
                       "worst": res.diagnostics.get("worst"), "k": res.diagnostics.get("k"),
                       "n_above_90": res.diagnostics.get("n_above_90")}

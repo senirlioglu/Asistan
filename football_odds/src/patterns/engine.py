@@ -280,6 +280,19 @@ def _two_sided(z: float) -> float:
     return float(math.erfc(abs(z) / math.sqrt(2)))
 
 
+def p_from_ci(est: float | None, ci) -> float | None:
+    """Two-sided p-value of an estimate against zero, from its own 95 % interval.
+
+    The claim the package makes is about the baseline-corrected edge, so the test must be about
+    the edge too. Testing the raw difference instead (as the notes and the discovery scan once did)
+    hands every home-side pattern the pool's own +0,5-point offset as free significance: a note
+    whose corrected interval touched zero came back with p = 0,0009."""
+    if est is None or ci is None or ci[0] is None or ci[1] is None:
+        return None
+    se = (float(ci[1]) - float(ci[0])) / (2 * 1.96)
+    return _two_sided(float(est) / se) if se > 0 else None
+
+
 def fdr(pvals: list[float | None], q: float = 0.05) -> list[float | None]:
     """Benjamini-Hochberg adjusted p-values. Measuring thirty claims at 95 % produces one or two
     'findings' from noise alone, so every batch of claims goes through this before anything is
@@ -491,6 +504,8 @@ def run(frame: pd.DataFrame, pattern: Pattern, outcomes: tuple[str, ...] = ("win
             m["base"] = round(base[o], 1)
             m["edge"] = round(m["diff"] - base[o], 1)
             m["edge_ci"] = [round(m["diff_ci"][0] - base[o], 1), round(m["diff_ci"][1] - base[o], 1)]
+            m["p_diff"] = m["p"]                              # the raw difference's own test, kept for the record
+            m["p"] = p_from_ci(m["diff"] - base[o], [m["diff_ci"][0] - base[o], m["diff_ci"][1] - base[o]])
     if sample and len(sub):
         cols = [c for c in ("date", "league", "home_team", "away_team", "ftr", "fthg", "ftag", "h_form", "a_form") if c in sub]
         res["sample"] = sub.sort_values("date", ascending=False).head(sample)[cols].to_dict("records")

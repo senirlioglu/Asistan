@@ -103,13 +103,15 @@ def measure_all(frame: pd.DataFrame, patterns: list[Pattern], outcomes: tuple[st
             if o in PRICED and m.get("diff") is not None:
                 off = base[p.side].get(o, 0.0)        # the pool's own bias, removed before anything is an edge
                 edge, lo, hi = m["diff"] - off, m["diff_ci"][0] - off, m["diff_ci"][1] - off
+                pval = engine.p_from_ci(edge, [lo, hi])   # the test is about the edge, not the raw difference
             else:
                 edge, (lo, hi) = m.get("vs_ref"), (m.get("vs_ref_ci") or [None, None])
-            if edge is None or lo is None or m.get("p") is None:
+                pval = m.get("p")
+            if edge is None or lo is None or pval is None:
                 continue          # no benchmark, no claim — the rule the whole package runs on
             rows.append({"key": _key(p), "label": p.label(), "side": p.side, "form": p.form, "outcome": o,
                          "n": m["n"], "actual": m["actual"], "market": m.get("market"), "ref": m.get("ref"),
-                         "edge": edge, "lo": lo, "hi": hi, "p": m.get("p"),
+                         "edge": edge, "lo": lo, "hi": hi, "p": pval,
                          "priced": o in PRICED, "pattern": p})
     return pd.DataFrame(rows)
 

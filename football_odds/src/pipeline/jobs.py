@@ -154,6 +154,22 @@ def _build_state(settings: Settings, table) -> None:
         cycles.build(settings)
     except Exception as exc:  # noqa: BLE001 - the lab builds them lazily on first request instead
         log.warning("cycle pairs skipped: %s", exc)
+    try:  # the notebook notes, re-measured on the fresh state table (seconds); the research tab reads the file
+        import json
+
+        import pandas as pd
+
+        from ..patterns import engine, notes, state as st_mod
+
+        st = st_mod.load(settings)
+        if st is not None:
+            frame = engine.prepare(st, pd.read_parquet(settings.processed_dir / "matches.parquet"))
+            rows = notes.measure_notes(frame)
+            out_p = settings.results_dir / "notes_measured.json"
+            out_p.write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
+            log.info("notes re-measured: %d rows -> %s", len(rows), out_p)
+    except Exception as exc:  # noqa: BLE001 - derived data, never fatal
+        log.warning("notes re-measure skipped: %s", exc)
 
 
 def run_fixture_refresh(settings: Settings, days: int = 7) -> int:

@@ -83,15 +83,17 @@ def seed_state_dir(settings) -> None:
     src_results = ROOT / "results"
     dst = settings.results_dir
     dst.mkdir(parents=True, exist_ok=True)
-    for name in ("backtest", "audit", "league_groups.json", "data_quality_report.json", "data_quality_report.md"):
+    for name in ("backtest", "audit", "league_groups.json", "data_quality_report.json", "data_quality_report.md",
+                 "notes_measured.json"):          # seeded once on an empty volume, then owned by the daily job
         s, d = src_results / name, dst / name
         if s.exists() and not d.exists():
             shutil.copytree(s, d) if s.is_dir() else shutil.copy2(s, d)
     # research results are produced offline and shipped in the repo, never written here, so a newer
     # one in the image always wins. The directory copy above only fires on an empty volume, which is
     # why these are named one by one: the volume's `backtest/` already exists by now.
-    for name in ("notes_measured.json", "backtest/models.json", "backtest/discovery.json",
-                 "backtest/twin_weights.json"):
+    # notes_measured.json is no longer on this list: the daily job re-measures it on the volume, and
+    # a copy from the image (whose mtime is the build time) would overwrite that every deploy
+    for name in ("backtest/models.json", "backtest/discovery.json", "backtest/twin_weights.json"):
         s, d = src_results / name, dst / name
         if s.exists() and (not d.exists() or s.stat().st_mtime > d.stat().st_mtime):
             d.parent.mkdir(parents=True, exist_ok=True)

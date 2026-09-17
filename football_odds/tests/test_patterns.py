@@ -696,3 +696,26 @@ def test_prepare_survives_a_state_table_that_already_carries_the_result_columns(
     assert list(out["ftr"]) == ["D", "H"]                 # the match database is the authority
     assert list(out["fthg"]) == [1, 2] and list(out["p_home"]) == [0.5, 0.6]
     assert list(out["h_form"]) == ["WWW", "LLL"]          # and the state's own columns survive
+
+
+def test_the_p_value_tests_the_corrected_edge_not_the_raw_difference():
+    """Home wins run ~0,5 points above the price across the whole pool. That offset is removed from
+    every edge — and the test must be about the edge too, or every home-side pattern is handed the
+    offset as free significance. The notebook's note 16 came back with p = 0,0009 that way."""
+    from src.patterns import engine
+
+    assert engine.p_from_ci(1.0, [0.0, 2.0]) > 0.04                  # touches zero: not significant
+    assert engine.p_from_ci(3.0, [2.0, 4.0]) < 1e-6
+    assert engine.p_from_ci(None, [0.0, 1.0]) is None and engine.p_from_ci(1.0, [None, None]) is None
+    import numpy as np
+    import pandas as pd
+    rng = np.random.default_rng(1)
+    n = 4000
+    df = pd.DataFrame({"date": pd.date_range("2020-01-01", periods=n, freq="D"), "match_id": [str(i) for i in range(n)],
+                       "home_team": "A", "away_team": "B", "league": "E0", "h_form": "WWW", "a_form": "LLL",
+                       "p_home": 0.5, "p_draw": 0.25, "p_away": 0.25, "total_goals": 2, "fthg": 1, "ftag": 1})
+    df["ftr"] = np.where(rng.uniform(size=n) < 0.53, "H", "A")     # 3 points above the price, everywhere
+    base = engine.baseline(df, "home", ("win",))
+    res = engine.run(df, engine.Pattern(form="WWW"), outcomes=("win",), base=base)["outcomes"]["win"]
+    assert abs(res["edge"]) < 0.5 and res["p"] > 0.05                # the edge is the offset itself: nothing
+    assert res["p_diff"] < 0.05                                      # the raw difference alone would have "found" it
