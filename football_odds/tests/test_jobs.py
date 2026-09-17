@@ -67,3 +67,14 @@ def test_stale_lock_is_removed(settings, tmp_path, monkeypatch):
     monkeypatch.setattr(jobs, "run_today", lambda *a, **k: __import__("pandas").DataFrame())
     assert jobs.run_daily_job(s) is True
     assert jobs.read_status(s)["state"] == "ok"
+
+
+def test_boot_clears_a_lock_left_by_the_previous_process(settings, tmp_path):
+    s = settings.with_overrides(**{"data.results_dir": str(tmp_path / "r")})
+    (tmp_path / "r").mkdir()
+    assert jobs.clear_boot_lock(s) is False                 # nothing to clear
+    p = jobs.lock_path(s)
+    p.write_text("12345 2026-09-17T01:31:00+00:00")        # fresh, but from a process that no longer exists
+    assert jobs.is_running(s)
+    assert jobs.clear_boot_lock(s) is True
+    assert not p.exists() and not jobs.is_running(s)

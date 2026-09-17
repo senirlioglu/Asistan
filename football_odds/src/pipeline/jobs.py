@@ -80,6 +80,22 @@ def _release_file_lock(settings: Settings) -> None:
         pass
 
 
+def clear_boot_lock(settings: Settings) -> bool:
+    """At process start no job of this process can be running, so a lock file on the (persistent) volume
+    belongs to a run the previous container's shutdown killed. Left alone it blocks every job for
+    LOCK_STALE_S: on 17 Sep 2026 a deploy landed during the daily job and the fixture refresh was refused
+    for the next two hours. Returns True when a lock was removed."""
+    p = lock_path(settings)
+    if not p.exists():
+        return False
+    try:
+        p.unlink()
+    except OSError:
+        return False
+    log.warning("removed a job lock left by a previous process: %s", p)
+    return True
+
+
 def is_running(settings: Settings | None = None) -> bool:
     if _LOCK.locked():
         return True

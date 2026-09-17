@@ -35,7 +35,7 @@ if str(ROOT) not in sys.path:
 
 from src.config import load_settings  # noqa: E402
 from src.logging_setup import get_logger, setup_logging  # noqa: E402
-from src.pipeline.jobs import needs_bootstrap, run_daily_job, run_fixture_refresh, seconds_until  # noqa: E402
+from src.pipeline.jobs import clear_boot_lock, needs_bootstrap, run_daily_job, run_fixture_refresh, seconds_until  # noqa: E402
 
 log = get_logger("serve")
 
@@ -50,6 +50,7 @@ def _scorecard(settings) -> None:
 
 
 def scheduler_loop(settings, hhmm: str, days: int, scorecard_hhmm: str, fixtures_every_min: int = 60) -> None:
+    clear_boot_lock(settings)  # a lock on the volume at boot was left by a run the last deploy killed
     if needs_bootstrap(settings):
         log.info("no data in container -> bootstrap run")
         full = not (settings.processed_dir / "matches.parquet").exists()
