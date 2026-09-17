@@ -301,7 +301,9 @@ repeat and mirror hypotheses). Endpoints live under `/api/lab/*`, `/api/tarama` 
 see `docs/MOTORLAR.md` §8k–8l. The cycle pair table (`results/backtest/cycle_pairs.parquet`) is
 built by the daily job after the state table. The match picker lists the nesine bulletin's matches
 as well as Football-Data's (`src/nesine/fixtures.py`): every bulletin match whose two clubs resolve to
-our database gets a pre-match state row in the daily build, priced with nesine's odds, margin removed.
+our database gets a pre-match state row in the daily build, priced with nesine's odds, margin removed;
+a tie between clubs of two leagues (European cups, domestic cups) is placed under `CUP` with each club's
+standing taken from its own league.
 
 ## Hosted deployment (Railway / any container host)
 
