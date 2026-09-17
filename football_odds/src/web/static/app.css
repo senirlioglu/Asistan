@@ -578,6 +578,9 @@ tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
 .lab-verdict { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; margin: 12px 0; padding: 12px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-s); background: var(--surface); }
 .lab-verdict p { margin: 0; font-size: 0.95rem; line-height: 1.45; }
 .lab-verdict .ev { margin-top: 3px; }
+.lab-dir { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; font-weight: 700; font-size: 0.82rem; padding: 2px 9px; border-radius: 999px; margin: -2px 0 4px; }
+.lab-dir.is-more { background: var(--lab-soft); color: var(--lab-ink); border: 1px solid var(--lab-line); }
+.lab-dir.is-less { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); }
 @media (max-width: 480px) { .lab-verdict { grid-template-columns: 1fr; } }
 /* findings */
 .lab-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin: 10px 0; }

@@ -2197,16 +2197,18 @@
 
 
   /** What a finding means in this match's terms. Every measurement is taken from one side's state
-      (the home side unless the scan says otherwise), so "Kaybeder" alone is unreadable: it has to say
-      whose loss, and that a negative Δ means the outcome came LESS often than priced — not who wins. */
+      (the home side unless the scan says otherwise). The direction is the headline, not a sign to
+      decode: "Nijmegen galibiyeti — beklenenden seyrek", never a bare "Kaybeder" with a minus somewhere. */
   function findingMeaning(f, m, side) {
     const team = side === "away" ? m.away : m.home, other = side === "away" ? m.home : m.away;
-    const who = { win: `${team} kazanır`, loss: `${other} kazanır`, draw: "Beraberlik", over25: "2,5 üst", over15: "1,5 üst",
-                  over35: "3,5 üst", btts: "Karşılıklı gol", ht_draw: "İlk yarı berabere", ht_win: `${team} ilk yarıda önde` }[f.outcome] || f.outcome_tr;
+    const who = { win: `${team} galibiyeti`, loss: `${other} galibiyeti`, draw: "Beraberlik", over25: "3 ve üzeri gol", over15: "2 ve üzeri gol",
+                  over35: "4 ve üzeri gol", btts: "Karşılıklı gol", ht_draw: "İlk yarı beraberlik", ht_win: `${team} ilk yarıda önde` }[f.outcome] || f.outcome_tr;
     const less = f.edge < 0;
-    const sentence = `${team} bu durumdayken${f.detail ? ` (${f.detail})` : ""} "${who}" geçmişte piyasanın fiyatladığından
-      <b>${less ? "daha seyrek" : "daha sık"}</b> gelmiş. Yani bu durumda "${who}" fiyatı ${less ? "pahalı" : "ucuz"} kalmış — kim kazanır demek değil.`;
-    return { who, sentence, team };
+    const dir = less ? "beklenenden seyrek" : "beklenenden sık";
+    const sentence = `${team} bu durumdayken${f.detail ? ` (${f.detail})` : ""} geçmişteki ${f.n} maçta bu sonuç <b>${pctv(f.actual)}</b> gelmiş;
+      piyasa <b>${pctv(f.market)}</b> bekliyordu. Yani "${who}" bu durumda piyasanın sandığından <b>${less ? "daha az" : "daha çok"}</b> olmuş
+      — oranı ${less ? "pahalı" : "ucuz"} kalmış. Bu, kim kazanır demek değildir.`;
+    return { who, dir, less, sentence, team };
   }
 
   function findingCard(f, m, side = "home") {
@@ -2214,9 +2216,9 @@
     const mean = findingMeaning(f, m, side);
     return `<div class="lab-card">
       <div class="lab-card-top"><span>${esc(f.source_tr)}</span>${evBadge(f.evidence_tr)}</div>
-      <div class="lab-card-body"><small class="muted">${esc(mean.team)} açısından · ${esc(f.outcome_tr).toLocaleLowerCase("tr")}</small>
-        <span class="lab-big">${esc(mean.who)}</span>
-        <span>gerçekleşen <b>${pctv(f.actual)}</b> · piyasa <b>${pctv(f.market)}</b> <small class="muted">N = ${f.n}</small></span>
+      <div class="lab-card-body"><span class="lab-big">${esc(mean.who)}</span>
+        <span class="lab-dir ${mean.less ? "is-less" : "is-more"}">${mean.less ? "↓" : "↑"} ${mean.dir}</span>
+        <span>geçmişte <b>${pctv(f.actual)}</b> · piyasa <b>${pctv(f.market)}</b> <small class="muted">N = ${f.n}</small></span>
         <span class="${solid ? "yes" : ""}">Δ <b>${ppv(f.edge)}</b> <small class="muted">${ciTxt(f.ci)} · q=${num(f.q, 3)}</small></span>
         <small class="muted">${mean.sentence}</small></div>
       <button type="button" class="btn ghost" data-open="${esc(SCAN_ANCHOR[f.source] || "twins")}">İncele</button></div>`;
@@ -2369,7 +2371,7 @@
 
   /** A target in this match's terms: "ft_2" is "Villarreal kazanır", never a bare "2". */
   function targetMeaning(key, home, away) {
-    const ft = { "1": `${home} kazanır`, X: "beraberlik", "2": `${away} kazanır` };
+    const ft = { "1": `${home} galibiyeti`, X: "beraberlik", "2": `${away} galibiyeti` };
     const ht = { "1": `${home} önde`, X: "berabere", "2": `${away} önde` };
     if (key.startsWith("ft_")) return ft[key.slice(3)] || key;
     if (key.startsWith("ht_")) return `ilk yarı ${ht[key.slice(3)] || key}`;
@@ -2380,8 +2382,8 @@
   /** What a row's Δ says, in words: the outcome came more or less often than priced, or nothing. */
   function deltaMeaning(diff, ci) {
     if (diff == null || !ci || ci[0] == null) return "";
-    if (ci[0] > 0) return "geçmişte piyasadan <b>daha sık</b> gelmiş — fiyat ucuz kalmış";
-    if (ci[1] < 0) return "geçmişte piyasadan <b>daha seyrek</b> gelmiş — fiyat pahalı kalmış";
+    if (ci[0] > 0) return "↑ <b>beklenenden sık</b> gelmiş — oranı ucuz kalmış";
+    if (ci[1] < 0) return "↓ <b>beklenenden seyrek</b> gelmiş — oranı pahalı kalmış";
     return "fiyattan ayırt edilemiyor";
   }
 
