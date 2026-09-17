@@ -2196,19 +2196,31 @@
   }
 
 
-  /** What a finding means in this match's terms. Every measurement is taken from one side's state
-      (the home side unless the scan says otherwise). The direction is the headline, not a sign to
-      decode: "Nijmegen galibiyeti — beklenenden seyrek", never a bare "Kaybeder" with a minus somewhere. */
+  /** What a finding means in this match's terms, in plain words. Every measurement is taken from one
+      side's state (the home side unless the scan says otherwise). The direction is the headline; the
+      statistics (Δ, interval, q) sit under a fold for the reader who wants them. */
+  /** Turkish genitive for a club name: Juventus'un, Nijmegen'in, Malaga'nın, Villarreal'ın. */
+  function gen(name) {
+    const v = (name.toLocaleLowerCase("tr").match(/[aeıioöuü]/g) || []).pop() || "a";
+    const suf = "aı".includes(v) ? "ın" : "ou".includes(v) ? "un" : "ei".includes(v) ? "in" : "ün";
+    return `${name}'${/[aeıioöuü]$/i.test(name.toLocaleLowerCase("tr")) ? "n" : ""}${suf}`;
+  }
+
   function findingMeaning(f, m, side) {
     const team = side === "away" ? m.away : m.home, other = side === "away" ? m.home : m.away;
     const who = { win: `${team} galibiyeti`, loss: `${other} galibiyeti`, draw: "Beraberlik", over25: "3 ve üzeri gol", over15: "2 ve üzeri gol",
                   over35: "4 ve üzeri gol", btts: "Karşılıklı gol", ht_draw: "İlk yarı beraberlik", ht_win: `${team} ilk yarıda önde` }[f.outcome] || f.outcome_tr;
     const less = f.edge < 0;
-    const dir = less ? "beklenenden seyrek" : "beklenenden sık";
-    const sentence = `${team} bu durumdayken${f.detail ? ` (${f.detail})` : ""} geçmişteki ${f.n} maçta bu sonuç <b>${pctv(f.actual)}</b> gelmiş;
-      piyasa <b>${pctv(f.market)}</b> bekliyordu. Yani "${who}" bu durumda piyasanın sandığından <b>${less ? "daha az" : "daha çok"}</b> olmuş
-      — oranı ${less ? "pahalı" : "ucuz"} kalmış. Bu, kim kazanır demek değildir.`;
-    return { who, dir, less, sentence, team };
+    const plain = { win: `${team} gibi durumdaki takımlar`, loss: `${team} gibi durumdaki takımların rakipleri`, draw: "bu tür maçlar",
+                    ht_win: `${team} gibi durumdaki takımlar` }[f.outcome];
+    const verb = { win: less ? "daha az kazanmış" : "daha çok kazanmış", loss: less ? "daha az kazanmış" : "daha çok kazanmış",
+                   draw: less ? "daha az berabere kalmış" : "daha çok berabere kalmış",
+                   ht_win: less ? "ilk yarıyı daha az önde kapatmış" : "ilk yarıyı daha çok önde kapatmış" }[f.outcome];
+    const sentence = plain
+      ? `${gen(team)} bugünkü durumuna benzeyen eski maçlarda ${plain}, bahis oranlarının söylediğinden <b>${verb}</b>.`
+      : `${gen(team)} bugünkü durumuna benzeyen eski maçlarda "${who}" bahis oranlarının söylediğinden <b>${less ? "daha az" : "daha çok"}</b> olmuş.`;
+    const price = less ? `Yani bu sonucun oranı o maçlarda pahalıymış.` : `Yani bu sonucun oranı o maçlarda ucuzmuş.`;
+    return { who, less, sentence, price, team };
   }
 
   function findingCard(f, m, side = "home") {
@@ -2217,10 +2229,10 @@
     return `<div class="lab-card">
       <div class="lab-card-top"><span>${esc(f.source_tr)}</span>${evBadge(f.evidence_tr)}</div>
       <div class="lab-card-body"><span class="lab-big">${esc(mean.who)}</span>
-        <span class="lab-dir ${mean.less ? "is-less" : "is-more"}">${mean.less ? "↓" : "↑"} ${mean.dir}</span>
-        <span>geçmişte <b>${pctv(f.actual)}</b> · piyasa <b>${pctv(f.market)}</b> <small class="muted">N = ${f.n}</small></span>
-        <span class="${solid ? "yes" : ""}">Δ <b>${ppv(f.edge)}</b> <small class="muted">${ciTxt(f.ci)} · q=${num(f.q, 3)}</small></span>
-        <small class="muted">${mean.sentence}</small></div>
+        <span class="lab-dir ${mean.less ? "is-less" : "is-more"}">${mean.less ? "↓" : "↑"} ${mean.less ? "beklenenden seyrek" : "beklenenden sık"}</span>
+        <span>${mean.sentence} ${mean.price} <b>Kim kazanır demek değil.</b></span>
+        <small class="muted">${f.n} eski maçta: bu sonuç <b>${pctv(f.actual)}</b> geldi, oranlar <b>${pctv(f.market)}</b> diyordu${f.detail ? ` · koşul: ${esc(f.detail)}` : ""}</small>
+        <details class="lab-more"><summary>istatistik</summary><small class="muted ${solid ? "yes" : ""}">fark ${ppv(f.edge)} puan · %95 aralık ${ciTxt(f.ci)} · q = ${num(f.q, 3)}${solid ? " · aralık sıfırı dışlıyor: fark şansla açıklanamayacak kadar büyük" : ""}</small></details></div>
       <button type="button" class="btn ghost" data-open="${esc(SCAN_ANCHOR[f.source] || "twins")}">İncele</button></div>`;
   }
 
@@ -2239,10 +2251,11 @@
   function renderScan(d, m) {
     const box = $("#lm-scan");
     const n = d.after_correction, ctx = (d.context || []).length;
-    const verdict = `<div class="lab-verdict">${evBadge(n ? "KEŞİF" : "FARK YOK")}<p><b>${d.scanned} pattern tarandı, ${n + ctx} araştırılabilir durum bulundu.</b>
-        ${d.too_thin} ölçüm 200 maçın altında kaldı; gerisi bu maçın tek ailesinde çoklu test düzeltmesinden geçti.
-        ${n === 0 ? (ctx ? "Bulunanların hepsi bağlam — fiyattan ayrılan bir ölçüm yok; çoğu maçta doğru cevap budur." : "Bu maçta piyasadan ayrılan bir ölçüm yok; bu bir hata değil, çoğu maçta doğru cevap budur.") : "Bunlar sinyal değil, araştırılabilir durumdur: havuzda sıfırı dışlıyor, o kadar."}
-        <small class="muted">Hiçbir kart kazananı söylemez. Her kart <b>${esc(d.match?.side === "away" ? m.away : m.home)}</b>'ın bugünkü durumundan bakar ve o durumdaki bir sonucun geçmişte fiyata göre daha sık mı, daha seyrek mi geldiğini ölçer.</small></p></div>`;
+    const who = d.match?.side === "away" ? m.away : m.home;
+    const verdict = `<div class="lab-verdict">${evBadge(n ? "KEŞİF" : "FARK YOK")}<p><b>Bu maça ${d.scanned} açıdan baktık; ${n + ctx ? `${n + ctx} tanesinde dikkat çeken bir şey var` : "hiçbirinde dikkat çeken bir şey yok"}.</b>
+        ${d.too_thin ? `${d.too_thin} açıda yeterince eski maç yoktu, onları saymadık.` : ""}
+        ${n === 0 ? "Bahis oranlarının yanıldığına dair bir iz yok; çoğu maçta doğru cevap budur." : "Bulunanlar kesin bir şey değil: eski maçlarda bahis oranlarının tahmininden sapan sonuçlar."}
+        <small class="muted">Hiçbir kart kazananı söylemez. Kartlar <b>${esc(gen(who))}</b> bugünkü durumuna benzeyen eski maçlara bakar ve orada olanı bugünkü oranlarla karşılaştırır.</small></p></div>`;
     const cards = (d.findings || []).map((f) => findingCard(f, m, d.match?.side)).join("") + (d.context || []).map((c) => contextCard(c, m)).join("");
     const near = (d.near_misses || []);
     const dom = fpDomain(near);
@@ -2309,14 +2322,16 @@
     const clear = dci[0] != null && (dci[0] > 0 || dci[1] < 0);
     const sentence = mk.p == null
       ? `Bu market için bugün fiyat yok; katmanlar ${est ? `<b>${pctv(est.p)}</b> diyor, kıyas benzer fiyatlı maçlar` : "200 maça ulaşmıyor"}.`
-      : est ? `Piyasa <b>${pctv(mk.p)}</b> bekliyor; katmanlar <b>${pctv(est.p)}</b> diyor — fark <b>${ppv(d.difference)}</b>, aralık ${ciTxt(dci)} ${clear ? "sıfırı dışlıyor" : "<b>sıfırı içeriyor</b>, yani fiyattan ayırt edilemiyor"}.`
+      : est ? `Bahis oranları bu sonuca <b>${pctv(mk.p)}</b> ihtimal veriyor; benzer eski maçlara bakınca <b>${pctv(est.p)}</b> çıkıyor. ${clear
+            ? `Aradaki fark şansla açıklanamayacak kadar büyük: bu sonuç geçmişte oranların dediğinden <b>${d.difference > 0 ? "daha çok" : "daha az"}</b> olmuş.`
+            : "<b>Aradaki fark şansla açıklanabilir</b>; oranlar zaten doğru görünüyor."}`
         : `Piyasa <b>${pctv(mk.p)}</b> bekliyor; 200 maça ulaşan katman olmadığı için pattern tahmini yok.`;
     const verdict = `<div class="lab-verdict">${evBadge(d.evidence.label)}<p>${sentence} <span class="muted">${esc(d.evidence.why)}.</span></p></div>`;
     const fig = `<div class="lab-fig">
       <div class="lab-stat"><small>PİYASA OLASILIĞI</small><b class="is-market">${mk.p == null ? "yok" : pctv(mk.p)}</b>
         <span class="muted">${mk.p == null ? esc(mk.note || "") : mk.source === "nesine" ? `nesine oranı ${num(mk.odds)}, marj çıkarılmış` : mk.odds ? `konsensüs oranı ${num(mk.odds)}` : "Football-Data konsensüsü"}</span></div>
       <div class="lab-stat"><small>PATTERN TAHMİNİ</small><b class="is-pattern">${est ? pctv(est.p) : "–"}</b><span class="muted">${est ? esc(est.basis) : "200 maça ulaşan katman yok"}</span></div>
-      <div class="lab-stat"><small>FARK</small><b class="${clear ? "yes" : ""}">${d.difference == null ? "–" : pp1(d.difference)}</b><span class="muted">puan · %95 aralık ${ciTxt(dci)}</span></div>
+      <div class="lab-stat"><small>FARK</small><b class="${clear ? "yes" : ""}">${d.difference == null ? "–" : pp1(d.difference)}</b><span class="muted">puan · olası aralık ${ciTxt(dci)}</span></div>
     </div>
     ${dumbbell(mk.p, est)}
     <div class="lab-sec">Pattern benzerliği <i class="tip" title="${esc(SIM_TIP)}" aria-hidden="true">?</i></div>${meter(sim?.median)}
@@ -2324,7 +2339,7 @@
     const dom = fpDomain(d.layers);
     const table = `<div class="lab-sec">Katmanlar</div>
       <div class="table-wrap"><table><thead><tr><th>Katman</th><th class="num">N</th><th class="num">Gerçekleşen</th><th class="num">Beklenti</th>
-        <th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th>Kanıt</th></tr></thead><tbody>${layerRows(d.layers, dom)}</tbody></table></div>
+        <th class="num">Fark</th><th class="fp-h">${fpAxis(dom)}</th><th>Kanıt</th></tr></thead><tbody>${layerRows(d.layers, dom)}</tbody></table></div>
       <p class="note"><b>Beklenti</b>: fiyatı olan marketlerde o maçların kendi fiyatı; olmayanlarda (İY, İY/MS, 1,5/3,5 üst, KG) <b>aynı fiyattaki maçlarda</b>
         aynı şeyin ne sıklıkta olduğu. Çizim tek ölçekte (±${dom} puan); renkli nokta aralığın sıfırı dışladığı satır. Gri satırlar 200 maçın altında.</p>`;
     const reasons = `<div class="lab-sec">Neden?</div><div class="lab-why"><div><h4>Destekleyenler</h4>${d.reasons.pro.length ? `<ul class="pro">${d.reasons.pro.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="note">Fiyattan ayrılan bir katman yok.</p>`}</div>
@@ -2395,8 +2410,8 @@
     const clearN = rows.filter((r) => r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0)).length;
     const verdict = `<div class="lab-verdict">${evBadge(running ? "YETERSİZ VERİ" : clearN ? "KEŞİF" : "FARK YOK")}<p>${running
         ? `<b>${d.done} / ${d.total} maç tarandı…</b> Her maçta takım, rakip, benzer durumlar ve ikizler ölçülüyor; satırlar geldikçe sıralanır.`
-        : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${clearN ? `${clearN} maçta birleşik aralık sıfırı dışlıyor — keşif, doğrulama değil.` : "Hiçbir maçta birleşik aralık sıfırı dışlamıyor."}
-        <small class="muted">Hiçbir satır kazananı söylemez. Her satır, o maçın bugünkü durumunda <b>${esc(tLabel)}</b> sonucunun geçmişte fiyata göre daha sık mı, daha seyrek mi geldiğini ölçer; Δ artıysa fiyat ucuz, eksiyse pahalı kalmış demektir.</small>`}</p></div>`;
+        : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${clearN ? `${clearN} maçta oranlar geçmişe göre yanılmış görünüyor — bir ipucu, kanıt değil.` : "Hiçbir maçta oranların yanıldığına dair bir iz yok."}
+        <small class="muted">Hiçbir satır kazananı söylemez. Her satır, o maça benzeyen eski maçlarda <b>${esc(tLabel)}</b> sonucunun oranların dediğinden daha çok mu, daha az mı geldiğini gösterir.</small>`}</p></div>`;
     if (!rows.length) { box.innerHTML = verdict + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
     const dom = fpDomain(rows.map((r) => ({ edge: r.difference, ci: r.difference_ci })));
     box.innerHTML = verdict + `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
@@ -2413,8 +2428,9 @@
           <td>${evBadge(r.evidence?.label)}</td>
           <td><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}
       </tbody></table></div>
-      <p class="note">${esc(d.note || "")} Piyasa sütunu boşsa o market için fiyat yok (İY ve İY/MS fiyatları yalnızca nesine bülteninden gelir).
-        Benzerlik, maçın geçmiş koşullara ne kadar benzediğidir — sonucun olasılığı değil. Çizim tek ölçekte (±${dom} puan).</p>`;
+      <p class="note">Sıralama bahis tavsiyesi değil, "önce buna bak" sırasıdır: farkı büyük, eski maçı çok ve daha önce de görülmüş olanlar üstte.
+        Piyasa sütunu boşsa o market için oran yok (ilk yarı ve İY/MS oranları yalnızca nesine bülteninden gelir).
+        Benzerlik, maçın eski maçlara ne kadar benzediğidir — sonucun ihtimali değil.</p>`;
     box.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => labOpenTarget(b.dataset.detail, date, target)));
   }
 
