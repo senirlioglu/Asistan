@@ -2196,14 +2196,29 @@
   }
 
 
-  function findingCard(f, m) {
+  /** What a finding means in this match's terms. Every measurement is taken from one side's state
+      (the home side unless the scan says otherwise), so "Kaybeder" alone is unreadable: it has to say
+      whose loss, and that a negative Δ means the outcome came LESS often than priced — not who wins. */
+  function findingMeaning(f, m, side) {
+    const team = side === "away" ? m.away : m.home, other = side === "away" ? m.home : m.away;
+    const who = { win: `${team} kazanır`, loss: `${other} kazanır`, draw: "Beraberlik", over25: "2,5 üst", over15: "1,5 üst",
+                  over35: "3,5 üst", btts: "Karşılıklı gol", ht_draw: "İlk yarı berabere", ht_win: `${team} ilk yarıda önde` }[f.outcome] || f.outcome_tr;
+    const less = f.edge < 0;
+    const sentence = `${team} bu durumdayken${f.detail ? ` (${f.detail})` : ""} "${who}" geçmişte piyasanın fiyatladığından
+      <b>${less ? "daha seyrek" : "daha sık"}</b> gelmiş. Yani bu durumda "${who}" fiyatı ${less ? "pahalı" : "ucuz"} kalmış — kim kazanır demek değil.`;
+    return { who, sentence, team };
+  }
+
+  function findingCard(f, m, side = "home") {
     const solid = f.ci && f.ci[0] != null && (f.ci[0] > 0 || f.ci[1] < 0);
+    const mean = findingMeaning(f, m, side);
     return `<div class="lab-card">
       <div class="lab-card-top"><span>${esc(f.source_tr)}</span>${evBadge(f.evidence_tr)}</div>
-      <div class="lab-card-body"><span class="lab-big">${esc(f.outcome_tr)}</span>
-        <span>gerçekleşen <b>${pctv(f.actual)}</b> · beklenti <b>${pctv(f.market)}</b> <small class="muted">N = ${f.n}</small></span>
+      <div class="lab-card-body"><small class="muted">${esc(mean.team)} açısından · ${esc(f.outcome_tr).toLocaleLowerCase("tr")}</small>
+        <span class="lab-big">${esc(mean.who)}</span>
+        <span>gerçekleşen <b>${pctv(f.actual)}</b> · piyasa <b>${pctv(f.market)}</b> <small class="muted">N = ${f.n}</small></span>
         <span class="${solid ? "yes" : ""}">Δ <b>${ppv(f.edge)}</b> <small class="muted">${ciTxt(f.ci)} · q=${num(f.q, 3)}</small></span>
-        ${f.detail ? `<small class="muted">${esc(f.detail)}</small>` : ""}</div>
+        <small class="muted">${mean.sentence}</small></div>
       <button type="button" class="btn ghost" data-open="${esc(SCAN_ANCHOR[f.source] || "twins")}">İncele</button></div>`;
   }
 
@@ -2224,8 +2239,9 @@
     const n = d.after_correction, ctx = (d.context || []).length;
     const verdict = `<div class="lab-verdict">${evBadge(n ? "KEŞİF" : "FARK YOK")}<p><b>${d.scanned} pattern tarandı, ${n + ctx} araştırılabilir durum bulundu.</b>
         ${d.too_thin} ölçüm 200 maçın altında kaldı; gerisi bu maçın tek ailesinde çoklu test düzeltmesinden geçti.
-        ${n === 0 ? (ctx ? "Bulunanların hepsi bağlam — fiyattan ayrılan bir ölçüm yok; çoğu maçta doğru cevap budur." : "Bu maçta piyasadan ayrılan bir ölçüm yok; bu bir hata değil, çoğu maçta doğru cevap budur.") : "Bunlar sinyal değil, araştırılabilir durumdur: havuzda sıfırı dışlıyor, o kadar."}</p></div>`;
-    const cards = (d.findings || []).map((f) => findingCard(f, m)).join("") + (d.context || []).map((c) => contextCard(c, m)).join("");
+        ${n === 0 ? (ctx ? "Bulunanların hepsi bağlam — fiyattan ayrılan bir ölçüm yok; çoğu maçta doğru cevap budur." : "Bu maçta piyasadan ayrılan bir ölçüm yok; bu bir hata değil, çoğu maçta doğru cevap budur.") : "Bunlar sinyal değil, araştırılabilir durumdur: havuzda sıfırı dışlıyor, o kadar."}
+        <small class="muted">Hiçbir kart kazananı söylemez. Her kart <b>${esc(d.match?.side === "away" ? m.away : m.home)}</b>'ın bugünkü durumundan bakar ve o durumdaki bir sonucun geçmişte fiyata göre daha sık mı, daha seyrek mi geldiğini ölçer.</small></p></div>`;
+    const cards = (d.findings || []).map((f) => findingCard(f, m, d.match?.side)).join("") + (d.context || []).map((c) => contextCard(c, m)).join("");
     const near = (d.near_misses || []);
     const dom = fpDomain(near);
     box.innerHTML = verdict + `<div class="lab-cards">${cards || ""}</div>` + (near.length

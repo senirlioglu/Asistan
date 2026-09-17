@@ -45,6 +45,8 @@ OUTCOME_TR = {"win": "Kazanır", "draw": "Berabere", "loss": "Kaybeder", "over25
               "btts": "KG var", "over15": "1,5 üst", "over35": "3,5 üst",
               "ht_draw": "İY berabere", "ht_win": "İY önde"}
 
+MOVE_TR = {"STEAM": "Para geliyor", "DRIFT": "Para çekiliyor", "REVERSAL": "Dönüş", "STABLE": "Sabit", "NOISY": "Dağınık"}
+
 MIN_N = 200          # below this the interval is the answer, whatever the point estimate says
 MIN_EDGE = 1.0       # percentage points; smaller than this is not worth a reader's attention
 ALPHA = 0.05
@@ -139,7 +141,12 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
     # ---- context, never claims -------------------------------------------------------------
     cyc = sequence.find_cycles(df, str(row["home_team"] if side == "home" else row["away_team"]),
                                centre_match_id=match_id, min_similarity=70.0)
+    seen_cycles: set[tuple] = set()
     for c in (cyc.get("cycles") or [])[:3]:
+        key = (c["kind_tr"], c["window"], c["past"]["season"], c["similarity"])
+        if key in seen_cycles:                       # the same window found from two centres reads as one card
+            continue
+        seen_cycles.add(key)
         context.append({"source": "sequence", "source_tr": "Fikstür döngüsü",
                         "label": f"{c['kind_tr']} · ±{c['window']} · {c['past']['season']}",
                         "value": f"%{c['similarity']:g}",
@@ -259,7 +266,7 @@ def _movement_context(settings: Settings, quoted: dict) -> dict | None:
     if not v.get("type"):
         return None
     return {"source": "movement", "source_tr": "Oran hareketi",
-            "label": v["type"], "value": f"{v.get('total_pp')} puan" if v.get("total_pp") is not None else "–",
+            "label": MOVE_TR.get(v["type"], v["type"]), "value": f"{v.get('total_pp')} puan" if v.get("total_pp") is not None else "–",
             "note": "hareket sınıfı bir şekildir, bir oran değil"
                     + ("" if v.get("confidence") != "low" else " · düşük güven"),
             "data": {"movement": v, "quality": sel.get("quality")}}
