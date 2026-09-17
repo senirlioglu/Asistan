@@ -807,7 +807,7 @@ def lab_own(side: str = Query("home", pattern="^(home|away)$"), form: str = Quer
             opp_strength: str = Query(""), gap_lo: float | None = None, gap_hi: float | None = None,
             leagues: str = Query(""), goals: str = Query("", max_length=200), role: str = Query(""),
             p_lo: float | None = Query(None, ge=0, le=1), p_hi: float | None = Query(None, ge=0, le=1),
-            movement: str = Query(""), outcome: str = Query("")) -> dict:
+            movement: str = Query(""), outcome: str = Query(""), sample: int = Query(25, ge=0, le=100)) -> dict:
     """Mode 3: the reader's own conditions, added one at a time, each row against the price.
 
     `strength` / `opp_strength`: weak | mid | strong | top or "lo-hi". `goals`: "gf5:8-30,ov25_5:3-5".
@@ -842,7 +842,7 @@ def lab_own(side: str = Query("home", pattern="^(home|away)$"), form: str = Quer
             "role": role or None, "market": [p_lo, p_hi] if p_lo is not None and p_hi is not None else None,
             "movement": movement or None}
     outcomes = tuple(service.PATTERN_OUTCOMES) + ((outcome,) if outcome and outcome in tg.TARGETS and outcome not in service.PATTERN_OUTCOMES else ())
-    out = tg.own_pattern(settings, spec, outcomes=outcomes)
+    out = tg.own_pattern(settings, spec, outcomes=outcomes, sample=sample)
     if out is None:
         raise HTTPException(404, "durum tablosu hazır değil")
     return out

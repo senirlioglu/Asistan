@@ -386,6 +386,11 @@ def test_lab_own_pattern_adds_one_condition_at_a_time(research_client):
     assert "win" in d["rows"][0]["outcomes"] and "diff_ci" in d["rows"][0]["outcomes"]["win"]
     extra = research_client.get("/api/lab/kendi?side=away&form=L&outcome=htft_2/1").json()
     assert "htft_2/1" in extra["outcomes"]
+    last = d["rows"][-1]
+    assert isinstance(last.get("sample"), list) and len(last["sample"]) <= 25      # the matches behind the last row
+    if last["sample"]:
+        assert {"date", "home_team", "away_team", "ftr"} <= set(last["sample"][0])
+    assert len(research_client.get("/api/lab/kendi?side=home&form=W&sample=3").json()["rows"][-1]["sample"]) <= 3
     assert research_client.get("/api/lab/kendi?strength=bad").status_code == 422
 
 

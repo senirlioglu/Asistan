@@ -2082,12 +2082,17 @@
   }
 
   function labDates(sel, onChange) {
+    // the same window the Maçlar tab offers: the last week (played — analysed as of their own day),
+    // today, and the next six days. Football-Data lists a fixture only once its odds are out, so
+    // days past the coming round are usually empty until Tuesday/Wednesday; the option says so.
     const today = state.meta?.today || isoDay(new Date());
     const has = new Set(state.meta?.dates || []);
     sel.innerHTML = "";
-    for (let i = 0; i < 7; i++) {
+    for (let i = -7; i < 7; i++) {
       const d = new Date(today + "T12:00:00"); d.setDate(d.getDate() + i); const s = isoDay(d);
-      const o = el("option"); o.value = s; o.textContent = fmtDate(s) + (i === 0 ? " · bugün" : "") + (has.has(s) ? "" : " · henüz maç yok");
+      const o = el("option"); o.value = s;
+      const tag = i === 0 ? " · bugün" : i < 0 ? " · oynandı" : "";
+      o.textContent = fmtDate(s) + tag + (has.has(s) ? "" : i < 0 ? " · analiz yok" : " · henüz maç yok");
       sel.appendChild(o);
     }
     sel.value = today;
@@ -2128,7 +2133,12 @@
     const q = ($("#lm-q").value || "").trim().toLocaleLowerCase("tr");
     const ms = state.lab.dayList.filter((m) => state.lab.leagues.has(m.league) && (!q || `${m.home} ${m.away}`.toLocaleLowerCase("tr").includes(q)));
     const box = $("#lm-list");
-    if (!state.lab.dayList.length) { box.innerHTML = `<div class="day-empty">Bu gün için analiz edilmiş maç yok. Football-Data yeni haftanın maçlarını genellikle Salı–Çarşamba yükler.</div>`; return; }
+    if (!state.lab.dayList.length) {
+      const today = state.meta?.today || "";
+      box.innerHTML = `<div class="day-empty">${$("#lm-date").value < today ? "Bu gün için kayıtlı analiz yok."
+        : "Bu gün için henüz analiz edilmiş maç yok. Football-Data bir maçı ancak oranı yayınlanınca fikstüre ekler; hafta sonu maçları genellikle <b>Salı–Çarşamba</b> gelir ve sabah güncellemesinden sonra burada görünür. Geçen haftanın oynanmış maçlarını da seçebilirsin — analiz o günün bilgisiyle yapılır."}</div>`;
+      return;
+    }
     if (!ms.length) { box.innerHTML = `<p class="note">Filtreye uyan maç yok.</p>`; return; }
     box.innerHTML = ms.slice(0, 120).map((m) => `<button type="button" class="lab-row${m._ready ? "" : " is-na"}" data-pick="${esc(m.id)}" ${m._ready ? "" : 'title="Bu maç için durum tablosu henüz hazır değil (günlük iş)"'}>
         <span class="lab-row-main"><b>${esc(m.home)} – ${esc(m.away)}</b><small class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}</small></span>
@@ -2507,6 +2517,16 @@
     const tests = state.ex.asked * d.outcomes.length;
     const chips = d.outcomes.map((o) => `<button type="button" data-oc="${esc(o)}" class="${o === oc ? "is-on" : ""}">${esc(EX_OUT[o] || o)}</button>`).join("");
     const lc = cell(last.outcomes[oc]);
+    const RES = { H: "1", D: "X", A: "2" };
+    const sample = (last.sample || []);
+    const who = (r) => (d.side === "home" ? r.home_team : r.away_team);
+    const sampleHTML = sample.length ? `<div class="lab-sec">Bu tarife uyan maçlar <span class="muted">— en yeni ${sample.length}${last.n > sample.length ? ` / ${last.n.toLocaleString("tr")}` : ""}; kalın olan koşulun tarif ettiği takım</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Tarih</th><th class="hide-sm">Lig</th><th>Maç</th><th class="num">Skor</th><th class="num">MS</th><th class="hide-sm">Form (ev / dep)</th></tr></thead><tbody>
+      ${sample.map((r) => `<tr><td class="num">${fmtShort(String(r.date).slice(0, 10))}</td><td class="hide-sm nw">${esc(leagueName(r.league))}</td>
+        <td class="wrap">${d.side === "home" ? `<b>${esc(r.home_team)}</b> – ${esc(r.away_team)}` : `${esc(r.home_team)} – <b>${esc(r.away_team)}</b>`}</td>
+        <td class="num">${r.fthg == null ? "–" : `${r.fthg}-${r.ftag}`}</td><td class="num res-${esc(r.ftr || "")}">${RES[r.ftr] || "–"}</td>
+        <td class="hide-sm"><span class="fseq">${esc(String(r.h_form || "").slice(-5))}</span> / <span class="fseq">${esc(String(r.a_form || "").slice(-5))}</span></td></tr>`).join("")}
+      </tbody></table></div>` : "";
     const verdict = `<div class="lab-verdict">${evBadge(last.n < 200 ? "YETERSİZ VERİ" : solidN ? "KEŞİF" : "FARK YOK")}<p><b>Son koşulda ${last.n.toLocaleString("tr")} maç kaldı</b>
         (${d.pool.toLocaleString("tr")} maçlık havuz, ${d.span[0]} – ${d.span[1]}). ${last.n < 200 ? "Örneklem 200'ün altında; son satırlar okunmamalı — hangi koşulun örneklemi bitirdiğine bak."
         : lc.edge != null ? `${esc(EX_OUT[oc] || oc)} için fark <b>${ppv(lc.edge)}</b>, aralık ${ciTxt(lc.ci)} ${lc.ci[0] > 0 || lc.ci[1] < 0 ? "sıfırı dışlıyor — bir aday, bulgu değil." : "sıfırı içeriyor — piyasanın bildiği bir şey."}` : ""}</p></div>`;
@@ -2520,6 +2540,7 @@
       <p class="note"><b>Fiyat</b> sütunu: piyasanın fiyatı olan marketlerde (1X2, 2,5 üst) o maçların kendi fiyatı; olmayan marketlerde
         <b>aynı fiyattaki maçlarda</b> aynı şeyin ne sıklıkta olduğu — havuz ortalaması değil. Fark, havuz geneli sapma çıkarıldıktan sonradır.
         <b>Aralık sıfırı içeriyorsa desen, piyasanın zaten bildiği bir şeyi söylüyor.</b></p>
+      ${sampleHTML}
       <p class="ex-warn">Bu oturumda <b>${state.ex.asked} sorgu</b> çalıştırdın, her biri ${d.outcomes.length} sonucu ölçtü: <b>${tests} test</b>.
         %95 aralıkla, hiçbir gerçek desen olmasa bile bunların yaklaşık <b>${Math.max(1, Math.round(tests * 0.05))} tanesinin</b> sıfırı dışlaması beklenir —
         şu ana kadar ${state.ex.cleared} tanesi dışladı. Buradan çıkan bir fikir bulgu değil, <b>adaydır</b> (KEŞİF): gerçek sınav üç pencereli tarama ve çoklu test düzeltmesidir.</p>`;

@@ -466,7 +466,7 @@ def _band(v) -> tuple[float, float] | None:
     return None
 
 
-def own_pattern(settings: Settings, spec: dict, outcomes: tuple[str, ...] | None = None, sample: int = 10) -> dict | None:
+def own_pattern(settings: Settings, spec: dict, outcomes: tuple[str, ...] | None = None, sample: int = 25) -> dict | None:
     """The reader's own conditions, added one at a time, each row measured against the price.
 
     `spec` keys (all optional): side, form, venue_form, approx, strength, opp_form, opp_venue_form,
