@@ -70,7 +70,7 @@ button { cursor: pointer; }
 
 /* ---------- top bar ---------- */
 .topbar { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
-.topbar-inner { max-width: 760px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+.topbar-inner { max-width: 1240px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); font-family: var(--font-display); font-weight: 700; font-size: 1rem; white-space: nowrap; }
 .brand-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--hist); box-shadow: 0 0 0 3px var(--hist-soft); }
 .tabs { display: flex; gap: 4px; margin-left: auto; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -87,7 +87,8 @@ button { cursor: pointer; }
 @media (max-width: 480px) { .brand-name { display: none; } .status span:last-child { display: none; } .status { padding: 8px; } }
 
 /* ---------- page ---------- */
-.page { max-width: 760px; margin: 0 auto; padding: 16px 16px 0; }
+.page { max-width: 1240px; margin: 0 auto; padding: 16px 16px 0; }
+@media (min-width: 1000px) { .page { padding: 20px 28px 0; } .topbar-inner { padding: 10px 28px; } }
 .h2 { font-size: 1.4rem; margin-bottom: 4px; }
 .lead { color: var(--ink-2); margin: 0 0 16px; max-width: 65ch; }
 
@@ -128,6 +129,7 @@ button { cursor: pointer; }
 
 /* ---------- cards ---------- */
 .cards { display: grid; gap: 12px; }
+@media (min-width: 900px) { .cards { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); align-items: start; } }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px 12px; display: grid; gap: 10px; text-align: left; width: 100%; color: inherit; transition: transform 120ms ease, box-shadow 120ms ease; }
 .card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 @media (prefers-reduced-motion: reduce) { .card { transition: none; } .card:hover { transform: none; } }
@@ -193,7 +195,7 @@ button { cursor: pointer; }
 .sheet-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 30; }
 .sheet { position: fixed; z-index: 31; background: var(--surface); box-shadow: var(--shadow); overflow-y: auto;
   left: 0; right: 0; bottom: 0; max-height: 92vh; border-radius: 18px 18px 0 0; padding: 8px 16px 32px; }
-@media (min-width: 900px) { .sheet { top: 0; bottom: 0; left: auto; right: 0; width: 560px; max-height: none; border-radius: 0; padding: 16px 22px 40px; } .sheet-handle { display: none; } }
+@media (min-width: 900px) { .sheet { top: 0; bottom: 0; left: auto; right: 0; width: min(680px, 60vw); max-height: none; border-radius: 0; padding: 16px 22px 40px; } .sheet-handle { display: none; } }
 .sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 4px auto 10px; }
 /* the head (title + close button) stays visible while the sheet scrolls, so the ✕ is always reachable on a phone */
 .sheet-head { position: sticky; top: -8px; z-index: 2; background: var(--surface); display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
@@ -568,6 +570,8 @@ tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
 .lab-row:hover { background: var(--surface-2); }
 .lab-row-main { display: flex; flex-direction: column; gap: 1px; }
 .lab-row-main small { font-size: 0.74rem; }
+.lab-odds { display: block; font-size: 0.72rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+@media (min-width: 1000px) { .lab-list { max-height: 540px; } .lab-grid { grid-template-columns: 260px minmax(0, 1fr); gap: 0 30px; } }
 .lab-row.is-on { border-left-color: var(--lab); background: var(--lab-soft); }
 .lab-row.is-na { opacity: 0.5; }
 .lab-picked { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }

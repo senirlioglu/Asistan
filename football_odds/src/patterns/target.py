@@ -402,7 +402,7 @@ def _relevance(a: dict) -> dict:
 
 def _summary_row(m: dict, a: dict) -> dict:
     return {"id": m["id"], "home": m["home"], "away": m["away"], "league": m.get("league"),
-            "league_name": m.get("league_name"), "date": m.get("date"), "time": m.get("time"),
+            "league_name": m.get("league_name"), "date": m.get("date"), "time": m.get("time"), "nesine": m.get("nesine"),
             "market": a["market"], "estimate": a["estimate"], "difference": a["difference"],
             "difference_ci": a["difference_ci"], "similarity": (a.get("similarity") or {}).get("median"),
             "evidence": a["evidence"], "n_layers": (a.get("combined") or {}).get("n_layers", 0),

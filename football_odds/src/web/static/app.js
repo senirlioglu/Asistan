@@ -2113,6 +2113,17 @@
     lmLoad($("#lm-date").value);
   }
 
+  /** nesine's quoted prices on one line: "nesine · MS 2,05 / 3,40 / 3,50 · 2,5 Ü 1,80 A 2,00 · İY 2,90 / 2,10 / 4,10". */
+  function nesLine(n, full = true) {
+    if (!n) return "";
+    const tri = (g) => g && g["1"] ? `${num(g["1"])} / ${num(g.X)} / ${num(g["2"])}` : "";
+    const parts = [];
+    if (tri(n.ms)) parts.push(`MS ${tri(n.ms)}`);
+    if (full && n.o25 && n.o25.ust) parts.push(`2,5 Ü ${num(n.o25.ust)} A ${num(n.o25.alt)}`);
+    if (full && tri(n.iy)) parts.push(`İY ${tri(n.iy)}`);
+    return parts.length ? `nesine · ${parts.join(" · ")}` : "";
+  }
+
   async function lmLoad(date) {
     state.lab.picked = null; $("#lm-picked").hidden = true; $("#lm-scan").innerHTML = ""; $("#lm-target").hidden = true;
     $("#lm-list").innerHTML = `<p class="note">Yükleniyor…</p>`;
@@ -2154,7 +2165,7 @@
     const nNes = ms.filter((m) => m.source === "nesine").length;
     box.innerHTML = (nNes ? `<p class="note">${ms.length} maç; ${nNes} tanesi yalnızca nesine bülteninden (fiyatı nesine'nin, marj çıkarılmış; Maçlar sekmesindeki analiz yok, Pattern Lab motorları çalışır).</p>` : "")
       + ms.slice(0, 200).map((m) => `<button type="button" class="lab-row${m._ready ? "" : " is-na"}" data-pick="${esc(m.id)}" ${m._ready ? "" : 'title="Bu maç için durum tablosu henüz hazır değil (günlük iş)"'}>
-        <span class="lab-row-main"><b>${esc(m.home)} – ${esc(m.away)}</b><small class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}${m.source === "nesine" ? ' · <span class="ev ev-ctx">nesine</span>' : ""}</small></span>
+        <span class="lab-row-main"><b>${esc(m.home)} – ${esc(m.away)}</b><small class="muted">${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""}${m.source === "nesine" ? ' · <span class="ev ev-ctx">nesine</span>' : ""}</small>${nesLine(m.nesine) ? `<small class="lab-odds">${esc(nesLine(m.nesine))}</small>` : ""}</span>
         <span class="num muted">${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}</span></button>`).join("");
     box.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => lmPick(b.dataset.pick)));
   }
@@ -2167,7 +2178,8 @@
     $("#lm-list").querySelectorAll("[data-pick]").forEach((b) => b.classList.toggle("is-on", b.dataset.pick === id));
     $("#lm-picked").hidden = false;
     $("#lm-title").textContent = `${m.home} – ${m.away}`;
-    $("#lm-sub").textContent = ` ${m.league_name}${m.time ? " · " + m.time : ""} · ${fmtDate(m.date)} · oran ${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}`;
+    $("#lm-sub").innerHTML = ` ${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)} · oran ${num(m.odds.h)} / ${num(m.odds.d)} / ${num(m.odds.a)}`
+      + (nesLine(m.nesine) ? `<br><span class="lab-odds">${esc(nesLine(m.nesine))}</span>` : "");
     $("#lm-scan").innerHTML = ""; $("#lm-target").hidden = true; $("#lm-out").innerHTML = "";
     labQ(`<b>${esc(m.home)} – ${esc(m.away)}</b> maçında ne olur?`);
     if (!opts.quiet) $("#lm-picked").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -2417,7 +2429,7 @@
     box.innerHTML = verdict + `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
         <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Kanıt</th><th></th></tr></thead><tbody>
         ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br>
-            <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small></td>
+            <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}</td>
           <td class="hide-md nw">${esc(r.league_name || r.league || "")}</td><td class="num hide-md">${esc(r.time || "")}</td>
           <td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
           <td class="num">${r.market?.p == null ? "<small class=\"muted\">yok</small>" : pctv(r.market.p)}</td>

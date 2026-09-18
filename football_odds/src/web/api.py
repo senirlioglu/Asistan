@@ -581,6 +581,33 @@ def _nesine_payload(m: dict, hits: list, store: dict) -> dict:
             "hits": hits, "moves": watcher.movement(store, m["code"], changed_only=True)}
 
 
+def _bulletin_odds(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
+    """nesine's prices for one fixture, as quoted (margin in): match result, half time, over/under 2.5.
+    By code when the fixture came from the bulletin, by name otherwise. Light: no notes, no movement."""
+    from ..nesine.bulletin import load_matches
+    from .live import name_score
+
+    try:
+        matches, _ = load_matches(settings)
+    except Exception:  # noqa: BLE001 - no bulletin, no prices; the row still lists
+        return None
+    best, best_s = None, 0.0
+    for m in matches:
+        if code is not None:
+            if m.get("code") == code:
+                best = m
+                break
+            continue
+        if m["date"] != date_tr:
+            continue
+        sc = (name_score(home, m["home"]) + name_score(away, m["away"])) / 2
+        if sc > best_s:
+            best, best_s = m, sc
+    if best is None or (code is None and best_s < 0.6):
+        return None
+    return {"code": best.get("code"), "ms": best.get("ms") or {}, "iy": best.get("iy") or {}, "o25": best.get("o25") or {}}
+
+
 def _nesine_brief(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
     """The bulletin entry for one of OUR fixtures (reverse of `_ours_lookup`), or None when it is not quoted.
     A bulletin fixture already knows its nesine code, so it is looked up by code, not by name."""
@@ -808,7 +835,8 @@ def lab_matches(from_: str | None = Query(default=None, alias="from"), to: str |
                         "league_name": LEAGUE_TR.get(_str(r["league"]), _str(r["league"])), "home": _str(r["home"]),
                         "away": _str(r["away"]), "odds": [_num(r.get("odds_h")), _num(r.get("odds_d")), _num(r.get("odds_a"))],
                         "market": [_num(r.get("market_h")), _num(r.get("market_d")), _num(r.get("market_a"))],
-                        "ready": mid in known, "source": "football-data"})
+                        "ready": mid in known, "source": "football-data",
+                        "nesine": _bulletin_odds(_str(r["date_tr"]), _str(r["home"]), _str(r["away"]))})
     if frame is not None:
         meta = nf.read_meta(settings)
         have = {m["id"] for m in out}
@@ -826,7 +854,8 @@ def lab_matches(from_: str | None = Query(default=None, alias="from"), to: str |
                         "market": [_num(100 * float(r["p_home"])) if pd.notna(r.get("p_home")) else None,
                                    _num(100 * float(r["p_draw"])) if pd.notna(r.get("p_draw")) else None,
                                    _num(100 * float(r["p_away"])) if pd.notna(r.get("p_away")) else None],
-                        "ready": True, "source": "nesine", "code": info.get("code"), "nesine_league": info.get("league_name", "")})
+                        "ready": True, "source": "nesine", "code": info.get("code"), "nesine_league": info.get("league_name", ""),
+                        "nesine": _bulletin_odds(d, h, a, code=info.get("code"))})
     out.sort(key=lambda m: (m["date"], m["time"], m["league_name"]))
     return {"from": lo, "to": hi, "matches": out, "state_ready": frame is not None}
 
