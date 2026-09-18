@@ -50,10 +50,15 @@ def test_cup_ties_are_placed_with_each_clubs_own_league(settings, history):
     hist.loc[hist["away_team"] == "A2", "league"] = "SP1"
     hist.loc[hist["home_team"] == "A2", "league"] = "SP1"
     hist.loc[hist["away_team"] == "H1", "league"] = "E0"
+    # what nesine calls a league fixture cannot join two of our leagues: that is a name resolved to the wrong club
     table, meta = nf.nesine_fixture_table(settings, hist=hist, matches=_bulletin()[:1], today=dt.date(2030, 1, 1))
+    assert table.empty
+    cup = [{**_bulletin()[0], "league": "UEFA Avrupa Ligi"}]
+    table, meta = nf.nesine_fixture_table(settings, hist=hist, matches=cup, today=dt.date(2030, 1, 1))
     assert len(table) == 1
     r = table.iloc[0]
     assert (r["league"], r["home_league"], r["away_league"]) == (nf.CUP, "E0", "SP1")
+    assert nf.is_cup("Brezilya Serie B") is False and nf.is_cup("İngiltere Lig Kupası") and nf.is_cup("Libertadores Kupası")
     assert r["match_id"] == nf._match_id(nf.CUP, "2030-01-05", "H1", "A2")
 
 

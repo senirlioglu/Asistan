@@ -56,6 +56,16 @@ def _novig(group: dict | None, keys: tuple[str, ...]) -> list[float | None]:
     return [100.0 * v / tot for v in inv]
 
 
+CUP_WORDS = ("kupa", "cup", "uefa", "avrupa ligi", "şampiyonlar", "champions", "europa", "konferans", "conference",
+             "libertadores", "sudamericana", "playoff", "play-off", "süper kupa", "supercup")
+
+
+def is_cup(competition: str) -> bool:
+    """nesine's competition name says whether clubs of two leagues can legitimately meet in it."""
+    n = competition.casefold()
+    return any(w in n for w in CUP_WORDS)
+
+
 def _match_id(league: str, date: str, home: str, away: str) -> str:
     return hashlib.sha1(f"{league}|{date}|{home}|{away}".encode("utf-8")).hexdigest()[:16]
 
@@ -95,6 +105,11 @@ def nesine_fixture_table(settings: Settings, hist: pd.DataFrame | None = None,
             continue
         lg_h, lg_a = league_of.get(h), league_of.get(a)
         if not lg_h or not lg_a:
+            continue
+        if lg_h != lg_a and not is_cup(str(m.get("league") or "")):
+            # two clubs from two of our leagues in what nesine calls a league fixture: one of the names
+            # resolved to the wrong club (Athletic-MG in Brazil's Serie B is not Ath Bilbao; York is not
+            # New York; Valencia B is not Valencia). On 18 Sep 2026 all five such rows were wrong
             continue
         league = lg_h if lg_h == lg_a else CUP          # a cup or a European tie: each club keeps its own table
         p_h, p_d, p_a = _novig(m.get("ms"), ("1", "X", "2"))
