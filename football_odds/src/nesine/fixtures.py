@@ -33,6 +33,12 @@ from ..logging_setup import get_logger
 log = get_logger("nesine.fixtures")
 
 META_NAME = "nesine_fixtures.json"
+STAMP = "nesine"                         # the "run day" the bulletin's analysis is filed under
+PRED_NAME = f"{STAMP}_predictions.csv"   # same shape as <date>_predictions.csv, read by /api/day and the match sheet
+DETAILS_NAME = f"{STAMP}_details.json"
+ANALOGUES_NAME = f"{STAMP}_analogues.parquet"
+ANALYSIS_MAX_AGE_H = 12                  # a fixture's analysis is redone after this, or when its price moved
+ODDS_MOVE = 0.03                         # relative move on any 1X2 price that makes the analysis stale
 CUP = "CUP"          # the league code of a tie between clubs of two leagues (European cups, domestic cups across divisions)
 
 
@@ -149,3 +155,121 @@ def _shift(date: str, days: int) -> str:
         return (dt.date.fromisoformat(str(date)[:10]) + dt.timedelta(days=days)).isoformat()
     except ValueError:
         return str(date)
+
+
+# --------------------------------------------------------------------------- the bulletin, analysed
+
+def _jsonable(v):
+    """numpy scalars, NaN and timestamps into what json.dumps accepts."""
+    if isinstance(v, dict):
+        return {str(k): _jsonable(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_jsonable(x) for x in v]
+    if hasattr(v, "item") and not isinstance(v, (str, bytes)):
+        try:
+            v = v.item()
+        except (ValueError, TypeError):
+            pass
+    if isinstance(v, float) and v != v:
+        return None
+    if isinstance(v, (pd.Timestamp, dt.datetime, dt.date)):
+        return v.isoformat()
+    return v
+
+
+def _stale(prev: pd.Series, ms: dict, now: dt.datetime, max_age_h: float) -> bool:
+    try:
+        at = dt.datetime.fromisoformat(str(prev.get("analysed_at")))
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=dt.timezone.utc)
+    except (TypeError, ValueError):
+        return True
+    if (now - at).total_seconds() > max_age_h * 3600:
+        return True
+    for col, key in (("odds_h", "1"), ("odds_d", "X"), ("odds_a", "2")):
+        try:
+            a, b = float(prev.get(col)), float(ms.get(key))
+        except (TypeError, ValueError):
+            return True
+        if a <= 0 or abs(a - b) / a > ODDS_MOVE:
+            return True
+    return False
+
+
+def analyse_bulletin(settings: Settings, table: pd.DataFrame | None, meta: dict, matches: list[dict] | None = None,
+                     now: dt.datetime | None = None, max_age_h: float = ANALYSIS_MAX_AGE_H) -> int:
+    """Our own analogue analysis (the one behind the Maçlar tab) for every bulletin fixture in `table`,
+    written under the stamp "nesine" in the prediction files' shape: `nesine_predictions.csv`,
+    `nesine_details.json` and `analogues/nesine_analogues.parquet`. /api/day merges these rows into a
+    day when Football-Data has not published that day yet, and the match sheet reads analogues and team
+    records through the same endpoints as an analysed day. A fixture keeps its analysis for
+    `max_age_h` hours unless its price moved; the rest is redone. Returns the number analysed afresh."""
+    from .analyze import analyse
+    from .bulletin import load_matches
+
+    if table is None or not len(table):
+        return 0
+    if matches is None:
+        matches, _ = load_matches(settings)
+    by_code = {m.get("code"): m for m in matches}
+    now = now or dt.datetime.now(dt.timezone.utc)
+    rd = settings.results_dir
+    pred_p, det_p, an_p = rd / PRED_NAME, rd / DETAILS_NAME, rd / "analogues" / ANALOGUES_NAME
+    old = pd.read_csv(pred_p) if pred_p.exists() else pd.DataFrame()
+    old_by_id = {str(r["match_id"]): r for _, r in old.iterrows()} if len(old) else {}
+    old_details = read_details(settings)
+    old_an = pd.read_parquet(an_p) if an_p.exists() else pd.DataFrame()
+    rows, details, frames, n_new, n_kept = [], {}, [], 0, 0
+    for _, fx in table.iterrows():
+        mid = str(fx["match_id"])
+        info = meta.get(mid) or {}
+        hit = by_code.get(info.get("code"))
+        if hit is None:
+            continue
+        ms = hit.get("ms") or {}
+        prev = old_by_id.get(mid)
+        if prev is not None and not _stale(prev, ms, now, max_age_h):
+            rows.append(prev.to_dict())
+            details[mid] = old_details.get(mid, {})
+            if len(old_an):
+                frames.append(old_an[old_an["fixture_id"].astype(str) == mid])
+            n_kept += 1
+            continue
+        try:
+            res = analyse(settings, hit)
+        except Exception as exc:  # noqa: BLE001 - one bad fixture must not lose the rest
+            log.warning("nesine analysis failed for %s: %s", mid, exc)
+            continue
+        if res is None:
+            continue
+        s = {k: v for k, v in res["summary"].to_dict().items() if not isinstance(v, (dict, list))}
+        o25 = hit.get("o25") or {}
+        s.update({"match_id": mid, "date": str(fx["date"])[:10], "time": str(info.get("time") or fx.get("time") or ""),
+                  "league": str(fx["league"]), "home": str(fx["home"]), "away": str(fx["away"]),
+                  "nesine_code": info.get("code"), "league_name": str(info.get("league_name") or ""), "source": STAMP,
+                  "analysed_at": now.isoformat(timespec="seconds"),
+                  "odds_h": ms.get("1"), "odds_d": ms.get("X"), "odds_a": ms.get("2"), "odds_o25": o25.get("ust"), "odds_u25": o25.get("alt")})
+        rows.append(s)
+        details[mid] = _jsonable(res["details"])
+        an = res["analogues"].copy()
+        an["fixture_id"] = mid
+        frames.append(an)
+        n_new += 1
+    rd.mkdir(parents=True, exist_ok=True)
+    an_p.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(pred_p, index=False)
+    det_p.write_text(json.dumps({"written_at": now.isoformat(timespec="seconds"), "matches": details}, ensure_ascii=False), encoding="utf-8")
+    if frames:
+        pd.concat(frames, ignore_index=True).to_parquet(an_p, index=False)
+    elif an_p.exists():
+        an_p.unlink()
+    log.info("nesine bulletin analysed: %d fresh, %d kept, %d rows -> %s", n_new, n_kept, len(rows), pred_p)
+    return n_new
+
+
+def read_details(settings: Settings) -> dict:
+    p = settings.results_dir / DETAILS_NAME
+    try:
+        return (json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}).get("matches", {})
+    except (OSError, json.JSONDecodeError):
+        return {}

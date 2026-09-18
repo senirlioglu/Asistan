@@ -167,6 +167,10 @@ def _build_state(settings: Settings, table) -> None:
             nf.write_meta(settings, meta)
             fixtures = nf.merge_fixtures(table, extra)
             log.info("state fixtures: %d analysed + %d from the nesine bulletin", len(table) if table is not None else 0, len(extra))
+            try:  # the Maçlar tab's analysis for those fixtures too, cached for hours, so an empty Football-Data week still shows matches
+                nf.analyse_bulletin(settings, extra, meta)
+            except Exception as exc:  # noqa: BLE001 - the state rows are already there; the tab just lacks these matches
+                log.warning("nesine analysis skipped: %s", exc)
         except Exception as exc:  # noqa: BLE001 - the bulletin is optional; the analysed fixtures alone still build
             log.warning("nesine fixtures skipped: %s", exc)
         out = build(settings, fixtures=fixtures)

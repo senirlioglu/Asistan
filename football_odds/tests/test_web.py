@@ -575,3 +575,44 @@ def test_a_played_match_gets_its_notes_from_the_frozen_pre_kick_off_price(resear
     move = next((c for c in out["context"] if c["source"] == "movement"), None)
     assert move is not None and move["data"]["movement"]["type"]
     assert all(f["source"] != "note" for f in out["findings"])
+
+
+def _nesine_files(results):
+    """One analysed bulletin fixture under the stamp "nesine", the shape the daily job writes."""
+    from src.nesine import fixtures as nf
+
+    row = {
+        "date": "2026-09-20", "time": "21:00", "league": "CUP", "home": "Juventus", "away": "Nijmegen", "match_id": "nes1",
+        "odds_h": 1.06, "odds_d": 6.66, "odds_a": 11.9, "market_h": 80.1, "market_d": 12.9, "market_a": 7.0, "n": 100, "n_eff": 90,
+        "hist_h": 91.0, "hist_d": 5.0, "hist_a": 4.0, "adj_h": 83.2, "adj_d": 10.0, "adj_a": 6.8,
+        "edge_h": 3.1, "edge_d": -2.9, "edge_a": -0.2, "over25": 60.0, "under25": 40.0, "btts": 40.0, "avg_goals": 3.1,
+        "confidence": "MEDIUM", "signal": "NEUTRAL", "signal_outcome": "home", "avg_similarity": 94.0, "median_similarity": 94.5,
+        "min_similarity": 90.0, "ci_h_lo": 78.0, "ci_h_hi": 88.0, "ci_d_lo": 6.0, "ci_d_hi": 14.0, "ci_a_lo": 3.0, "ci_a_hi": 10.0,
+        "fair_h": 1.2, "fair_d": 10.0, "fair_a": 14.7, "market_over25": float("nan"), "nesine_code": 3188900,
+        "league_name": "UEFA Avrupa Ligi", "source": "nesine", "analysed_at": "2026-09-18T06:30:00+00:00",
+    }
+    pd.DataFrame([row]).to_csv(results / nf.PRED_NAME, index=False)
+    (results / nf.DETAILS_NAME).write_text(json.dumps({"matches": {"nes1": {"scorelines": {"2-0": 0.2}, "goals_dist": {}, "scopes": {}}}}))
+    pd.DataFrame([{"fixture_id": "nes1", "date": "2023-10-05", "league": "I1", "home_team": "Juventus", "away_team": "Lecce", "cons_h": 1.1,
+                   "cons_d": 7.0, "cons_a": 15.0, "similarity": 97.0, "ftr": "H", "score": "3-0", "ou25": "Over", "btts": "No", "distance": 0.02,
+                   "years_old": 2.9}]).to_parquet(results / "analogues" / nf.ANALOGUES_NAME, index=False)
+
+
+def test_day_falls_back_to_the_analysed_bulletin(client):
+    _nesine_files(web.RESULTS)
+    web._nesine_table_cached.cache_clear()
+    # a day Football-Data has not published: the bulletin's fixtures make the day
+    d = client.get("/api/day/2026-09-20").json()
+    assert [m["id"] for m in d["matches"]] == ["nes1"]
+    m = d["matches"][0]
+    assert m["source"] == "nesine" and m["nesine_code"] == 3188900 and m["league_name"] == "UEFA Avrupa Ligi" and m["stamp"] == "nesine"
+    assert m["home"] == "Juventus" and m["time"] == "21:00" and m["adj"]["h"] == 83.2 and m["scorelines"] == {"2-0": 0.2}
+    assert m["live_available"] is False
+    # an analysed day keeps its own rows and gains nothing from the bulletin
+    assert [x["id"] for x in client.get("/api/day/2026-09-14").json()["matches"]] == ["abc"]
+    # the sheet's endpoints read the same files
+    assert client.get("/api/match/nes1").json()["match"]["id"] == "nes1"
+    an = client.get("/api/analogues/nesine/nes1").json()
+    assert an["rows"] and an["rows"][0]["home"] == "Juventus"
+    # the bulletin file is not a run day: /api/meta's dates ignore it
+    assert "nesine" not in " ".join(client.get("/api/meta").json()["dates"])

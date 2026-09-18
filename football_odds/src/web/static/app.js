@@ -1162,7 +1162,7 @@
       <div class="legend"><span><i></i>Piyasanın beklentisi</span><span><i class="hist"></i>Benzer maçlarda gerçekleşen</span></div>
       <div class="bars">${barRow("Ev sahibi", m.market.h, m.adj.h, scale)}${barRow("Beraberlik", m.market.d, m.adj.d, scale)}${barRow("Deplasman", m.market.a, m.adj.a, scale)}</div>
       <p class="sentence">${sentence(m)}</p>
-      <div class="tags"><span class="tag ${sigCls}">${sigLabel}</span><span class="tag">Güven: ${CONF[m.confidence] || m.confidence} · ${m.n} maç</span></div>
+      <div class="tags"><span class="tag ${sigCls}">${sigLabel}</span><span class="tag">Güven: ${CONF[m.confidence] || m.confidence} · ${m.n} maç</span>${m.source === "nesine" ? `<span class="tag" title="Football-Data bu maçı henüz yayımlamadı; oran nesine'nin, analiz bizim">nesine bülteni</span>` : ""}</div>
       <p class="comment" data-comment><b class="comment-label">Yorum</b> ${commentary(m, state.live?.[m.id]).short}</p>
       <div class="goals">Benzer maçlarda gol: 2,5 üstü ${pct(m.over25)} · iki takım da gol attı ${pct(m.btts)} · ortalama ${num(m.avg_goals)} gol${m.market_over25 != null ? ` · piyasanın 2,5 üstü beklentisi ${pct(m.market_over25)}` : ""}</div>
       <span class="card-more">Ayrıntılar ve benzer maçlar →</span>`;
@@ -1180,7 +1180,7 @@
       const today = state.meta?.today || "";
       const msg = state.date < today
         ? "Bu gün için kayıtlı analiz yok."
-        : "Bu gün için henüz analiz yok. Football-Data yeni haftanın maçlarını oranlarıyla birlikte genellikle <b>Salı–Çarşamba</b> yükler; sabah 09:30'daki otomatik güncellemeden sonra bu günün maçları burada görünür. Daha erken görmek için sağ üstteki durum düğmesinden <b>Şimdi güncelle</b> diyebilirsin.";
+        : "Bu gün için henüz analiz yok. Football-Data yeni haftanın maçlarını oranlarıyla birlikte genellikle <b>Salı–Çarşamba</b> yükler; nesine bülteninin bizde karşılığı olan maçları ise her saat başı buraya eklenir. Daha erken görmek için sağ üstteki durum düğmesinden <b>Şimdi güncelle</b> diyebilirsin.";
       wrap.appendChild(el("div", "day-empty", msg)); return;
     }
     if (!ms.length) { wrap.appendChild(el("p", "count", "Filtrelere uyan maç yok.")); return; }
@@ -1843,7 +1843,7 @@
     try {
       // opened from the Nesine tab the bulletin entry rides along; from Maçlar/Oyun it is fetched by match id
       const n = m._nesine !== undefined ? m._nesine
-        : m.source === "nesine" ? null
+        : m.source === "nesine" && !m.nesine_code ? null
         : (await api(`/api/match/${encodeURIComponent(m.id)}`)).nesine;
       m._nesine = n;
       if (n && n.error) { box.innerHTML = `<p class="note">Nesine bülteni okunamadı: ${esc(n.error)}</p>`; return; }

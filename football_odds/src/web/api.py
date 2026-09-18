@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import math
 import os
 from functools import lru_cache
@@ -109,8 +110,58 @@ def _to_turkey(date_str: str, time_str: str) -> tuple[str, str]:
 
 
 def _all_matches() -> pd.DataFrame:
-    key = tuple(sorted((p.name[:10], p.stat().st_mtime) for p in RESULTS.glob("*_predictions.csv")))
+    key = tuple(sorted((p.name[:10], p.stat().st_mtime) for p in RESULTS.glob("*_predictions.csv")
+                       if re.match(r"\d{4}-\d{2}-\d{2}_predictions\.csv$", p.name)))   # the nesine file is not a run day
     return _all_matches_cached(key)
+
+
+@lru_cache(maxsize=2)
+def _nesine_table_cached(path: str, mtime: float) -> pd.DataFrame:
+    from ..nesine import fixtures as nf
+
+    p = Path(path)
+    if not p.exists() or mtime == 0.0:
+        return pd.DataFrame()
+    df = pd.read_csv(p)
+    df["stamp"] = nf.STAMP
+    df["date_tr"] = df["date"].astype(str).str[:10]          # nesine's kick-offs are Turkey time already
+    df["time_tr"] = df.get("time", pd.Series([""] * len(df))).fillna("").astype(str)
+    return df
+
+
+def _nesine_table() -> pd.DataFrame:
+    """The bulletin's analysed fixtures (stamp "nesine"), written by the daily job; empty when never built."""
+    from ..nesine import fixtures as nf
+
+    p = RESULTS / nf.PRED_NAME
+    return _nesine_table_cached(str(p), p.stat().st_mtime if p.exists() else 0.0)
+
+
+def _nesine_match_payload(row: pd.Series) -> dict:
+    from ..nesine import fixtures as nf
+
+    out = _match_payload(row, nf.read_details(settings).get(_str(row["match_id"]), {}))
+    lg = _str(row["league"])
+    out.update({"source": "nesine", "nesine_code": _num(row.get("nesine_code")), "stamp": nf.STAMP,
+                "league_name": LEAGUE_TR.get(lg) or _str(row.get("league_name")) or lg, "live_available": False})
+    return out
+
+
+def _nesine_day_matches(date: str, have: list[dict]) -> list[dict]:
+    """The bulletin's analysed fixtures on `date` that the analysed files do not already hold."""
+    from ..nesine import fixtures as nf
+
+    nt = _nesine_table()
+    if nt.empty:
+        return []
+    ids = {m["id"] for m in have}
+    pairs = {(m["home"], m["away"], nf._shift(m["date"], k)) for m in have for k in (-1, 0, 1)}
+    out = []
+    for _, r in nt[nt["date_tr"] == date].iterrows():
+        if _str(r["match_id"]) in ids or (_str(r["home"]), _str(r["away"]), _str(r["date_tr"])) in pairs:
+            continue
+        out.append(_nesine_match_payload(r))
+    return out
 
 
 def _dates() -> list[str]:
@@ -192,8 +243,6 @@ def day(date: str) -> dict:
     """All analysed matches played on `date` (a match date, not a run date)."""
     df = _all_matches()
     table = df[df["date_tr"].astype(str) == date] if not df.empty else df
-    if table.empty:
-        raise HTTPException(404, f"no analysed matches on {date}")
     details_by_stamp: dict[str, dict] = {}
     matches = []
     for _, row in table.iterrows():
@@ -201,6 +250,11 @@ def day(date: str) -> dict:
         if stamp not in details_by_stamp:
             details_by_stamp[stamp] = _load_details(stamp).get("matches", {})
         matches.append(_match_payload(row, details_by_stamp[stamp].get(_str(row["match_id"]), {})))
+    # the nesine bulletin's analysed fixtures fill the days Football-Data has not published yet (and the
+    # leagues it never will); a match both hold is shown once, from the analysed file
+    matches += _nesine_day_matches(date, matches)
+    if not matches:
+        raise HTTPException(404, f"no analysed matches on {date}")
     matches.sort(key=lambda m: (m["date"], m["time"], m["league_name"]))
     return {"date": date, "matches": matches}
 
@@ -321,7 +375,7 @@ def teams(stamp: str, match_id: str) -> dict:
         raise HTTPException(404, "maç bulunamadı")
     row = hit.iloc[0]
     home, away = _str(row["home"]), _str(row["away"])
-    as_of = pd.Timestamp(stamp)
+    as_of = pd.Timestamp(str(row["date"])[:10]) if stamp == "nesine" else pd.Timestamp(stamp)   # the bulletin has no run day
     h2h = hist[(((hist["home_team"] == home) & (hist["away_team"] == away)) | ((hist["home_team"] == away) & (hist["away_team"] == home)))
                & (hist["date"] < as_of)].sort_values("date", ascending=False)
     h2h_rows = [_row_payload(r, home) for _, r in h2h.head(12).iterrows()]
@@ -568,7 +622,12 @@ def match_detail(match_id: str) -> dict:
     df = _all_matches()
     sub = df[df["match_id"].astype(str) == match_id] if not df.empty else df
     if sub.empty:
-        raise HTTPException(404, "maç bulunamadı")
+        nt = _nesine_table()
+        hit = nt[nt["match_id"].astype(str) == match_id] if not nt.empty else nt
+        if hit.empty:
+            raise HTTPException(404, "maç bulunamadı")
+        payload = _nesine_match_payload(hit.iloc[0])
+        return {"match": payload, "nesine": _nesine_brief(payload["date"], payload["home"], payload["away"], code=payload.get("nesine_code"))}
     row = sub.iloc[-1]
     det = _load_details(_str(row["stamp"])).get("matches", {}).get(match_id, {})
     payload = _match_payload(row, det)
