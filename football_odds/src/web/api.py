@@ -591,71 +591,85 @@ def _bulletin_index() -> dict:
     the lab's day scan at "Tarama başlatılıyor…"."""
     from ..nesine.bulletin import _cache_path, load_matches
 
+    from ..nesine.history import norm
+
     cp = _cache_path(settings)
     hp = settings.processed_dir / "matches.parquet"
-    key = (cp.stat().st_mtime if cp.exists() else 0.0, hp.stat().st_mtime if hp.exists() else 0.0)
-    if _BULLETIN_INDEX["key"] == key:
+    key = (str(cp), cp.stat().st_mtime if cp.exists() else None, hp.stat().st_mtime if hp.exists() else 0.0)
+    if key[1] is not None and _BULLETIN_INDEX["key"] == key:      # no cache file on disk: nothing to key on, rebuild
         return _BULLETIN_INDEX
+    fetched_at, error = None, None
     try:
-        matches, _ = load_matches(settings)
-    except Exception:  # noqa: BLE001 - no bulletin, empty index; rows still list
-        matches = []
+        matches, meta = load_matches(settings)
+        fetched_at = meta.get("fetched_at")
+    except Exception as exc:  # noqa: BLE001 - no bulletin, empty index; rows still list
+        matches, error = [], str(exc)
     index = _team_index()
-    by_code, by_ours = {}, {}
+    by_code, by_ours, by_date = {}, {}, {}
     for m in matches:
         if m.get("code") is not None:
             by_code[m["code"]] = m
+        date = str(m.get("date") or "")
+        by_date.setdefault(date, []).append(m)
+        by_ours.setdefault((date, norm(str(m.get("home", ""))), norm(str(m.get("away", "")))), m)   # nesine's own spelling
         if index is not None:
             h, a = index.resolve(str(m.get("home", ""))), index.resolve(str(m.get("away", "")))
             if h and a:
-                by_ours.setdefault((str(m.get("date") or ""), h, a), m)
-    _BULLETIN_INDEX.update(key=key, by_code=by_code, by_ours=by_ours)
+                by_ours.setdefault((date, h, a), m)
+    _BULLETIN_INDEX.update(key=key, by_code=by_code, by_ours=by_ours, by_date=by_date, resolved=index is not None,
+                           fetched_at=fetched_at, error=error)
     return _BULLETIN_INDEX
+
+
+def _bulletin_find(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
+    """One bulletin match: by code, by our resolved club names, by nesine's own spelling; and only when
+    no database is there to resolve names (tests, a fresh container), the fuzzy scan of that one day."""
+    from ..nesine.history import norm
+
+    ix = _bulletin_index()
+    if code is not None:
+        return ix["by_code"].get(code)
+    hit = ix["by_ours"].get((date_tr, home, away)) or ix["by_ours"].get((date_tr, norm(home), norm(away)))
+    if hit is not None or ix.get("resolved"):
+        return hit
+    from .live import name_score
+
+    best, best_s = None, 0.0
+    for m in ix.get("by_date", {}).get(date_tr, []):
+        sc = (name_score(home, m["home"]) + name_score(away, m["away"])) / 2
+        if sc > best_s:
+            best, best_s = m, sc
+    return best if best_s >= 0.6 else None
 
 
 def _bulletin_odds(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
     """nesine's prices for one fixture, as quoted (margin in): match result, half time, over/under 2.5.
     By code when the fixture came from the bulletin, by resolved club names otherwise. O(1) per row."""
-    ix = _bulletin_index()
-    best = ix["by_code"].get(code) if code is not None else None
-    if best is None and code is None:
-        best = ix["by_ours"].get((date_tr, home, away))
+    best = _bulletin_find(date_tr, home, away, code)
     if best is None:
         return None
     return {"code": best.get("code"), "ms": best.get("ms") or {}, "iy": best.get("iy") or {}, "o25": best.get("o25") or {}}
 
 
-def _nesine_brief(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
-    """The bulletin entry for one of OUR fixtures (reverse of `_ours_lookup`), or None when it is not quoted.
-    A bulletin fixture already knows its nesine code, so it is looked up by code, not by name."""
+def _nesine_brief(date_tr: str, home: str, away: str, code: int | None = None, store: dict | None = None) -> dict | None:
+    """The bulletin entry for one of OUR fixtures (reverse of `_ours_lookup`), or None when it is not quoted:
+    by code when the fixture came from the bulletin, else by (date, our clubs) through the bulletin index.
+    Constant time per call — the day scan asks for one per match, and a per-call parse of the 10 MB
+    bulletin plus a fuzzy scan made "Tarama başlatılıyor…" hang until the gateway gave up (502)."""
     from ..nesine import watcher
-    from ..nesine.bulletin import load_matches
     from ..nesine.history import team_hits
     from ..nesine.rules import evaluate
-    from .live import name_score
 
-    try:
-        matches, meta = load_matches(settings)
-    except Exception as exc:  # noqa: BLE001 - the analysis must open even when nesine is unreachable
-        return {"error": str(exc)}
-    best, best_s = None, 0.0
-    for m in matches:
-        if code is not None:
-            if m.get("code") == code:
-                best, best_s = m, 1.0
-                break
-            continue
-        if m["date"] != date_tr:
-            continue
-        s = (name_score(home, m["home"]) + name_score(away, m["away"])) / 2
-        if s > best_s:
-            best, best_s = m, s
-    if best is None or best_s < 0.6:
+    ix = _bulletin_index()
+    if ix.get("error") and not ix["by_code"]:
+        return {"error": ix["error"]}
+    best = _bulletin_find(date_tr, home, away, code)
+    if best is None:
         return None
     index = _team_index()
     hits = evaluate(best, team_hits(best, index) if index is not None else {})
-    out = _nesine_payload(best, hits, watcher.load_store(settings))
-    return {**out, "name_score": round(best_s, 2), "fetched_at": meta.get("fetched_at"), "watch": watcher.status()}
+    out = _nesine_payload(best, hits, store if store is not None else watcher.load_store(settings))
+    return {**out, "name_score": 1.0, "fetched_at": ix.get("fetched_at"), "watch": watcher.status()}
 
 
 @app.get("/api/match/{match_id}")
@@ -931,9 +945,12 @@ def lab_scan_start(date: str = Query(..., min_length=10, max_length=10), target:
     matches = [m for m in lab_matches(date, date)["matches"] if m["ready"]]
     nesine_by_id = {}
     if tg.NESINE_PATH.get(target, ("", ""))[0] not in ("ms", ""):      # only where the price has to come from nesine
+        from ..nesine import watcher
+
+        store = watcher.load_store(settings)                                # once, not per match
         for m in matches:
             try:
-                nesine_by_id[m["id"]] = _nesine_brief(m["date"], m["home"], m["away"], code=m.get("code"))   # a bulletin row knows its code
+                nesine_by_id[m["id"]] = _nesine_brief(m["date"], m["home"], m["away"], code=m.get("code"), store=store)
             except Exception:  # noqa: BLE001 - no bulletin, no price; the row says so
                 pass
     job = tg.start_day_scan(settings, date, target, matches, nesine_by_id)
