@@ -228,7 +228,7 @@ def _refs(frame: pd.DataFrame, sub: pd.DataFrame, side: str, fallback: dict) -> 
 
 
 def patterns_for(settings: Settings, match_id: str, side: str = "home", approx: int = 0,
-                 sample: int = 8, band: float = 10.0) -> dict | None:
+                 sample: int = 8, band: float = 10.0, outcomes: tuple[str, ...] = PATTERN_OUTCOMES) -> dict | None:
     """This match's own form pattern, measured at the three levels the brief asks for.
 
     Level 1 is the club's own history with the pattern (usually a handful of matches — reported with
@@ -259,7 +259,7 @@ def patterns_for(settings: Settings, match_id: str, side: str = "home", approx: 
     pattern = engine.Pattern(form=form, side=side, approx=approx)
     refs = _refs_fast(pool, engine.select(pool, pattern, as_of=as_of), side, (str(p_), p_.stat().st_mtime), naive)
     out = engine.levels(pool, pattern, team=team, tsi_pct=tsi, band=band, as_of=as_of,
-                        outcomes=PATTERN_OUTCOMES, sample=sample, base=base, refs=refs)
+                        outcomes=outcomes, sample=sample, base=base, refs=refs)
     exact = engine.select(pool, engine.Pattern(form=form, side=side, approx=0), as_of=as_of)
     return {
         "match": {"id": match_id, "date": str(row["date"])[:10], "league": str(row["league"]),
@@ -267,7 +267,7 @@ def patterns_for(settings: Settings, match_id: str, side: str = "home", approx: 
                   "team": team, "form": form, "opponent_form": str(row.get(f"{o}form") or "")[-5:],
                   "tsi_pct": tsi, "opp_tsi_pct": _f(row.get(f"{o}tsi_pct")), "band": band},
         "approx": approx, "n_exact": int(len(exact)),
-        "levels": out, "outcomes": list(PATTERN_OUTCOMES),
+        "levels": out, "outcomes": list(outcomes),
     }
 
 

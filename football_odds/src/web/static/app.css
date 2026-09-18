@@ -589,6 +589,8 @@ tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
 .lab-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line-strong); white-space: nowrap; margin: 1px 0; }
 .lab-chip.up { background: var(--lab-soft); color: var(--lab-ink); border-color: var(--lab-line); }
 .lab-chip.down { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-line); }
+.lab-pats { margin-top: 4px; display: grid; gap: 3px; }
+.lab-pat { font-size: 0.78rem; line-height: 1.35; }
 .lab-note { padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 0.8rem; }
 .lab-note:last-child { border-bottom: 0; }
 .lab-note.is-rel b { color: var(--lab-ink); }

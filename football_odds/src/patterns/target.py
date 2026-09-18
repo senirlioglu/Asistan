@@ -419,8 +419,32 @@ def _notes_row(nesine: dict | None, target: str) -> list[dict]:
     return sorted(out, key=lambda h: (not h["related"], h["no"] or 0))
 
 
-def _summary_row(m: dict, a: dict, notes: list[dict] | None = None) -> dict:
+def target_patterns(settings: Settings, match_id: str, target: str) -> dict:
+    """The pattern engines (form pattern at three levels, the two-team cascade) on one target, from both
+    clubs' sides, corrected within the match: what the system itself found for this target here."""
+    from . import lab
+
+    found, scanned, thin = [], 0, 0
+    for side in ("home", "away"):
+        try:
+            sc = lab.scan(settings, match_id, side=side, outcomes=(target,), light=True)
+        except Exception as exc:  # noqa: BLE001 - one side's failure must not lose the row
+            log.warning("target patterns %s/%s: %s", match_id, side, exc)
+            continue
+        if not sc:
+            continue
+        scanned += sc["scanned"]
+        thin += sc["too_thin"]
+        for f in sc["findings"]:
+            found.append({**f, "side": side})
+    found.sort(key=lambda f: (f.get("q") or 1.0, -abs(f.get("edge") or 0)))
+    return {"found": found, "scanned": scanned, "thin": thin}
+
+
+def _summary_row(m: dict, a: dict, notes: list[dict] | None = None, patterns: dict | None = None) -> dict:
+    pats = patterns or {"found": [], "scanned": 0, "thin": 0}
     return {"id": m["id"], "home": m["home"], "away": m["away"], "league": m.get("league"), "notes": notes or [],
+            "patterns": pats["found"], "patterns_scanned": pats["scanned"], "patterns_thin": pats["thin"],
             "league_name": m.get("league_name"), "date": m.get("date"), "time": m.get("time"), "nesine": m.get("nesine"),
             "market": a["market"], "estimate": a["estimate"], "difference": a["difference"],
             "difference_ci": a["difference_ci"], "similarity": (a.get("similarity") or {}).get("median"),
@@ -451,7 +475,7 @@ def start_day_scan(settings: Settings, date: str, target: str, matches: list[dic
                 nes = (nesine_by_id or {}).get(m["id"])
                 a = analyse(settings, m["id"], target, light=True, nesine=nes)
                 if a is not None:
-                    job["rows"].append(_summary_row(m, a, _notes_row(nes, target)))
+                    job["rows"].append(_summary_row(m, a, _notes_row(nes, target), target_patterns(settings, m["id"], target)))
             except Exception as exc:                        # noqa: BLE001 - one match must not stop the day
                 job["errors"] += 1
                 log.warning("day scan %s %s: %s", m.get("id"), target, exc)

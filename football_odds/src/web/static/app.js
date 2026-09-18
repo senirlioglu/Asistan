@@ -2417,12 +2417,13 @@
   function renderFind(d, target, date) {
     const box = $("#lf-out");
     const tLabel = ((state.lab.targets?.groups || []).flatMap((g) => g.targets).find((x) => x.key === target) || {}).label || target;
-    const rows = (d.rows || []).slice().sort((a, b) => (b.relevance?.score || 0) - (a.relevance?.score || 0));
+    const rows = (d.rows || []).slice().sort((a, b) => ((b.patterns || []).length - (a.patterns || []).length) || ((b.relevance?.score || 0) - (a.relevance?.score || 0)));
+    const withPats = rows.filter((r) => (r.patterns || []).length).length;
     const running = d.state === "running";
     const clearN = rows.filter((r) => r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0)).length;
     const verdict = `<div class="lab-verdict">${evBadge(running ? "YETERSİZ VERİ" : clearN ? "KEŞİF" : "FARK YOK")}<p>${running
         ? `<b>${d.done} / ${d.total} maç tarandı…</b> Her maçta takım, rakip, benzer durumlar ve ikizler ölçülüyor; satırlar geldikçe sıralanır.`
-        : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${clearN ? `${clearN} maçta oranlar geçmişe göre yanılmış görünüyor — bir ipucu, kanıt değil.` : "Hiçbir maçta oranların yanıldığına dair bir iz yok."}
+        : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${withPats ? `Pattern motorları <b>${withPats} maçta</b> bu sonuç için bir desen buldu.` : "Pattern motorları bu sonuç için hiçbir maçta desen bulmadı."} ${clearN ? `${clearN} maçta katmanların toplamı da oranlardan sapıyor — ipucu, kanıt değil.` : ""}
         <small class="muted">Hiçbir satır kazananı söylemez. Her satır, o maça benzeyen eski maçlarda <b>${esc(tLabel)}</b> sonucunun oranların dediğinden daha çok mu, daha az mı geldiğini gösterir.</small>`}</p></div>`;
     if (!rows.length) { box.innerHTML = verdict + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
     const dom = fpDomain(rows.map((r) => ({ edge: r.difference, ci: r.difference_ci })));
@@ -2447,7 +2448,8 @@
     const patternsHTML = () => `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
         <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Nerede</th><th>Kanıt</th><th></th></tr></thead><tbody>
         ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br>
-            <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}</td>
+            <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}
+            ${(r.patterns || []).length ? `<div class="lab-pats">${r.patterns.map((f) => `<div class="lab-pat"><span class="lab-chip ${f.edge > 0 ? "up" : "down"}">${f.edge > 0 ? "↑ sık" : "↓ seyrek"}</span> <b>${esc(f.source_tr)}</b> · ${esc(f.side === "away" ? r.away : r.home)}${f.detail ? ` · ${esc(f.detail)}` : ""} <small class="muted">${f.n} eski maç · ${pctv(f.actual)} / oran ${pctv(f.market)} · ${esc(f.evidence_tr || "")}</small></div>`).join("")}</div>` : ""}</td>
           <td class="hide-md nw">${esc(r.league_name || r.league || "")}</td><td class="num hide-md">${esc(r.time || "")}</td>
           <td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
           <td class="num">${r.market?.p == null ? "<small class=\"muted\">yok</small>" : pctv(r.market.p)}</td>
@@ -2460,6 +2462,7 @@
           <td><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}
       </tbody></table></div>
       <p class="note">Sıralama bahis tavsiyesi değil, "önce buna bak" sırasıdır: farkı büyük, eski maçı çok ve daha önce de görülmüş olanlar üstte.
+        Maçın altındaki satırlar pattern motorlarının bu sonuç için kendi bulduğu desenlerdir: form deseni (bu takım / tüm takımlar / benzer güçtekiler) ve iki takımın birlikte durumu; her biri o maçın kendi ailesinde çoklu test düzeltmesinden geçmiştir.
         "Nerede" sütunu, sapmanın hangi katmanda olduğunu söyler: <b>takım</b> = bu takımın kendi geçmişi, <b>rakip</b> = rakibin geçmişi, <b>benzer durumlar</b> = ligden bağımsız aynı durumdaki maçlar, <b>ikizler</b> = bu maça en çok benzeyen eski maçlar.
         Piyasa sütunu boşsa o market için oran yok (ilk yarı ve İY/MS oranları yalnızca nesine bülteninden gelir).
         Benzerlik, maçın eski maçlara ne kadar benzediğidir — sonucun ihtimali değil.</p>`;

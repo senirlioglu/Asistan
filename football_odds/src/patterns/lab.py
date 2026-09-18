@@ -104,8 +104,13 @@ def _harvest(source: str, source_tr: str, res: dict, detail: str = "") -> list[F
 
 
 def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = ALPHA,
-         min_n: int = MIN_N, min_edge: float = MIN_EDGE) -> dict | None:
-    """Every engine on one match, corrected across the whole family, most of it thrown away."""
+         min_n: int = MIN_N, min_edge: float = MIN_EDGE, outcomes: tuple[str, ...] | None = None,
+         light: bool = False) -> dict | None:
+    """Every engine on one match, corrected across the whole family, most of it thrown away.
+
+    `outcomes` narrows the pattern engines to those outcomes (the day scan asks for one target, say
+    htft_1/2, over every match of a day); `light` skips the twins and the context (cycles, movement,
+    notes), which the day scan already carries elsewhere."""
     df = service.frame(settings)
     if df is None:
         return None
@@ -117,7 +122,7 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
     candidates: list[Finding] = []
     context: list[dict] = []
 
-    pat = service.patterns_for(settings, match_id, side=side)
+    pat = service.patterns_for(settings, match_id, side=side, **({"outcomes": outcomes} if outcomes else {}))
     if pat:
         for level, tr in (("all", "Form deseni · tüm takımlar"), ("similar", "Form deseni · benzer güçtekiler"),
                           ("same_team", "Form deseni · bu takım")):
@@ -125,24 +130,27 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
             if res:
                 candidates += _harvest(f"pattern_{level}", tr, res, detail=res.get("label", ""))
 
-    tw = service.twins_for(settings, match_id, k=100, side=side)
+    tw = None if light else service.twins_for(settings, match_id, k=100, side=side)
     if tw:
         candidates += _harvest("twins", "Çok boyutlu ikizler", tw,
                                detail=f"en yakın {tw['diagnostics'].get('k')} maç, ortanca benzerlik "
                                       f"{tw['diagnostics'].get('median')}")
 
-    comb = service.combined_for(settings, match_id, side=side)
+    comb = service.combined_for(settings, match_id, side=side, **({"outcomes": outcomes} if outcomes else {}))
     if comb:
         usable = [r for r in comb.get("rows", []) if r.get("n", 0) >= min_n]
         if usable:
             last = usable[-1]
             candidates += _harvest("combined", "İki takım birlikte", last, detail=last.get("step", ""))
 
+    if outcomes:
+        candidates = [f for f in candidates if f.outcome in outcomes]
+
     # ---- context, never claims -------------------------------------------------------------
-    cyc = sequence.find_cycles(df, str(row["home_team"] if side == "home" else row["away_team"]),
+    cyc = None if light else sequence.find_cycles(df, str(row["home_team"] if side == "home" else row["away_team"]),
                                centre_match_id=match_id, min_similarity=70.0)
     seen_cycles: set[tuple] = set()
-    for c in (cyc.get("cycles") or [])[:3]:
+    for c in ((cyc or {}).get("cycles") or [])[:3]:
         key = (c["kind_tr"], c["window"], c["past"]["season"], c["similarity"])
         if key in seen_cycles:                       # the same window found from two centres reads as one card
             continue
@@ -153,11 +161,12 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
                         "note": f"{c['n_compared']} pozisyonda karşılaştırıldı — benzerlik, olasılık değildir",
                         "data": c})
 
-    quoted = _quoted(settings, str(row["date"])[:10], str(row["home_team"]), str(row["away_team"]))
-    nes = _movement_context(settings, quoted)
-    if nes:
-        context.append(nes)
-    context += sorted(_note_context(settings, quoted), key=_note_rank)
+    if not light:
+        quoted = _quoted(settings, str(row["date"])[:10], str(row["home_team"]), str(row["away_team"]))
+        nes = _movement_context(settings, quoted)
+        if nes:
+            context.append(nes)
+        context += sorted(_note_context(settings, quoted), key=_note_rank)
 
     # ---- the funnel ------------------------------------------------------------------------
     scanned = len(candidates)
