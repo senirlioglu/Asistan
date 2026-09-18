@@ -405,7 +405,7 @@ def _relevance(a: dict) -> dict:
 # marks these as related and lists the rest as merely firing
 _IYMS = {"htft_1/2", "htft_2/1"}
 _GOL = {"over15", "over25", "over35", "btts"}
-NOTE_TARGETS: dict[str, set[str]] = {"n2": _IYMS, "n6": _IYMS, "n11": _IYMS,
+NOTE_TARGETS: dict[str, set[str]] = {"n2": _IYMS, "n6": _IYMS, "n11": _IYMS, "n19": _IYMS,
                                      "n10": {"ht_1", "ht_2"}, "n16": {"ht_1", "ht_2"}, "n14": {"ht_X"},
                                      "n1": _GOL | {"ht_1", "ht_X", "ht_2"}, "n4": _GOL, "n5": _GOL, "n7": _GOL,
                                      "n12": _GOL, "n13": _GOL, "n15": _GOL}

@@ -35,6 +35,7 @@ COLUMNS = [
     "h_rest_days", "a_rest_days", "h_since_rev", "a_since_rev", "h2h_n",
     # the goal-pattern conditions Pattern Lab's own-pattern mode filters on (counts over the last five)
     "h_btts5", "a_btts5", "h_ov15_5", "a_ov15_5", "h_ov25_5", "a_ov25_5", "h_ov35_5", "a_ov35_5",
+    "h_last_gf", "a_last_gf", "h_last_ga", "a_last_ga",
     "avgc_h", "avgc_d", "avgc_a",           # closing prices (2019/20 on): CLV for the cycle rows
 ]
 CATEGORIES = ("league", "season", "ftr", "htr", "h_form", "a_form", "h_form_venue", "a_form_venue")

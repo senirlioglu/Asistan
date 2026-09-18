@@ -30,7 +30,7 @@ ESPN scoreboard     │ live          → canlı skor/dakika                   �
         │                                  │                              │
    FİYAT MOTORU                     DURUM MOTORU                    NOT MOTORU
    features/odds.py                 patterns/state.py               nesine/rules.py
-   marj at → p_home/p_draw/p_away    maç öncesi 136 kolon            16 el yazısı not
+   marj at → p_home/p_draw/p_away    maç öncesi 136 kolon            20 el yazısı not
         │                                  │                              │
         ├─── models/similarity.py ─────────┤                              │
         │    (fiyat benzeri K komşu)       ├─ patterns/engine.py          │
@@ -363,7 +363,7 @@ hesaplanamayan iddia sessizce atılır, tahmin edilmez).
 
 ### 8e. Not ölçücü — `patterns/notes.py`
 
-Defterdeki 16 el yazısı notu pattern motoruyla yeniden ölçer.
+Defterdeki 20 el yazısı notu pattern motoruyla yeniden ölçer.
 
 **Sonuç: 26 iddiadan 24'ü, fiyat eşlemesi + FDR sonrası piyasadan ayırt edilemez.**
 
@@ -515,7 +515,7 @@ geldiğinde listeler. Nesine bülteni ise her maçı ve **çok daha fazla market
 | **Bülten** | `nesine/bulletin.py` | `cdnbulten.nesine.com/api/bulten/getprebultenfull` çeker, her futbol maçının taşıdığı oranları düzleştirir (`ms.1`, `iy05.ust`, `iyms.1-1`, `korner.*` …) |
 | **İzleyici** | `nesine/watcher.py` | Oranlar kick-off'a yaklaştıkça oynar. Uyarlanabilir aralıkla (60 / 180 / 600 / 900 s) tazeler, hareketi kaydeder. `TRACKED` joker kullanır (`ms.*`, `iy.*`, `o25.*` …) — bir notun dayandığı market komple izlenir |
 | **Arşiv** | `nesine/archive.py` | **Kalıcı, sadece-ekleyen geçmiş:** `results/odds_snapshots/<GG-AA-YYYY>.jsonl`. İzleyici çalışan bir görünüm tutar ve buduyor; arşiv hiçbir şeyi silmez. "Bu tarihçe kesinlikle kaybolmamalı" şartının karşılığı budur |
-| **Notlar** | `nesine/rules.py` | 16 el yazısı notun filtre hâli. Her kural artık `paths` da döndürür (kanıt etiketi → oran yolu), böylece notun yanında **oranın ne yöne gittiği** ok olarak görünür |
+| **Notlar** | `nesine/rules.py` | 20 el yazısı notun filtre hâli (17–20: 2,5 Üst&KG oranı, İY KG eşitliği, 2-3 mağlubiyet, 12+ korner). Her kural artık `paths` da döndürür (kanıt etiketi → oran yolu), böylece notun yanında **oranın ne yöne gittiği** ok olarak görünür |
 | **Not geçmişi** | `nesine/history.py` | Notların veritabanında ne dediğini sayar: `team_hits` (takıma bağlı notlar 2 ve 14), `backtest` (oranla ifade edilebilen notların tüm veritabanındaki gerçekleşme oranı + taban oran) |
 | **Bülten → durum tablosu** | `nesine/fixtures.py` | Bültenin her maçı, iki kulübü de veritabanımızda çözülüyorsa, günlük yapıda `state.build`e fikstür olarak verilir (iki kulüp farklı ligdeyse — Avrupa gecesi, kupa — lig kodu `CUP`, her kulübün sıralaması kendi liginden): maça bir **maç-öncesi durum satırı** açılır (form, güç, gol, marjsız nesine fiyatı; sonucu yok, hiçbir kulübün geçmişini oynatmaz). Football-Data fikstürü ancak oranı gelince ve sadece 38 lig için yayımlar; bu köprü sayesinde Pattern Lab'in maç seçicisi bültenin bizde karşılığı olan her maçını (bugün + yarın; nesine'nin bülteni o kadar) görür. Bültenin geri kalanı (Ruanda, Mısır, AFC Kupası…) bizim 38 ligimizde olmayan kulüplerdir; onlar için durum satırı üretilemez. Kod/saat `results/nesine_fixtures.json`da; `/api/lab/maclar` bu satırları `source: "nesine"` ile döndürür |
 | **Nesine analizi** | `nesine/analyze.py` | Nesine'nin oranını piyasa kabul edip **kendi ikiz/benzerlik analizimizi** herhangi bir nesine maçında çalıştırır — ligimizde olmayan maçlar için de |

@@ -55,9 +55,12 @@ class TeamIndex:
         d = df[df["htr"].isin(["H", "D", "A"]) & df["ftr"].isin(["H", "D", "A"])].sort_values("date")
         self.rows: dict[str, list[tuple[pd.Timestamp, str, str, int]]] = {}
         for r in d.itertuples(index=False):
-            goals = int(r.fthg + r.ftag) if pd.notna(r.fthg) and pd.notna(r.ftag) else -1
-            for team in (r.home_team, r.away_team):
-                self.rows.setdefault(str(team), []).append((r.date, str(r.htr), str(r.ftr), goals))
+            ok = pd.notna(r.fthg) and pd.notna(r.ftag)
+            goals = int(r.fthg + r.ftag) if ok else -1
+            hg, ag = (int(r.fthg), int(r.ftag)) if ok else (-1, -1)
+            # (date, htr, ftr, total goals, own goals, conceded) — from each club's own view
+            self.rows.setdefault(str(r.home_team), []).append((r.date, str(r.htr), str(r.ftr), goals, hg, ag))
+            self.rows.setdefault(str(r.away_team), []).append((r.date, str(r.htr), str(r.ftr), goals, ag, hg))
         # "currently playing" = seen in the last ~13 months; season codes sort badly (Y2025 vs 2627)
         cutoff = df["date"].max() - pd.Timedelta(days=recent_days)
         active = df[df["date"] >= cutoff]
@@ -115,6 +118,13 @@ def team_hits(match: dict, index: TeamIndex) -> dict[str, dict]:
         if (last[1], last[2]) in REVERSAL:
             hits.setdefault("n14", {"evidence": {}, "expect": "İlk yarı berabere (%80–90 diyor not)."})
             hits["n14"]["evidence"][f"{match[side]} son maçı"] = f"{last[0].date()} İY {last[1]} / MS {last[2]}"
+        # note 19: lost the last match 2-3 -> 1/2 or 2/1 next; if that one did not reverse, the one after
+        if len(last) >= 6 and (last[4], last[5]) == (2, 3):
+            hits.setdefault("n19", {"evidence": {}, "expect": "1/2 veya 2/1 (not İspanya 2 için yazılmış)."})
+            hits["n19"]["evidence"][f"{match[side]} son maçı"] = f"{last[0].date()} 2-3 mağlubiyet"
+        elif len(rec) >= 2 and len(rec[-2]) >= 6 and (rec[-2][4], rec[-2][5]) == (2, 3) and (last[1], last[2]) not in REVERSAL:
+            hits.setdefault("n19", {"evidence": {}, "expect": "1/2 veya 2/1 — 2-3 mağlubiyetten sonraki 2. maç (ilki çevirmedi)."})
+            hits["n19"]["evidence"][f"{match[side]} 2 maç önce"] = f"{rec[-2][0].date()} 2-3 mağlubiyet; sonraki maç İY {last[1]} / MS {last[2]}"
         if len(rec) >= NTH_AFTER:
             # "sonra oynayacağı 7. maç": the reversal is not counted, so 7 matches have been played
             # since it and today's is the 7th one

@@ -132,6 +132,8 @@ def _side_features(st: TeamState, venue: str, date: pd.Timestamp, table: dict) -
         out["rest_days"] = int((date - st.dates[-1]).days)
         out["games7"] = sum(1 for d in st.dates if 0 <= (date - d).days <= 7)
         out["games14"] = sum(1 for d in st.dates if 0 <= (date - d).days <= 14)
+    out["last_gf"] = int(st.scored[-1]) if st.scored else None      # note 19: "son maçını 2-3 kaybeden"
+    out["last_ga"] = int(st.conceded[-1]) if st.conceded else None
     out["since_rev"] = st.since_rev          # note 2 reads this: today is the 7th match after == 6
     out["revs10"] = st.revs10
     out["htft"] = st.htft[-1] if st.htft else None

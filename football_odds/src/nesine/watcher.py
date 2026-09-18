@@ -44,7 +44,7 @@ log = get_logger("nesine.watcher")
 # markets are 29 outcomes each and only four of them are ever read, so those are listed one by one.
 TRACKED: tuple[str, ...] = (
     "ms.*", "iy.*", "iy05.*", "o25.*", "o35.*", "o45.*", "iy_kg.*", "y2_kg.*",
-    "iyms.*", "iy_y2_kg.*", "iy_sonucu_kg.*", "ilk_gol.*", "iki_yari_15_ust.*", "korner.*",
+    "iyms.*", "iy_y2_kg.*", "iy_sonucu_kg.*", "ilk_gol.*", "iki_yari_15_ust.*", "korner.*", "o25_kg.*", "korner_aralik.*",
     "iy_skor.2-1", "iy_skor.1-2", "iy_skor.2-2", "iy_skor.diger", "skor.diger",
 )
 MAX_POINTS = 12          # per price: the opening one plus the last eleven changes

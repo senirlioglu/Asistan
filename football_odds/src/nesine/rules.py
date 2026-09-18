@@ -165,6 +165,32 @@ def r16(m: dict) -> dict | None:
             "expect": f"İlk yarı {side} gönül rahatlığıyla; açılan takım ({'deplasman' if side == '1' else 'ev sahibi'}) ilk yarı mutlaka 1 gol atar (0,5 üst)."}
 
 
+def r17(m: dict) -> dict | None:
+    v = (m.get("o25_kg") or {}).get("ust&var")
+    if v is None or v < 2.15:
+        return None
+    strong = v >= 2.25
+    return {"evidence": {"2,5 Üst & KG Var": v}, "paths": {"2,5 Üst & KG Var": "o25_kg.ust&var"},
+            "expect": "2,5 alt (%70–80)" + (" ve 3,5 alt gönül rahatlığıyla (oran 2,25+)" if strong else "; oran 2,25'i geçerse 3,5 alt da") + "."}
+
+
+def r18(m: dict) -> dict | None:
+    kg, ne = (m.get("iy_kg") or {}).get("var"), (m.get("iy_y2_kg") or {}).get("hayir/evet")
+    if kg is None or ne is None or abs(kg - ne) > 0.10 + 1e-9:
+        return None
+    return {"evidence": {"İY KG var": kg, "1.Y/2.Y KG hayır/evet": ne},
+            "paths": {"İY KG var": "iy_kg.var", "1.Y/2.Y KG hayır/evet": "iy_y2_kg.hayir/evet"},
+            "expect": "İlk yarı KG var (%80–90); ilk yarı 0,5 üst gönül rahatlığıyla."}
+
+
+def r20(m: dict) -> dict | None:
+    v = (m.get("korner_aralik") or {}).get("12+")
+    if v is None or v >= 3.0:
+        return None
+    return {"evidence": {"Toplam korner 12+": v}, "paths": {"Toplam korner 12+": "korner_aralik.12+"},
+            "expect": "En az 9–10 korner" + (" (oran 2,50'nin altında: daha da iyi)" if v < 2.5 else "") + "."}
+
+
 RULES: list[dict[str, Any]] = [
     {"id": "n1", "no": 1, "title": "İlk yarı skorları 38'in altında", "fn": r1, "testable": False,
      "note": "İY skor < 38.00 ise o maç İY skor 2-1, 1-2, 2-2 mutlaka. En kötü ilk yarı KG var gelir, %99,9 çıkışır. Bu maçlarda en az 4 gol olur; İY–2. yarı KG var gelebilir. En garanti 2,5 üst, 3,5 üst %30 gelebilir.",
@@ -214,6 +240,18 @@ RULES: list[dict[str, Any]] = [
     {"id": "n16", "no": 16, "title": "Favori 1,65 / 1,67 / 1,75", "fn": r16, "testable": True,
      "note": "MS1 veya MS2 verilen oranlarda favori takıma 1,65, 1,67 ve bazen 1,75 oranları verilirse bu tarz maçlara verilen yöne göre ilk yarı 1 veya ilk yarı 2 gönül rahatlığıyla oynayabilirsin. Ayrıca açılan takım ilk yarı mutlaka 1 gol atmaktadır; yine can'dan bu oran açılan takıma 0,5 üst gol de alabilirsin.",
      "how": "Favorinin maç sonucu oranı tam 1,65, 1,67 ya da 1,75 ise."},
+    {"id": "n17", "no": 17, "title": "2,5 Üst & KG Var oranı 2,15 ve üstü → 2,5 alt", "fn": r17, "testable": False,
+     "note": "Maçlarda açılan oranlarda ilk bakılacak yer 2,5 üst KG var oranıdır. O maça 2,15 ve üzerinde bir oran görürsen en az %70–80 2,5 alt oynayabilirsin. Oran ne kadar yüksekse (2,25, bazen 2,40–2,50) o maçlarda gönül rahatlığıyla 3,5 alt da oynanır; 3,5 alt oranı en az 1,40–1,50 arayanlar için hazinedir.",
+     "how": "'2,5 Alt/Üst ve Karşılıklı Gol' piyasasında Üst & Var 2,15 ve üzerindeyse; 2,25 ve üzerinde 3,5 alt da eklenir. Veritabanında bu birleşik oran yok, ölçülemez."},
+    {"id": "n18", "no": 18, "title": "İY KG var ile hayır/evet oranı aynı (≤ 0,10)", "fn": r18, "testable": False,
+     "note": "Bir maçın ilk yarı KG var oranı ile 1. yarı / 2. yarı KG piyasasındaki hayır/evet oranı aynıysa ya da aralarında en fazla 0,10 fark varsa (3,30 – 3,40 olur, 3,30 – 3,41 geçersiz) o maçta ilk yarı KG var %80–90 gelir; ilk yarı 0,5 üst de gönül rahatlığıyla oynanır.",
+     "how": "'İlk Yarı KG' Var oranı ile '1. Yarı / 2. Yarı KG' Hayır/Evet oranının farkı 0,10 ve altındaysa."},
+    {"id": "n19", "no": 19, "title": "Son maçını 2-3 kaybeden (İspanya 2)", "fn": None, "testable": True,
+     "note": "İspanya 2. liginde son maçını 2-3 (ya da 3-2) yenilen takımlar bir sonraki maçlarını 1/2 veya 2/1 yapıyorlar. Eğer bir sonraki maçta yapmazlarsa bazen kayabiliyor: 2-3 yenildikten sonraki 2. maçlarında da 1/2 veya 2/1 yapıyorlar.",
+     "how": "Veritabanından: takımın bir önceki maçı 2-3 mağlubiyetse (kendi 2, rakip 3); o maç ters çevirmediyse bir sonraki maç için de bakılır. Not İspanya 2 için yazılmış; kural her ligde uyanır, evidence ligi söyler."},
+    {"id": "n20", "no": 20, "title": "12+ korner oranı 3,00'ın altında", "fn": r20, "testable": False,
+     "note": "12+ korner oranı 3,00'ın altında olursa (hatta 2,50'nin altında olursa daha iyi) bu tarz maçlarda en az 9–10 korner gelir.",
+     "how": "'Toplam Korner Aralığı' piyasasında 12+ seçeneği 3,00'ın altındaysa. Korner sayısı veritabanında yok, ölçülemez."},
 ]
 
 

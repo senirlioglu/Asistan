@@ -346,7 +346,7 @@ hand-written betting heuristics applied to nesine.com's live pre-match bulletin.
   the fetch fails) and flattens each football event into named markets. Market ids are numeric; the
   names in `market_types.json` were extracted from nesine's own script bundle. Odds of exactly 1.00
   mean "not offered" and are dropped. No scraper is needed — this is a plain JSON endpoint.
-* `rules.py` holds the 16 notes as filters, each with the original text, how it was interpreted, and the
+* `rules.py` holds the 20 notes as filters, each with the original text, how it was interpreted, and the
   evidence odds it fires on. Three notes are anecdotes about particular clubs or basketball and are
   listed but not applied; two (a team's 7th match after a half-time reversal, and the match after one)
   are evaluated from the processed database instead of the odds.

@@ -27,7 +27,8 @@ def _m(**kw):
             "ms": {"1": 2.30, "X": 3.40, "2": 2.30}, "iyms": {"1/2": 24.0, "2/1": 24.0}, "iy": {}, "iy05": {"alt": 1.64, "ust": 2.2},
             "h1_15": {}, "h2_15": {}, "o25": {}, "o35": {}, "o45": {"ust": 3.0}, "gol_araligi": {}, "iy_kg": {}, "y2_kg": {},
             "iy_y2_kg": {"evet/evet": 7.5}, "iy_sonucu_kg": {"1&var": 7.9, "2&var": 12.0}, "ilk_gol": {}, "iki_yari_15_ust": {"evet": 3.15},
-            "iy_skor": {"2-1": 30.0, "1-2": 33.0, "2-2": 37.0, "diger": 4.9}, "skor": {"diger": 7.5}, "korner": {}}
+            "iy_skor": {"2-1": 30.0, "1-2": 33.0, "2-2": 37.0, "diger": 4.9}, "skor": {"diger": 7.5}, "korner": {},
+            "o25_kg": {}, "korner_aralik": {}}
     base.update(kw)
     return base
 
@@ -51,6 +52,41 @@ def test_rules_fire_and_explain():
     assert "n16" in {h["id"] for h in rules.evaluate(_m(ms={"1": 4.5, "X": 3.6, "2": 1.75}))}
     assert "n10" not in {h["id"] for h in rules.evaluate(_m(ms={"1": 1.68, "X": 3.6, "2": 4.5}))}
     assert not [h for h in rules.evaluate(_m(ms={"1": 1.5, "X": 4.0, "2": 6.0}, iyms={}, iy05={}, iy_y2_kg={}, iy_sonucu_kg={}, iy_skor={}, skor={}, o45={}, iki_yari_15_ust={}))]
+
+
+def test_notes_17_18_20_read_the_new_markets():
+    ids = lambda m: {h["id"]: h for h in rules.evaluate(m)}  # noqa: E731
+    h = ids(_m(o25_kg={"ust&var": 2.15, "alt&var": 3.0}))
+    assert "n17" in h and h["n17"]["evidence"]["2,5 Üst & KG Var"] == 2.15 and "3,5 alt" in h["n17"]["expect"]
+    assert "gönül rahatlığıyla" in ids(_m(o25_kg={"ust&var": 2.40}))["n17"]["expect"]
+    assert "n17" not in ids(_m(o25_kg={"ust&var": 2.10}))
+    h = ids(_m(iy_kg={"var": 3.30, "yok": 1.28}, iy_y2_kg={"hayir/evet": 3.40}))
+    assert "n18" in h and h["n18"]["paths"]["1.Y/2.Y KG hayır/evet"] == "iy_y2_kg.hayir/evet"
+    assert "n18" not in ids(_m(iy_kg={"var": 3.30}, iy_y2_kg={"hayir/evet": 3.41}))
+    h = ids(_m(korner_aralik={"0-8": 2.1, "9-11": 2.4, "12+": 2.45}))
+    assert "n20" in h and "daha da iyi" in h["n20"]["expect"]
+    assert "daha da iyi" not in ids(_m(korner_aralik={"12+": 2.8}))["n20"]["expect"]
+    assert "n20" not in ids(_m(korner_aralik={"12+": 3.0}))
+
+
+def test_note_19_reads_the_last_match_score(history):
+    df = history.copy()
+    df["htr"] = "D"; df["hthg"] = 0.0; df["htag"] = 0.0
+    rows = df[(df["home_team"] == "H1") | (df["away_team"] == "H1")].sort_values("date")
+    last = rows.index[-1]
+    home = df.loc[last, "home_team"] == "H1"
+    df.loc[last, ["fthg", "ftag", "ftr"]] = [2.0, 3.0, "A"] if home else [3.0, 2.0, "H"]      # H1 lost 2-3
+    idx = TeamIndex(df, recent_days=40000)
+    hits = team_hits({"date": "2030-01-01", "home": "H1", "away": "Nobody FC"}, idx)
+    assert "n19" in hits and "2-3 mağlubiyet" in " ".join(hits["n19"]["evidence"].values())
+    # the loss two matches back, and the match after it did not reverse: the "2. maç" reading
+    df2 = history.copy(); df2["htr"] = "D"; df2["hthg"] = 0.0; df2["htag"] = 0.0
+    prev = rows.index[-2]
+    home2 = df2.loc[prev, "home_team"] == "H1"
+    df2.loc[prev, ["fthg", "ftag", "ftr"]] = [2.0, 3.0, "A"] if home2 else [3.0, 2.0, "H"]
+    df2.loc[last, ["fthg", "ftag", "ftr"]] = [1.0, 0.0, "H"]
+    hits2 = team_hits({"date": "2030-01-01", "home": "H1", "away": "Nobody FC"}, TeamIndex(df2, recent_days=40000))
+    assert "n19" in hits2 and "2. maç" in hits2["n19"]["expect"]
 
 
 def test_team_history_hits(history):

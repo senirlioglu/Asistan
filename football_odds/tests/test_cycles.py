@@ -94,3 +94,8 @@ def test_a_cup_fixture_keeps_each_club_in_its_own_table():
     assert cup["h_pos"] is not None and not np.isnan(float(cup["h_pos"])) and 1 <= float(cup["h_pos"]) <= 4
     assert cup["a_pos"] is not None and not np.isnan(float(cup["a_pos"])) and 1 <= float(cup["a_pos"]) <= 4
     assert cup["league"] == "CUP" and last_e["league"] == "E0"
+    # the last match's own and conceded goals ride along (note 19 reads "lost 2-3")
+    for r in (last_e, cup):
+        for col in ("h_last_gf", "h_last_ga", "a_last_gf", "a_last_ga"):
+            assert r[col] is not None and int(r[col]) in (0, 1, 2)                 # each club's previous score, from its own view
+    assert int(cup["a_last_gf"]) + int(cup["a_last_ga"]) == 1                    # SP1 games end 0-1

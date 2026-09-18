@@ -104,6 +104,15 @@ def _tests() -> list[NoteTest]:
             how="Ev sahibi favorinin oranı 1,645–1,755 ise. Not üç ayrı oranı sayıyor; aradaki değerler de "
                 "bu banda giriyor, yani not olduğundan biraz geniş ölçüldü.",
             extra_sides=True),
+        NoteTest(
+            id="n19", no=19, title="Son maçını 2-3 kaybeden (İspanya 2)",
+            note="İspanya 2'de son maçını 2-3 yenilen takımlar bir sonraki maçlarını 1/2 veya 2/1 yapıyor; "
+                 "yapmazlarsa 2. maçlarında yapıyorlar.",
+            pattern=Pattern(extra={"h_last_gf": (2, 2), "h_last_ga": (3, 3)}),
+            claims=[Claim("reversal", "1/2 veya 2/1"), Claim("ht_draw", "ilk yarı berabere")],
+            how="Takımın bir önceki maçı 2-3 mağlubiyetse (kendi 2, rakip 3); yalnız bir sonraki maç ölçüldü, "
+                "'2. maçta' kısmı değil. Not İspanya 2 için yazılmış, burada bütün ligler.",
+            extra_sides=True),
     ]
 
 

@@ -129,6 +129,9 @@ def parse_event(e: dict, leagues: dict[int, str]) -> dict | None:
         "iki_yari_15_ust": _named(_odds(ma, 529), EVET_HAYIR),
         "iy_skor": _named(_odds(ma, 779), SCORE_HT), "skor": _named(_odds(ma, 777), SCORE_FT),
         "korner": korner,
+        # note 17 reads "2,5 Üst & KG Var"; note 20 reads the corner range "12+"
+        "o25_kg": _named(_odds(ma, 446), {1: "alt&var", 2: "ust&var", 3: "alt&yok", 4: "ust&yok"}),
+        "korner_aralik": _named(_odds(ma, 338) or _odds(ma, 339), {1: "0-8", 2: "9-11", 3: "12+"}),
     }
 
 
