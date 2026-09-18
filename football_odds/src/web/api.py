@@ -581,29 +581,46 @@ def _nesine_payload(m: dict, hits: list, store: dict) -> dict:
             "hits": hits, "moves": watcher.movement(store, m["code"], changed_only=True)}
 
 
-def _bulletin_odds(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
-    """nesine's prices for one fixture, as quoted (margin in): match result, half time, over/under 2.5.
-    By code when the fixture came from the bulletin, by name otherwise. Light: no notes, no movement."""
-    from ..nesine.bulletin import load_matches
-    from .live import name_score
+_BULLETIN_INDEX: dict = {"key": None, "by_code": {}, "by_ours": {}}
 
+
+def _bulletin_index() -> dict:
+    """The bulletin keyed two ways — by nesine code, and by (Turkey date, our home, our away) with nesine's
+    club names resolved to ours once. Rebuilt only when the bulletin cache or the database changes; a
+    per-row fuzzy scan over a 1,700-match bulletin took minutes on a full Football-Data day and hung
+    the lab's day scan at "Tarama başlatılıyor…"."""
+    from ..nesine.bulletin import _cache_path, load_matches
+
+    cp = _cache_path(settings)
+    hp = settings.processed_dir / "matches.parquet"
+    key = (cp.stat().st_mtime if cp.exists() else 0.0, hp.stat().st_mtime if hp.exists() else 0.0)
+    if _BULLETIN_INDEX["key"] == key:
+        return _BULLETIN_INDEX
     try:
         matches, _ = load_matches(settings)
-    except Exception:  # noqa: BLE001 - no bulletin, no prices; the row still lists
-        return None
-    best, best_s = None, 0.0
+    except Exception:  # noqa: BLE001 - no bulletin, empty index; rows still list
+        matches = []
+    index = _team_index()
+    by_code, by_ours = {}, {}
     for m in matches:
-        if code is not None:
-            if m.get("code") == code:
-                best = m
-                break
-            continue
-        if m["date"] != date_tr:
-            continue
-        sc = (name_score(home, m["home"]) + name_score(away, m["away"])) / 2
-        if sc > best_s:
-            best, best_s = m, sc
-    if best is None or (code is None and best_s < 0.6):
+        if m.get("code") is not None:
+            by_code[m["code"]] = m
+        if index is not None:
+            h, a = index.resolve(str(m.get("home", ""))), index.resolve(str(m.get("away", "")))
+            if h and a:
+                by_ours.setdefault((str(m.get("date") or ""), h, a), m)
+    _BULLETIN_INDEX.update(key=key, by_code=by_code, by_ours=by_ours)
+    return _BULLETIN_INDEX
+
+
+def _bulletin_odds(date_tr: str, home: str, away: str, code: int | None = None) -> dict | None:
+    """nesine's prices for one fixture, as quoted (margin in): match result, half time, over/under 2.5.
+    By code when the fixture came from the bulletin, by resolved club names otherwise. O(1) per row."""
+    ix = _bulletin_index()
+    best = ix["by_code"].get(code) if code is not None else None
+    if best is None and code is None:
+        best = ix["by_ours"].get((date_tr, home, away))
+    if best is None:
         return None
     return {"code": best.get("code"), "ms": best.get("ms") or {}, "iy": best.get("iy") or {}, "o25": best.get("o25") or {}}
 
