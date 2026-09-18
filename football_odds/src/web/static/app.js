@@ -2426,8 +2426,26 @@
         <small class="muted">Hiçbir satır kazananı söylemez. Her satır, o maça benzeyen eski maçlarda <b>${esc(tLabel)}</b> sonucunun oranların dediğinden daha çok mu, daha az mı geldiğini gösterir.</small>`}</p></div>`;
     if (!rows.length) { box.innerHTML = verdict + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
     const dom = fpDomain(rows.map((r) => ({ edge: r.difference, ci: r.difference_ci })));
-    box.innerHTML = verdict + `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
-        <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Kanıt</th><th></th></tr></thead><tbody>
+    const LAYER_TR = { team: "takım", opponent: "rakip", similar: "benzer durumlar", both: "benzer × benzer", twins: "ikizler", sequence: "döngü", movement: "hareket" };
+    const where = (r) => (r.layers || []).filter((l) => l.edge != null && !["thin", "none"].includes(l.evidence))
+      .map((l) => `<span class="lab-chip ${l.edge > 0 ? "up" : "down"}" title="${esc(LAYER_TR[l.key] || l.key)} · N=${l.n}">${l.edge > 0 ? "↑" : "↓"} ${esc(LAYER_TR[l.key] || l.key)}</span>`).join(" ");
+    const withNotes = rows.filter((r) => (r.notes || []).some((n) => n.related));
+    const tab = state.lab.find.tab || "patterns";
+    const tabs = `<div class="lab-tabs" role="tablist">
+        <button type="button" class="lab-tab ${tab === "patterns" ? "is-on" : ""}" data-ftab="patterns">Patternler <small>${rows.length} maç</small></button>
+        <button type="button" class="lab-tab ${tab === "notes" ? "is-on" : ""}" data-ftab="notes">Defter notları <small>${withNotes.length} maçta ilgili not</small></button></div>`;
+    const notesHTML = () => withNotes.length || rows.some((r) => (r.notes || []).length)
+      ? `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="num hide-md">Saat</th><th class="num">Oran</th><th>Bu maçta uyanan notlar</th><th></th></tr></thead><tbody>
+        ${rows.filter((r) => (r.notes || []).length).sort((a, b) => b.notes.filter((n) => n.related).length - a.notes.filter((n) => n.related).length).map((r) => `<tr>
+          <td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br><small class="muted">${esc(r.league_name || "")}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}</td>
+          <td class="num hide-md">${esc(r.time || "")}</td><td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
+          <td class="wrap">${r.notes.map((n) => `<div class="lab-note ${n.related ? "is-rel" : ""}" title="${esc(n.expect || "")}"><b>Not ${n.no}</b> ${esc(n.title)}${n.related ? ` <span class="ev ev-ctx">${esc(tLabel)} ile ilgili</span>` : ""}<br><small class="muted">${esc(n.expect || "")}</small></div>`).join("")}</td>
+          <td><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}</tbody></table></div>
+        <p class="note">Defterdeki kurallar bu maçların nesine oranlarına uygulanır: kural bu maçta tutuyorsa burada görünür. "İlgili" etiketi, notun oynamayı söylediği sonucun seçtiğin hedefle aynı olduğunu gösterir. Not tutması bir tahmin değildir; notların havuz geneli ölçümü Araştırma raporlarında.</p>`
+      : `<div class="day-empty">Bu günün maçlarında uyanan defter notu yok (nesine bülteninde olmayan maçlarda notlar bakılamaz).</div>`;
+    const render = () => { box.innerHTML = verdict + tabs + (tab === "notes" ? notesHTML() : patternsHTML()); wire(); };
+    const patternsHTML = () => `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
+        <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Nerede</th><th>Kanıt</th><th></th></tr></thead><tbody>
         ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br>
             <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}</td>
           <td class="hide-md nw">${esc(r.league_name || r.league || "")}</td><td class="num hide-md">${esc(r.time || "")}</td>
@@ -2437,13 +2455,19 @@
           <td class="num ${r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0) ? "yes" : ""}"><b>${r.difference == null ? "–" : pp1(r.difference)}</b><br><small class="muted">${ciTxt(r.difference_ci)}</small></td>
           <td class="fp-td">${fpCell(r.difference, r.difference_ci, dom)}</td>
           <td class="num">${r.similarity == null ? "–" : pctv(r.similarity, 0)}</td>
+          <td class="wrap">${where(r) || "<small class=\"muted\">—</small>"}</td>
           <td>${evBadge(r.evidence?.label)}</td>
           <td><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}
       </tbody></table></div>
       <p class="note">Sıralama bahis tavsiyesi değil, "önce buna bak" sırasıdır: farkı büyük, eski maçı çok ve daha önce de görülmüş olanlar üstte.
+        "Nerede" sütunu, sapmanın hangi katmanda olduğunu söyler: <b>takım</b> = bu takımın kendi geçmişi, <b>rakip</b> = rakibin geçmişi, <b>benzer durumlar</b> = ligden bağımsız aynı durumdaki maçlar, <b>ikizler</b> = bu maça en çok benzeyen eski maçlar.
         Piyasa sütunu boşsa o market için oran yok (ilk yarı ve İY/MS oranları yalnızca nesine bülteninden gelir).
         Benzerlik, maçın eski maçlara ne kadar benzediğidir — sonucun ihtimali değil.</p>`;
-    box.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => labOpenTarget(b.dataset.detail, date, target)));
+    const wire = () => {
+      box.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => labOpenTarget(b.dataset.detail, date, target)));
+      box.querySelectorAll("[data-ftab]").forEach((b) => (b.onclick = () => { state.lab.find.tab = b.dataset.ftab; renderFind(d, target, date); }));
+    };
+    render();
   }
 
   async function labOpenTarget(id, date, target) {

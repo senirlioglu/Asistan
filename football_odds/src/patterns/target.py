@@ -400,8 +400,27 @@ def _relevance(a: dict) -> dict:
     return {"score": round(score, 2), "z": round(z, 2), "quality": round(quality, 2), "tested": tested > 1}
 
 
-def _summary_row(m: dict, a: dict) -> dict:
-    return {"id": m["id"], "home": m["home"], "away": m["away"], "league": m.get("league"),
+# which notebook notes speak to which targets (by what the note says to play): the scan's Notlar tab
+# marks these as related and lists the rest as merely firing
+_IYMS = {"htft_1/2", "htft_2/1"}
+_GOL = {"over15", "over25", "over35", "btts"}
+NOTE_TARGETS: dict[str, set[str]] = {"n2": _IYMS, "n6": _IYMS, "n11": _IYMS,
+                                     "n10": {"ht_1", "ht_2"}, "n16": {"ht_1", "ht_2"}, "n14": {"ht_X"},
+                                     "n1": _GOL | {"ht_1", "ht_X", "ht_2"}, "n4": _GOL, "n5": _GOL, "n7": _GOL,
+                                     "n12": _GOL, "n13": _GOL, "n15": _GOL}
+
+
+def _notes_row(nesine: dict | None, target: str) -> list[dict]:
+    """The notebook notes that fire on this match, the ones about the target first."""
+    hits = (nesine or {}).get("hits") or []
+    out = [{"id": h.get("id"), "no": h.get("no"), "title": h.get("title"), "expect": h.get("expect"),
+            "evidence": {k: v for k, v in (h.get("evidence") or {}).items()},
+            "related": target in NOTE_TARGETS.get(str(h.get("id")), set())} for h in hits]
+    return sorted(out, key=lambda h: (not h["related"], h["no"] or 0))
+
+
+def _summary_row(m: dict, a: dict, notes: list[dict] | None = None) -> dict:
+    return {"id": m["id"], "home": m["home"], "away": m["away"], "league": m.get("league"), "notes": notes or [],
             "league_name": m.get("league_name"), "date": m.get("date"), "time": m.get("time"), "nesine": m.get("nesine"),
             "market": a["market"], "estimate": a["estimate"], "difference": a["difference"],
             "difference_ci": a["difference_ci"], "similarity": (a.get("similarity") or {}).get("median"),
@@ -429,9 +448,10 @@ def start_day_scan(settings: Settings, date: str, target: str, matches: list[dic
     def work():
         for m in matches:
             try:
-                a = analyse(settings, m["id"], target, light=True, nesine=(nesine_by_id or {}).get(m["id"]))
+                nes = (nesine_by_id or {}).get(m["id"])
+                a = analyse(settings, m["id"], target, light=True, nesine=nes)
                 if a is not None:
-                    job["rows"].append(_summary_row(m, a))
+                    job["rows"].append(_summary_row(m, a, _notes_row(nes, target)))
             except Exception as exc:                        # noqa: BLE001 - one match must not stop the day
                 job["errors"] += 1
                 log.warning("day scan %s %s: %s", m.get("id"), target, exc)

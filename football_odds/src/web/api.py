@@ -944,7 +944,7 @@ def lab_scan_start(date: str = Query(..., min_length=10, max_length=10), target:
         raise HTTPException(404, "durum tablosu hazır değil")
     matches = [m for m in lab_matches(date, date)["matches"] if m["ready"]]
     nesine_by_id = {}
-    if tg.NESINE_PATH.get(target, ("", ""))[0] not in ("ms", ""):      # only where the price has to come from nesine
+    if True:  # every target: the price for İY and İY/MS, the notebook notes for all of them
         from ..nesine import watcher
 
         store = watcher.load_store(settings)                                # once, not per match
