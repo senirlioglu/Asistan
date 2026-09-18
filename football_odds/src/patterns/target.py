@@ -386,6 +386,7 @@ def _reasons(layers, market, combined, similarity, movement, seq) -> dict:
 
 _JOBS: dict[tuple, dict] = {}
 _JOBS_LOCK = threading.Lock()
+SCAN_WORKERS = 4      # matches analysed at once by the day scan
 RELEVANCE_NOTE = ("Sıralama bir bahis skoru değildir: |fark| / standart hata, kullanılabilir katman payı ve keşif "
                   "taramasında sağ kalan desen varlığıyla çarpılır — yani 'araştırmaya değer' sırasıdır.")
 
@@ -427,7 +428,9 @@ def target_patterns(settings: Settings, match_id: str, target: str) -> dict:
     found, scanned, thin = [], 0, 0
     for side in ("home", "away"):
         try:
-            sc = lab.scan(settings, match_id, side=side, outcomes=(target,), light=True)
+            # the cascade already pairs the two states, so it runs once (home side); the form pattern
+            # at its three levels runs for each club
+            sc = lab.scan(settings, match_id, side=side, outcomes=(target,), light=True, combined=(side == "home"))
         except Exception as exc:  # noqa: BLE001 - one side's failure must not lose the row
             log.warning("target patterns %s/%s: %s", match_id, side, exc)
             continue
@@ -456,30 +459,42 @@ def _summary_row(m: dict, a: dict, notes: list[dict] | None = None, patterns: di
 def start_day_scan(settings: Settings, date: str, target: str, matches: list[dict], nesine_by_id: dict | None = None) -> dict:
     """Start (or return) the background scan of one day's matches for one target."""
     sp = state.state_path(settings)
-    key = (date, target, sp.stat().st_mtime if sp.exists() else 0)
+    stamp = sp.stat().st_mtime if sp.exists() else 0
+    key = (date, target, stamp)
     with _JOBS_LOCK:
         job = _JOBS.get(key)
         if job and (job["state"] == "running" or job["state"] == "done"):
             return job
         job = {"date": date, "target": target, "state": "running", "total": len(matches), "done": 0, "rows": [],
                "errors": 0, "started_at": dt.datetime.now(dt.timezone.utc).isoformat(), "finished_at": None,
-               "note": RELEVANCE_NOTE}
+               "note": RELEVANCE_NOTE, "state_stamp": stamp, "stale": False}
         if len(_JOBS) > 12:
             for k in list(_JOBS)[:-6]:
                 _JOBS.pop(k, None)
         _JOBS[key] = job
 
-    def work():
-        for m in matches:
-            try:
-                nes = (nesine_by_id or {}).get(m["id"])
-                a = analyse(settings, m["id"], target, light=True, nesine=nes)
-                if a is not None:
-                    job["rows"].append(_summary_row(m, a, _notes_row(nes, target), target_patterns(settings, m["id"], target)))
-            except Exception as exc:                        # noqa: BLE001 - one match must not stop the day
+    def one(m: dict) -> None:
+        try:
+            nes = (nesine_by_id or {}).get(m["id"])
+            a = analyse(settings, m["id"], target, light=True, nesine=nes)
+            if a is not None:
+                row = _summary_row(m, a, _notes_row(nes, target), target_patterns(settings, m["id"], target))
+                with _JOBS_LOCK:
+                    job["rows"].append(row)
+        except Exception as exc:                            # noqa: BLE001 - one match must not stop the day
+            with _JOBS_LOCK:
                 job["errors"] += 1
-                log.warning("day scan %s %s: %s", m.get("id"), target, exc)
+            log.warning("day scan %s %s: %s", m.get("id"), target, exc)
+        with _JOBS_LOCK:
             job["done"] += 1
+
+    def work():
+        # a few matches at once: the engines are pandas/numpy work that mostly runs outside the GIL, and a
+        # full Football-Data day (160+ matches, ~3 s each in one thread) otherwise takes ten minutes
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=SCAN_WORKERS, thread_name_prefix="lab-scan") as ex:
+            list(ex.map(one, matches))
         job["rows"].sort(key=lambda r: -r["relevance"]["score"])
         job["state"] = "done"
         job["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -489,9 +504,19 @@ def start_day_scan(settings: Settings, date: str, target: str, matches: list[dic
 
 
 def day_scan_status(settings: Settings, date: str, target: str) -> dict | None:
+    """The job for this day and target. The state table is rebuilt every hour; a scan started on the
+    previous table still answers (flagged `stale`) instead of vanishing mid-run."""
     sp = state.state_path(settings)
-    key = (date, target, sp.stat().st_mtime if sp.exists() else 0)
-    return _JOBS.get(key)
+    stamp = sp.stat().st_mtime if sp.exists() else 0
+    job = _JOBS.get((date, target, stamp))
+    if job is not None:
+        return job
+    older = [j for (d, t, _), j in _JOBS.items() if d == date and t == target]
+    if not older:
+        return None
+    job = max(older, key=lambda j: j["started_at"])
+    job["stale"] = True
+    return job
 
 
 # --------------------------------------------------------------------------- mode 3: your own pattern

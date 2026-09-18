@@ -105,7 +105,7 @@ def _harvest(source: str, source_tr: str, res: dict, detail: str = "") -> list[F
 
 def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = ALPHA,
          min_n: int = MIN_N, min_edge: float = MIN_EDGE, outcomes: tuple[str, ...] | None = None,
-         light: bool = False) -> dict | None:
+         light: bool = False, combined: bool = True) -> dict | None:
     """Every engine on one match, corrected across the whole family, most of it thrown away.
 
     `outcomes` narrows the pattern engines to those outcomes (the day scan asks for one target, say
@@ -136,7 +136,7 @@ def scan(settings: Settings, match_id: str, side: str = "home", alpha: float = A
                                detail=f"en yakın {tw['diagnostics'].get('k')} maç, ortanca benzerlik "
                                       f"{tw['diagnostics'].get('median')}")
 
-    comb = service.combined_for(settings, match_id, side=side, **({"outcomes": outcomes} if outcomes else {}))
+    comb = service.combined_for(settings, match_id, side=side, **({"outcomes": outcomes} if outcomes else {})) if combined else None
     if comb:
         usable = [r for r in comb.get("rows", []) if r.get("n", 0) >= min_n]
         if usable:

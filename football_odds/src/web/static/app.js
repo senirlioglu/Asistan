@@ -2422,7 +2422,7 @@
     const running = d.state === "running";
     const clearN = rows.filter((r) => r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0)).length;
     const verdict = `<div class="lab-verdict">${evBadge(running ? "YETERSİZ VERİ" : clearN ? "KEŞİF" : "FARK YOK")}<p>${running
-        ? `<b>${d.done} / ${d.total} maç tarandı…</b> Her maçta takım, rakip, benzer durumlar ve ikizler ölçülüyor; satırlar geldikçe sıralanır.`
+        ? `<b>${d.done} / ${d.total} maç tarandı…</b> Her maçta takım, rakip, benzer durumlar ve ikizler ölçülüyor, pattern motorları bu sonuç için çalışıyor; satırlar geldikçe sıralanır.${d.stale ? " <small class=\"muted\">(durum tablosu bu arada yenilendi; tarama önceki tabloyla sürüyor)</small>" : ""}`
         : `<b>Bu tarama: ${d.total} maç${d.errors ? `, ${d.errors} tanesi hesaplanamadı` : ""}.</b> ${withPats ? `Pattern motorları <b>${withPats} maçta</b> bu sonuç için bir desen buldu.` : "Pattern motorları bu sonuç için hiçbir maçta desen bulmadı."} ${clearN ? `${clearN} maçta katmanların toplamı da oranlardan sapıyor — ipucu, kanıt değil.` : ""}
         <small class="muted">Hiçbir satır kazananı söylemez. Her satır, o maça benzeyen eski maçlarda <b>${esc(tLabel)}</b> sonucunun oranların dediğinden daha çok mu, daha az mı geldiğini gösterir.</small>`}</p></div>`;
     if (!rows.length) { box.innerHTML = verdict + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
