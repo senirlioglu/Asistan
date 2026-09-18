@@ -1940,10 +1940,10 @@
     ["Özet: beklenen / gerçekleşen üst", "Tarafın verdiği üst ihtimallerinin ortalaması ile gerçekten üst biten maçların oranı. Yakınsa taraf iyi ayarlıdır; tek tek isabetten daha sağlam bir ölçüdür."],
     ["Körleme test","Sistem 2017–2021 sezonlarında ayarlandı, 2021–2026 sezonlarında hiç görmediği maçlarda denendi; bir maçı analiz ederken yalnızca ondan önce oynanmış maçları görebilir. Sonuç: piyasadan daha iyi tahmin edemedi."],
     ["Pattern Lab", "Araştırma sekmesinin üstündeki araç. Dört mod: bir maç seç (araştırılabilir durumları sistem bulur), bir sonuç seç (günün maçları taranır), kendi koşullarını kur (koşul koşul geçmiş), bir takım seç (fikstür döngüleri). Motor, pencere ya da araştırma türü seçtirmez."],
-    ["Araştırılabilir durum", "Pattern Lab'ın bir maçta bulduğu şey. 'Sinyal' değildir: bir motorun ölçümü, aynı maçın bütün ölçümleri arasında çoklu test düzeltmesinden geçtikten sonra da sıfırı dışlıyorsa araştırılabilir durum sayılır. Döngü ve oran hareketi bağlamdır, ölçüm değil."],
+    ["Dikkat çeken durum", "Pattern Lab'ın bir maçta bulduğu şey. Bir tahmin değildir: bir motorun ölçümü, aynı maçın bütün ölçümleri hesaba katıldıktan sonra bile şansla açıklanamayacak kadar büyükse dikkat çeken durum sayılır. Döngü ve oran hareketi bilgidir, ölçüm değil."],
     ["Pattern benzerliği", "Maçın geçmiş koşullara (fiyat, güç, form, gol) ne kadar benzediği; 0–100. Sonucun gerçekleşme olasılığı DEĞİLDİR: %83 benzerlik, hedefin %83 ihtimalle olacağı anlamına gelmez. Ekranda olasılıklardan ayrı bir kartta durur."],
-    ["Pattern tahmini", "Bugünkü piyasa olasılığı + katmanların (takım, rakip, benzer durumlar, ikizler, döngü) fiyata göre farklarının hassasiyet ağırlıklı ortalaması. Katmanlar örtüştüğü için aralığı iyimserdir; piyasa yoksa katmanların gerçekleşme oranıdır ve kıyas 'benzer fiyatlı maçlar'dır."],
-    ["Kanıt seviyesi", "KEŞİF: havuzda sıfırı dışlıyor, o kadar. DOĞRULANDI: doğrulama penceresinde aynı işaretle tekrarladı. İLERİ TESTTE: dokunulmamış test penceresinde de tuttu. YETERSİZ VERİ: 200 maçın altı. FARK YOK: fiyattan ayrılmıyor. Eğitimde bulunan hiçbir şey 'doğrulandı' diye gösterilmez."],
+    ["Eski maçlarda ne oldu", "Bugünkü oranın ima ettiği ihtimal + eski maç gruplarının (takımın geçmişi, rakibin geçmişi, aynı durumdaki maçlar, en çok benzeyen maçlar, döngü) orandan sapmalarının ağırlıklı ortalaması. Gruplar örtüştüğü için olası aralık biraz iyimserdir; oran yoksa grupların gerçekleşme oranıdır ve kıyas aynı orandaki maçlardır."],
+    ["Rozetler (ne kadar güvenilir)", "İLK BULGU: eski maçlarda görüldü ama henüz oynanmamış maçlarda sınanmadı; bir gözlem, kural değil. SINANIYOR: keşif taramasında sağ kaldı, şimdi yeni maçlarda izleniyor. SINANDI, TUTTU: görülmemiş maçlarda da aynı yönde çıktı. AZ MAÇ: 200 eski maçtan az, sayıya güvenme. ORANLAR DOĞRU: eski maçlarda oranların dediğinden farklı bir şey olmamış. BİLGİ: iddia değil, bağlam. Bulunduğu havuzda görülen hiçbir şey 'sınandı' diye gösterilmez."],
     ["Fikstür döngüsü", "Bir takımın bir merkez maç etrafındaki rakip dizisinin (±2/±3/±4) geçmiş bir sezonda aynı sırayla, ters sırayla, kaymış olarak ya da benzer güç profiliyle tekrarlaması. Bir benzerliktir; 'geçmişte işe yaramış mı' sorusu bütün veritabanındaki döngü çiftleri üzerinde, piyasa fiyatının yanında ayrıca ölçülür."],
     ["Ayna hipotezi", "Fikstür sırası tersine döndüyse merkez maçın sonucu da tersine (1 ↔ 2) dönüyor mu? Grafiklerin iması; doğru kabul edilmez, her ters döngü çiftinde yeni merkez maçın sonucu ve o sonucun fiyatı üzerinden test edilir."],
     ["Kalibrasyon skoru (Brier)", "Tahmin kalitesi ölçüsü; düşük daha iyi. Piyasa 0.5899, sistem 0.5897: fark yok denecek kadar küçük ve istatistiksel olarak anlamsız."],
@@ -1965,11 +1965,21 @@
                 target: null, find: { target: null, timer: null }, cycle: { team: null, data: null } };
 
   const EV_CLS = { "YETERSİZ VERİ": "thin", "KEŞİF": "disc", "DOĞRULANDI": "conf", "İLERİ TESTTE": "test", "FARK YOK": "none" };
-  const evBadge = (tr) => `<span class="ev ev-${EV_CLS[tr] || "none"}">${esc(tr || "–")}</span>`;
+  // what the badge says on the page, and the one sentence behind it (hover). The engine's own words
+  // (keşif, doğrulandı …) stay in the payload and in the glossary; the page speaks plainly.
+  const EV_TXT = {
+    "KEŞİF": ["İLK BULGU", "Eski maçlarda görüldü ama henüz oynanmamış maçlarda sınanmadı. Bir gözlem, kural değil."],
+    "İLERİ TESTTE": ["SINANIYOR", "Eski maçlarda görüldü ve şimdi henüz oynanmamış maçlarda izleniyor."],
+    "DOĞRULANDI": ["SINANDI, TUTTU", "Daha önce görülmemiş maçlarda da aynı yönde çıktı."],
+    "FARK YOK": ["ORANLAR DOĞRU", "Eski maçlarda oranların dediğinden farklı bir şey olmamış."],
+    "YETERSİZ VERİ": ["AZ MAÇ", "Yeterince eski maç yok; sayı tesadüf olabilir."],
+    "BAĞLAM": ["BİLGİ", "Bir iddia değil; maçı anlamaya yarayan bilgi."],
+  };
+  const evBadge = (tr) => { const t = EV_TXT[tr]; return `<span class="ev ev-${EV_CLS[tr] || "none"}" title="${esc(t ? t[1] : "")}">${esc(t ? t[0] : tr || "–")}</span>`; };
   const pctv = (v, d = 1) => (v == null ? "–" : `%${Number(v).toFixed(d)}`);
   const ppv = (v) => (v == null ? "–" : `${v > 0 ? "+" : ""}${Number(v).toFixed(1)} puan`);
   const ciTxt = (ci) => (!ci || ci[0] == null ? "–" : `[${pp1(ci[0])}, ${pp1(ci[1])}]`);
-  const SIM_TIP = "Pattern benzerliği maçın geçmiş koşullara ne kadar benzediğini gösterir. Sonucun gerçekleşme olasılığı değildir.";
+  const SIM_TIP = "Benzerlik: bu maçın eski maçlara ne kadar benzediği. Sonucun olma ihtimali DEĞİL.";
 
   /** The question, restated at the top of the stage — the reader should see what they asked. */
   function labQ(html) { const q = $("#lab-qbar"); if (q) q.innerHTML = html || ""; }
@@ -2014,13 +2024,13 @@
       ${market != null ? `<circle class="pt m" cx="${x(market).toFixed(1)}" cy="30" r="5"/>` : ""}
       ${est?.p != null ? `<circle class="pt p" cx="${x(est.p).toFixed(1)}" cy="30" r="5"/>` : ""}
       ${lbl(market, "m", apart ? 12 : 18)}${lbl(est?.p, "p", apart && market != null ? 22 : 18)}</svg>
-      <div class="legend-row"><span><i class="lm"></i>piyasa</span><span><i class="lp"></i>pattern tahmini (bant: %95 aralık)</span></div></div>`;
+      <div class="legend-row"><span><i class="lm"></i>oran ne diyor</span><span><i class="lp"></i>eski maçlarda ne oldu (bant: olası aralık)</span></div></div>`;
   }
   /** Similarity: a hatched meter, deliberately unlike a probability bar. */
   function meter(sim) {
     if (sim == null) return `<p class="note">ikiz benzerliği ölçülemedi</p>`;
     return `<div class="meter" title="${esc(SIM_TIP)}"><div class="meter-track"><div class="meter-fill" style="width:${Math.max(0, Math.min(100, sim))}%"></div></div>
-      <div class="meter-lbl"><span>benzerlik — olasılık değil</span><span>%${Number(sim).toFixed(0)}</span></div></div>`;
+      <div class="meter-lbl"><span>eski maçlara benzerlik — sonucun ihtimali değil</span><span>%${Number(sim).toFixed(0)}</span></div></div>`;
   }
   /** N as a thin magnitude bar on a shared max. */
   function nbar(n, max, thin) { return `<span class="nbar ${thin ? "thin" : ""}"><i style="width:${Math.max(2, 60 * (n || 0) / Math.max(max, 1)).toFixed(0)}px"></i>${(n || 0).toLocaleString("tr")}</span>`; }
@@ -2231,7 +2241,7 @@
     const sentence = plain
       ? `${gen(team)} bugünkü durumuna benzeyen eski maçlarda ${plain}, bahis oranlarının söylediğinden <b>${verb}</b>.`
       : `${gen(team)} bugünkü durumuna benzeyen eski maçlarda "${who}" bahis oranlarının söylediğinden <b>${less ? "daha az" : "daha çok"}</b> olmuş.`;
-    const price = less ? `Yani bu sonucun oranı o maçlarda pahalıymış.` : `Yani bu sonucun oranı o maçlarda ucuzmuş.`;
+    const price = less ? `Yani bu orana oynayan geçmişte zarar ederdi.` : `Yani bu orana oynayan geçmişte kâr ederdi.`;
     return { who, less, sentence, price, team };
   }
 
@@ -2241,7 +2251,7 @@
     return `<div class="lab-card">
       <div class="lab-card-top"><span>${esc(f.source_tr)}</span>${evBadge(f.evidence_tr)}</div>
       <div class="lab-card-body"><span class="lab-big">${esc(mean.who)}</span>
-        <span class="lab-dir ${mean.less ? "is-less" : "is-more"}">${mean.less ? "↓" : "↑"} ${mean.less ? "beklenenden seyrek" : "beklenenden sık"}</span>
+        <span class="lab-dir ${mean.less ? "is-less" : "is-more"}">${mean.less ? "↓ eski maçlarda daha AZ oldu" : "↑ eski maçlarda daha ÇOK oldu"}</span>
         <span>${mean.sentence} ${mean.price} <b>Kim kazanır demek değil.</b></span>
         <small class="muted">${f.n} eski maçta: bu sonuç <b>${pctv(f.actual)}</b> geldi, oranlar <b>${pctv(f.market)}</b> diyordu${f.detail ? ` · koşul: ${esc(f.detail)}` : ""}</small>
         <details class="lab-more"><summary>istatistik</summary><small class="muted ${solid ? "yes" : ""}">fark ${ppv(f.edge)} puan · %95 aralık ${ciTxt(f.ci)} · q = ${num(f.q, 3)}${solid ? " · aralık sıfırı dışlıyor: fark şansla açıklanamayacak kadar büyük" : ""}</small></details></div>
@@ -2255,7 +2265,7 @@
       : c.source === "note" ? `<button type="button" class="btn ghost" data-open="nesine">Notları aç</button>`
       : `<button type="button" class="btn ghost" data-open="move">İncele</button>`;
     return `<div class="lab-card is-ctx">
-      <div class="lab-card-top"><span>${esc(c.source_tr)}</span><span class="ev ev-ctx">BAĞLAM</span></div>
+      <div class="lab-card-top"><span>${esc(c.source_tr)}</span>${evBadge("BAĞLAM")}</div>
       <div class="lab-card-body"><span class="lab-big">${esc(c.label)}</span><span>${c.source === "sequence" ? "Benzerlik " : ""}<b>${esc(c.value)}</b></span>
         <small class="muted">${esc(c.note)}</small></div>${go}</div>`;
   }
@@ -2340,9 +2350,9 @@
         : `Piyasa <b>${pctv(mk.p)}</b> bekliyor; 200 maça ulaşan katman olmadığı için pattern tahmini yok.`;
     const verdict = `<div class="lab-verdict">${evBadge(d.evidence.label)}<p>${sentence} <span class="muted">${esc(d.evidence.why)}.</span></p></div>`;
     const fig = `<div class="lab-fig">
-      <div class="lab-stat"><small>PİYASA OLASILIĞI</small><b class="is-market">${mk.p == null ? "yok" : pctv(mk.p)}</b>
+      <div class="lab-stat"><small>ORAN NE DİYOR</small><b class="is-market">${mk.p == null ? "yok" : pctv(mk.p)}</b>
         <span class="muted">${mk.p == null ? esc(mk.note || "") : mk.source === "nesine" ? `nesine oranı ${num(mk.odds)}, marj çıkarılmış` : mk.odds ? `konsensüs oranı ${num(mk.odds)}` : "Football-Data konsensüsü"}</span></div>
-      <div class="lab-stat"><small>PATTERN TAHMİNİ</small><b class="is-pattern">${est ? pctv(est.p) : "–"}</b><span class="muted">${est ? esc(est.basis) : "200 maça ulaşan katman yok"}</span></div>
+      <div class="lab-stat"><small>ESKİ MAÇLARDA NE OLDU</small><b class="is-pattern">${est ? pctv(est.p) : "–"}</b><span class="muted">${est ? esc(est.basis) : "200 eski maça ulaşan grup yok"}</span></div>
       <div class="lab-stat"><small>FARK</small><b class="${clear ? "yes" : ""}">${d.difference == null ? "–" : pp1(d.difference)}</b><span class="muted">puan · olası aralık ${ciTxt(dci)}</span></div>
     </div>
     ${dumbbell(mk.p, est)}
@@ -2350,19 +2360,19 @@
     <p class="note">${sim ? `En yakın ${sim.k} ikizin ortanca benzerliği; ${sim.n_above_90} tanesi 90'ın üstünde. ` : ""}${esc(SIM_TIP)}</p>`;
     const dom = fpDomain(d.layers);
     const table = `<div class="lab-sec">Katmanlar</div>
-      <div class="table-wrap"><table><thead><tr><th>Katman</th><th class="num">N</th><th class="num">Gerçekleşen</th><th class="num">Beklenti</th>
-        <th class="num">Fark</th><th class="fp-h">${fpAxis(dom)}</th><th>Kanıt</th></tr></thead><tbody>${layerRows(d.layers, dom)}</tbody></table></div>
-      <p class="note"><b>Beklenti</b>: fiyatı olan marketlerde o maçların kendi fiyatı; olmayanlarda (İY, İY/MS, 1,5/3,5 üst, KG) <b>aynı fiyattaki maçlarda</b>
-        aynı şeyin ne sıklıkta olduğu. Çizim tek ölçekte (±${dom} puan); renkli nokta aralığın sıfırı dışladığı satır. Gri satırlar 200 maçın altında.</p>`;
-    const reasons = `<div class="lab-sec">Neden?</div><div class="lab-why"><div><h4>Destekleyenler</h4>${d.reasons.pro.length ? `<ul class="pro">${d.reasons.pro.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="note">Fiyattan ayrılan bir katman yok.</p>`}</div>
+      <div class="table-wrap"><table><thead><tr><th>Hangi eski maçlara bakıldı</th><th class="num" title="kaç eski maç">Maç</th><th class="num" title="o maçlarda bu sonuç ne sıklıkta oldu">Oldu</th><th class="num" title="oranlar o maçlarda ne bekliyordu">Oran diyordu</th>
+        <th class="num">Fark</th><th class="fp-h">${fpAxis(dom)}</th><th>Ne kadar güvenilir</th></tr></thead><tbody>${layerRows(d.layers, dom)}</tbody></table></div>
+      <p class="note"><b>Oran diyordu</b>: oranı olan marketlerde o maçların kendi oranı; oranı tutulmayanlarda (İY, İY/MS, 1,5/3,5 üst, KG) aynı orandaki maçlarda
+        aynı şeyin ne sıklıkta olduğu. Renkli nokta: fark şansla açıklanamayacak kadar büyük. Gri satır: 200 maçtan az, sayıya güvenme.</p>`;
+    const reasons = `<div class="lab-sec">Neden?</div><div class="lab-why"><div><h4>Bu sonuç lehine</h4>${d.reasons.pro.length ? `<ul class="pro">${d.reasons.pro.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="note">Oranın dediğinden daha çok olduğu bir eski maç grubu yok.</p>`}</div>
       <div><h4>Dikkat edilmesi gerekenler</h4>${d.reasons.con.length ? `<ul class="con">${d.reasons.con.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="note">—</p>`}</div></div>`;
     const mv = d.movement ? `<p class="note"><b>Oran hareketi:</b> ${esc((MOVE_TR[d.movement.type] || [d.movement.type])[0])}${d.movement.total_pp != null ? ` (${pp1(d.movement.total_pp)} puan)` : ""}
         · ${esc(d.movement.note)} <button type="button" class="linkbtn" data-open="move">ayrıntı</button></p>` : "";
     const seq = d.sequence ? `<p class="note"><b>Fikstür döngüsü:</b> ${esc(d.sequence.kind_tr)} · ±${d.sequence.window} · benzerlik %${d.sequence.similarity} (${d.sequence.past.season.slice(0, 2)}/${d.sequence.past.season.slice(2)})
         — benzerlik, olasılık değildir <button type="button" class="linkbtn" data-cycle="${esc(m.id)}">döngüyü aç</button></p>` : "";
-    const disc = d.discovery ? `<p class="note"><b>Keşif taraması (hedefe göre):</b> bu hedefle ilgili ${d.discovery.n_claims} iddia üç pencereden geçirildi;
+    const disc = d.discovery ? `<p class="note"><b>Daha önce bulunmuş desenler (bu sonuç için):</b> bu hedefle ilgili ${d.discovery.n_claims} iddia üç pencereden geçirildi;
         ${d.discovery.survived.length ? `sağ kalan: ${d.discovery.survived.map((s) => `${esc(s.label)} (${pp1(s.edge)} puan, q=${num(s.q, 3)})`).join(" · ")}` : "hiçbiri üç pencereden de geçemedi"}.
-        Ayrıntı aşağıdaki "Desen taraması" bölümünde.</p>` : `<p class="note"><b>Keşif taraması:</b> bu hedef için çevrimdışı tarama sonucu yok.</p>`;
+        Ayrıntı aşağıdaki "Desen taraması" bölümünde.</p>` : `<p class="note"><b>Daha önce bulunmuş desen:</b> bu sonuç için yok.</p>`;
     return verdict + fig + table + reasons + mv + seq + disc + `<ul class="lab-notes">${(d.notes || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
   }
 
@@ -2409,9 +2419,9 @@
   /** What a row's Δ says, in words: the outcome came more or less often than priced, or nothing. */
   function deltaMeaning(diff, ci) {
     if (diff == null || !ci || ci[0] == null) return "";
-    if (ci[0] > 0) return "↑ <b>beklenenden sık</b> gelmiş — oranı ucuz kalmış";
-    if (ci[1] < 0) return "↓ <b>beklenenden seyrek</b> gelmiş — oranı pahalı kalmış";
-    return "fiyattan ayırt edilemiyor";
+    if (ci[0] > 0) return "↑ eski maçlarda <b>daha çok</b> oldu — bu orana oynayan geçmişte kâr ederdi";
+    if (ci[1] < 0) return "↓ eski maçlarda <b>daha az</b> oldu — bu orana oynayan geçmişte zarar ederdi";
+    return "eski maçlar oranı doğruluyor";
   }
 
   function renderFind(d, target, date) {
@@ -2427,9 +2437,10 @@
         <small class="muted">Hiçbir satır kazananı söylemez. Her satır, o maça benzeyen eski maçlarda <b>${esc(tLabel)}</b> sonucunun oranların dediğinden daha çok mu, daha az mı geldiğini gösterir.</small>`}</p></div>`;
     if (!rows.length) { box.innerHTML = verdict + (d.state === "done" ? `<div class="day-empty">Bu günde durum tablosu hazır olan maç yok.</div>` : ""); return; }
     const dom = fpDomain(rows.map((r) => ({ edge: r.difference, ci: r.difference_ci })));
-    const LAYER_TR = { team: "takım", opponent: "rakip", similar: "benzer durumlar", both: "benzer × benzer", twins: "ikizler", sequence: "döngü", movement: "hareket" };
+    const layerName = (l, r) => ({ team: `${gen(r.home)} kendi geçmişi`, opponent: `${gen(r.away)} kendi geçmişi`, similar: "aynı durumdaki tüm eski maçlar",
+      both: "iki tarafı da benzeyen eski maçlar", twins: "en çok benzeyen eski maçlar", sequence: "fikstür döngüsü", movement: "oran hareketi" }[l.key] || l.key);
     const where = (r) => (r.layers || []).filter((l) => l.edge != null && !["thin", "none"].includes(l.evidence))
-      .map((l) => `<span class="lab-chip ${l.edge > 0 ? "up" : "down"}" title="${esc(LAYER_TR[l.key] || l.key)} · N=${l.n}">${l.edge > 0 ? "↑" : "↓"} ${esc(LAYER_TR[l.key] || l.key)}</span>`).join(" ");
+      .map((l) => `<span class="lab-chip ${l.edge > 0 ? "up" : "down"}" title="${esc(layerName(l, r))} · ${l.n} eski maç · bu sonuç oranın dediğinden ${l.edge > 0 ? "daha çok" : "daha az"} oldu">${l.edge > 0 ? "↑" : "↓"} ${esc(layerName(l, r))}</span>`).join(" ");
     const withNotes = rows.filter((r) => (r.notes || []).some((n) => n.related));
     const tab = state.lab.find.tab || "patterns";
     const tabs = `<div class="lab-tabs" role="tablist">
@@ -2449,7 +2460,7 @@
         <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Nerede</th><th>Kanıt</th><th></th></tr></thead><tbody>
         ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br>
             <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}
-            ${(r.patterns || []).length ? `<div class="lab-pats">${r.patterns.map((f) => `<div class="lab-pat"><span class="lab-chip ${f.edge > 0 ? "up" : "down"}">${f.edge > 0 ? "↑ sık" : "↓ seyrek"}</span> <b>${esc(f.source_tr)}</b> · ${esc(f.side === "away" ? r.away : r.home)}${f.detail ? ` · ${esc(f.detail)}` : ""} <small class="muted">${f.n} eski maç · ${pctv(f.actual)} / oran ${pctv(f.market)} · ${esc(f.evidence_tr || "")}</small></div>`).join("")}</div>` : ""}</td>
+            ${(r.patterns || []).length ? `<div class="lab-pats">${r.patterns.map((f) => `<div class="lab-pat"><span class="lab-chip ${f.edge > 0 ? "up" : "down"}">${f.edge > 0 ? "↑ daha çok oldu" : "↓ daha az oldu"}</span> <b>${esc(f.source_tr)}</b> · ${esc(f.side === "away" ? r.away : r.home)}${f.detail ? ` · ${esc(f.detail)}` : ""} <small class="muted">${f.n} eski maç · ${pctv(f.actual)} / oran ${pctv(f.market)} · ${esc(f.evidence_tr || "")}</small></div>`).join("")}</div>` : ""}</td>
           <td class="hide-md nw">${esc(r.league_name || r.league || "")}</td><td class="num hide-md">${esc(r.time || "")}</td>
           <td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
           <td class="num">${r.market?.p == null ? "<small class=\"muted\">yok</small>" : pctv(r.market.p)}</td>
@@ -2463,7 +2474,7 @@
       </tbody></table></div>
       <p class="note">Sıralama bahis tavsiyesi değil, "önce buna bak" sırasıdır: farkı büyük, eski maçı çok ve daha önce de görülmüş olanlar üstte.
         Maçın altındaki satırlar pattern motorlarının bu sonuç için kendi bulduğu desenlerdir: form deseni (bu takım / tüm takımlar / benzer güçtekiler) ve iki takımın birlikte durumu; her biri o maçın kendi ailesinde çoklu test düzeltmesinden geçmiştir.
-        "Nerede" sütunu, sapmanın hangi katmanda olduğunu söyler: <b>takım</b> = bu takımın kendi geçmişi, <b>rakip</b> = rakibin geçmişi, <b>benzer durumlar</b> = ligden bağımsız aynı durumdaki maçlar, <b>ikizler</b> = bu maça en çok benzeyen eski maçlar.
+        "Nerede" sütunu, farkın hangi eski maçlarda görüldüğünü söyler: takımın kendi geçmişinde mi, rakibin geçmişinde mi, aynı durumdaki tüm maçlarda mı, yoksa bu maça en çok benzeyen maçlarda mı. Etiketin üstüne gelince sayısı çıkar.
         Piyasa sütunu boşsa o market için oran yok (ilk yarı ve İY/MS oranları yalnızca nesine bülteninden gelir).
         Benzerlik, maçın eski maçlara ne kadar benzediğidir — sonucun ihtimali değil.</p>`;
     const wire = () => {

@@ -191,9 +191,9 @@ def analyse(settings: Settings, match_id: str, target: str, side: str = "home", 
 
     layers: list[dict] = []
     # 1-2: the two clubs' own history, at this venue
-    layers.append(_layer("team", f"{home} · ev sahibi olarak", run(engine.Pattern(team=home, side="home")),
+    layers.append(_layer("team", f"{home} kendi geçmişi (ev sahibi olarak)", run(engine.Pattern(team=home, side="home")),
                          note="bu kulübün kendi ev maçları — çoğu zaman birkaç yüz maç, dar bir kanıt"))
-    layers.append(_layer("opponent", f"{away} · deplasmanda", run(engine.Pattern(team=away, side="away")),
+    layers.append(_layer("opponent", f"{away} kendi geçmişi (deplasmanda)", run(engine.Pattern(team=away, side="away")),
                          note="rakibin kendi deplasman maçları"))
     # 3-4: the cascade — form + venue + strength, then the opponent described too
     comb = service.combined_for(settings, match_id, side=side, outcomes=outcomes)
@@ -203,16 +203,16 @@ def analyse(settings: Settings, match_id: str, target: str, side: str = "home", 
         team_rows, pair_rows = rows[:k], rows[k:]
         ok_team = [r for r in team_rows if (r["outcomes"].get(target) or {}).get("n", 0) >= MIN_N] or team_rows
         third = ok_team[-1]
-        layers.append(_layer("similar", "Tüm benzer durumlar", third["outcomes"].get(target),
+        layers.append(_layer("similar", "Aynı durumdaki tüm eski maçlar", third["outcomes"].get(target),
                              note=third.get("label", "")))
         ok_pair = [r for r in pair_rows if (r["outcomes"].get(target) or {}).get("n", 0) >= MIN_N]
         if ok_pair:
             last = ok_pair[-1]
-            layers.append(_layer("both", "Benzer takım × benzer rakip", last["outcomes"].get(target),
+            layers.append(_layer("both", "İki tarafı da benzeyen eski maçlar", last["outcomes"].get(target),
                                  note=last.get("label", "")))
         elif pair_rows:
             last = pair_rows[0]
-            layers.append(_layer("both", "Benzer takım × benzer rakip", last["outcomes"].get(target),
+            layers.append(_layer("both", "İki tarafı da benzeyen eski maçlar", last["outcomes"].get(target),
                                  note=f"{last.get('label', '')} · rakip tarif edilince örneklem {MIN_N}'ün altına düşüyor"))
     # 5: the twins, with their decay weights and a price-matched reference of their own
     similarity = None
@@ -229,7 +229,7 @@ def analyse(settings: Settings, match_id: str, target: str, side: str = "home", 
         similarity = {"median": res.diagnostics.get("median"), "best": res.diagnostics.get("best"),
                       "worst": res.diagnostics.get("worst"), "k": res.diagnostics.get("k"),
                       "n_above_90": res.diagnostics.get("n_above_90")}
-        layers.append(_layer("twins", f"Historical twins · K={res.diagnostics.get('k')}", m,
+        layers.append(_layer("twins", f"En çok benzeyen {res.diagnostics.get('k')} eski maç", m,
                              note=f"ortanca benzerlik %{res.diagnostics.get('median')} — benzerlik, olasılık değildir"))
     # 6: the fixture cycle around this match, if the pair table is ready and a cycle exists
     seq_ctx = None
@@ -256,14 +256,14 @@ def analyse(settings: Settings, match_id: str, target: str, side: str = "home", 
         if market["p"] is not None:
             estimate = {"p": round(market["p"] + combined["edge"], 2),
                         "ci": [round(market["p"] + combined["ci"][0], 2), round(market["p"] + combined["ci"][1], 2)],
-                        "basis": "piyasa + katmanların fiyata göre farkı"}
+                        "basis": "bugünkü oran + eski maç gruplarının orandan sapması"}
         else:
             use = [l for l in layers if l["key"] in combined["layers"] and l.get("actual") is not None]
             if use:
                 est = float(np.mean([l["actual"] for l in use]))
                 estimate = {"p": round(est, 2), "ci": [round(est + combined["ci"][0] - combined["edge"], 2),
                                                      round(est + combined["ci"][1] - combined["edge"], 2)],
-                            "basis": "katmanların gerçekleşme oranı (fiyat yok; kıyas benzer fiyatlı maçlar)"}
+                            "basis": "eski maç gruplarında bu sonucun sıklığı (bugün oranı yok; kıyas aynı orandaki maçlar)"}
     t = TARGETS[target]
     out = {
         "match": {"id": match_id, "date": str(row["date"])[:10], "league": str(row["league"]),
@@ -275,11 +275,11 @@ def analyse(settings: Settings, match_id: str, target: str, side: str = "home", 
         "layers": layers, "movement": movement, "sequence": seq_ctx,
         "discovery": _discovery_context(settings, target),
         "reasons": _reasons(layers, market, combined, similarity, movement, seq_ctx),
-        "notes": ["Benzerlik, maçın geçmiş koşullara ne kadar benzediğini gösterir; sonucun gerçekleşme olasılığı değildir.",
-                  "Katmanlar birbirinden bağımsız değildir (bir ikiz çoğu zaman aynı form desenine de uyar); "
-                  "birleşik aralık bu yüzden iyimserdir.",
-                  "Havuzda bulunan bir fark KEŞİF'tir; DOĞRULANDI ve İLERİ TESTTE etiketleri yalnızca üç pencereli "
-                  "taramadan gelir."],
+        "notes": ["Benzerlik, bu maçın eski maçlara ne kadar benzediğidir; sonucun olma ihtimali değildir.",
+                  "Eski maç grupları birbirinden bağımsız değildir (en çok benzeyen bir maç çoğu zaman aynı form grubunda da vardır); "
+                  "toplam farkın olası aralığı bu yüzden biraz iyimserdir.",
+                  "Burada görülen her fark bir ilk bulgudur; 'sınanıyor' ve 'sınandı' rozetleri yalnızca henüz oynanmamış "
+                  "maçlarda yapılan testten gelir."],
     }
     out["evidence"] = _overall_evidence(layers, out["discovery"])
     return out
@@ -343,9 +343,9 @@ def _overall_evidence(layers: list[dict], disc: dict | None) -> dict:
     else:
         ev = "none"
     return {"key": ev, "label": EVIDENCE_TR[ev],
-            "why": {"tested": "üç pencereli taramada bu hedefle ilgili en az bir desen sağ kaldı",
-                    "discovery": "en az bir katman havuzda sıfırı dışlıyor — bu bir keşiftir, doğrulama değil",
-                    "thin": "hiçbir katman 200 maça ulaşmıyor", "none": "hiçbir katman fiyattan ayrılmıyor"}[ev]}
+            "why": {"tested": "bu sonuçla ilgili bir desen daha önce bulunmuş ve şimdi yeni maçlarda sınanıyor",
+                    "discovery": "en az bir eski maç grubunda fark şansla açıklanamayacak kadar büyük; ama bu bir gözlem, sınanmış bir kural değil",
+                    "thin": "hiçbir grupta 200 eski maç yok, sayılara güvenilmez", "none": "eski maçlar oranı doğruluyor"}[ev]}
 
 
 def _reasons(layers, market, combined, similarity, movement, seq) -> dict:
@@ -356,21 +356,21 @@ def _reasons(layers, market, combined, similarity, movement, seq) -> dict:
             continue
         lo, hi = l["ci"]
         if l["n"] < MIN_N:
-            con.append(f"{l['label']}: örneklem küçük (N = {l['n']})")
+            con.append(f"{l['label']}: yalnızca {l['n']} maç, sayıya güvenme")
         elif lo is not None and lo > 0:
-            pro.append(f"{l['label']}: hedef fiyatın {l['edge']:+.1f} puan üstünde (N = {l['n']}, aralık sıfırı dışlıyor)")
+            pro.append(f"{l['label']}: bu sonuç oranın dediğinden {l['edge']:+.1f} puan daha çok oldu ({l['n']} maç; şansla açıklanmaz)")
         elif hi is not None and hi < 0:
-            con.append(f"{l['label']}: hedef fiyatın {l['edge']:+.1f} puan altında (N = {l['n']})")
+            con.append(f"{l['label']}: bu sonuç oranın dediğinden {abs(l['edge']):.1f} puan daha az oldu ({l['n']} maç)")
         elif l["reference"] == "matched":
-            con.append(f"{l['label']}: fiyat yok, kıyas benzer fiyatlı maçlar (fark {l['edge']:+.1f})")
+            con.append(f"{l['label']}: bu marketin oranı yok, kıyas aynı orandaki maçlar (fark {l['edge']:+.1f})")
     if combined.get("ci") and combined["ci"][0] is not None and (combined["ci"][1] - combined["ci"][0]) > WIDE_CI:
-        con.append(f"Birleşik aralık geniş ({combined['ci'][0]:+.1f} … {combined['ci'][1]:+.1f} puan)")
+        con.append(f"Toplam farkın olası aralığı geniş ({combined['ci'][0]:+.1f} … {combined['ci'][1]:+.1f} puan): sayı oynak")
     if market.get("p") is None:
-        con.append("Piyasa karşılaştırması mevcut değil")
+        con.append("Bu sonucun bugünkü oranı yok, karşılaştırma yapılamadı")
     elif market["p"] < LOW_ABS:
-        con.append(f"Hedef düşük mutlak olasılıklı (piyasa %{market['p']:.1f})")
+        con.append(f"Zaten nadir bir sonuç (oran %{market['p']:.1f} diyor); küçük farklar büyük görünür")
     if movement is None:
-        con.append("Oran hareketi desteği yok (arşivde kayıt yok)")
+        con.append("Oran hareketi bilgisi yok (arşivde kayıt yok)")
     elif movement.get("support"):
         pro.append(f"Oran hareketi hedef yönünde ({movement['type']}, {movement.get('total_pp')} puan)")
     elif movement.get("support") is False:
