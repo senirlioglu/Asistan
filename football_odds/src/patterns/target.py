@@ -25,6 +25,7 @@ optimistic, and the payload says so rather than pretending the layers were indep
 from __future__ import annotations
 
 import datetime as dt
+import json
 import threading
 from dataclasses import replace
 
@@ -386,7 +387,64 @@ def _reasons(layers, market, combined, similarity, movement, seq) -> dict:
 
 _JOBS: dict[tuple, dict] = {}
 _JOBS_LOCK = threading.Lock()
-SCAN_WORKERS = 4      # matches analysed at once by the day scan
+SCAN_WORKERS = 4      # matches analysed at once by the day scan — in total, across every running scan
+_EXECUTOR = None      # one pool for all day scans: seven scans at once used to open 28 threads that starved the site
+
+
+def _executor():
+    """The one thread pool every day scan shares. Scans started together queue behind each other
+    instead of multiplying threads: on 19 Sep three concurrent scans (12 threads) crawled at 4 matches
+    per 10 minutes while the Nesine tab timed out."""
+    global _EXECUTOR
+    with _JOBS_LOCK:
+        if _EXECUTOR is None:
+            from concurrent.futures import ThreadPoolExecutor
+
+            _EXECUTOR = ThreadPoolExecutor(max_workers=SCAN_WORKERS, thread_name_prefix="lab-scan")
+        return _EXECUTOR
+
+
+def scans_dir(settings: Settings):
+    return settings.results_dir / "lab_scans"
+
+
+def _scan_path(settings: Settings, date: str, target: str):
+    return scans_dir(settings) / f"{date}__{target.replace('/', '-')}.json"
+
+
+def _json_default(o):
+    """numpy scalars inside a row (an int64 count) are plain numbers on disk."""
+    if hasattr(o, "item"):
+        return o.item()
+    raise TypeError(f"{type(o).__name__} is not JSON serialisable")
+
+
+def _persist_job(settings: Settings, job: dict) -> None:
+    """A finished scan is written to the results volume: the in-memory registry dies with every deploy,
+    and ten minutes of scanning should not."""
+    try:
+        p = _scan_path(settings, job["date"], job["target"])
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        with _JOBS_LOCK:
+            data = json.dumps(job, ensure_ascii=False, default=_json_default)
+        tmp.write_text(data, encoding="utf-8")
+        tmp.replace(p)
+    except Exception as exc:  # noqa: BLE001 - the scan still answers from memory
+        log.warning("day scan not saved: %s", exc)
+
+
+def _load_job(settings: Settings, date: str, target: str) -> dict | None:
+    p = _scan_path(settings, date, target)
+    if not p.exists():
+        return None
+    try:
+        job = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if job.get("state") != "done":
+        return None
+    return job
 RELEVANCE_NOTE = ("Sıralama bir bahis skoru değildir: |fark| / standart hata, kullanılabilir katman payı ve keşif "
                   "taramasında sağ kalan desen varlığıyla çarpılır — yani 'araştırmaya değer' sırasıdır.")
 
@@ -490,16 +548,28 @@ def start_day_scan(settings: Settings, date: str, target: str, matches: list[dic
 
     def work():
         # a few matches at once: the engines are pandas/numpy work that mostly runs outside the GIL, and a
-        # full Football-Data day (160+ matches, ~3 s each in one thread) otherwise takes ten minutes
-        from concurrent.futures import ThreadPoolExecutor
-
-        with ThreadPoolExecutor(max_workers=SCAN_WORKERS, thread_name_prefix="lab-scan") as ex:
-            list(ex.map(one, matches))
-        job["rows"].sort(key=lambda r: -r["relevance"]["score"])
-        job["state"] = "done"
-        job["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+        # full Football-Data day (160+ matches, ~3 s each in one thread) otherwise takes ten minutes.
+        # The pool is shared: a second scan started meanwhile queues behind this one's matches.
+        list(_executor().map(one, matches))
+        with _JOBS_LOCK:
+            job["rows"].sort(key=lambda r: -r["relevance"]["score"])
+            job["state"] = "done"
+            job["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
+        _persist_job(settings, job)
 
     threading.Thread(target=work, name=f"lab-scan-{date}-{target}", daemon=True).start()
+    return job
+
+
+def wait_day_scan(job: dict, timeout_s: float | None = None, poll_s: float = 1.0) -> dict:
+    """Block until a scan started with `start_day_scan` is done (the daily report runs them in turn)."""
+    import time
+
+    t0 = time.monotonic()
+    while job["state"] == "running":
+        if timeout_s is not None and time.monotonic() - t0 > timeout_s:
+            break
+        time.sleep(poll_s)
     return job
 
 
@@ -513,7 +583,14 @@ def day_scan_status(settings: Settings, date: str, target: str) -> dict | None:
         return job
     older = [j for (d, t, _), j in _JOBS.items() if d == date and t == target]
     if not older:
-        return None
+        # the process restarted since the scan ran (a deploy): the finished scan is on the volume
+        job = _load_job(settings, date, target)
+        if job is None:
+            return None
+        with _JOBS_LOCK:
+            _JOBS[(date, target, job.get("state_stamp", 0))] = job
+        job["stale"] = job.get("state_stamp") != stamp
+        return job
     job = max(older, key=lambda j: j["started_at"])
     job["stale"] = True
     return job

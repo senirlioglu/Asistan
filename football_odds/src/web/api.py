@@ -943,19 +943,47 @@ def lab_scan_start(date: str = Query(..., min_length=10, max_length=10), target:
         raise HTTPException(422, "bilinmeyen hedef")
     if service.frame(settings) is None:
         raise HTTPException(404, "durum tablosu hazır değil")
-    matches = [m for m in lab_matches(date, date)["matches"] if m["ready"]]
-    nesine_by_id = {}
-    if True:  # every target: the price for İY and İY/MS, the notebook notes for all of them
-        from ..nesine import watcher
-
-        store = watcher.load_store(settings)                                # once, not per match
-        for m in matches:
-            try:
-                nesine_by_id[m["id"]] = _nesine_brief(m["date"], m["home"], m["away"], code=m.get("code"), store=store)
-            except Exception:  # noqa: BLE001 - no bulletin, no price; the row says so
-                pass
+    matches, nesine_by_id = collect_day(date)
     job = tg.start_day_scan(settings, date, target, matches, nesine_by_id)
     return {"state": job["state"], "total": job["total"], "done": job["done"]}
+
+
+def collect_day(date: str) -> tuple[list[dict], dict]:
+    """What a day scan works on: the day's ready matches and, per match, the nesine brief (the price for
+    İY and İY/MS, the notebook notes for every target). Shared by mode 2 and the daily report."""
+    from ..nesine import watcher
+
+    matches = [m for m in lab_matches(date, date)["matches"] if m["ready"]]
+    nesine_by_id = {}
+    store = watcher.load_store(settings)                                # once, not per match
+    for m in matches:
+        try:
+            nesine_by_id[m["id"]] = _nesine_brief(m["date"], m["home"], m["away"], code=m.get("code"), store=store)
+        except Exception:  # noqa: BLE001 - no bulletin, no price; the row says so
+            pass
+    return matches, nesine_by_id
+
+
+@app.get("/api/lab/gunluk")
+def lab_daily(date: str | None = Query(default=None, min_length=10, max_length=10)) -> dict:
+    """Günün raporu: the day's matches through every main target, compiled (see patterns/daily.py)."""
+    from ..patterns import daily
+
+    date = date or daily.today_tr()
+    st = daily.status(settings, date)
+    return {**st, "report": daily.load_report(settings, date)}
+
+
+@app.post("/api/lab/gunluk")
+def lab_daily_start(date: str | None = Query(default=None, min_length=10, max_length=10)) -> dict:
+    """Build (or rebuild) the day's report in the background; GET polls it."""
+    from ..patterns import daily, service
+
+    if service.frame(settings) is None:
+        raise HTTPException(404, "durum tablosu hazır değil")
+    date = date or daily.today_tr()
+    out = daily.start_build(settings, date, collect_day)
+    return {**out, **daily.status(settings, date)}
 
 
 @app.get("/api/lab/kendi")

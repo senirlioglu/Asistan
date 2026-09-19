@@ -250,6 +250,7 @@
       </header>
       <div class="lab-grid">
         <nav class="lab-rail" role="tablist" aria-label="Pattern Lab modları">
+          <button type="button" class="lab-mode" data-lab="daily" role="tab"><span class="lab-n">★</span><span class="lab-mode-t"><b>Günün raporu</b><small>Bütün sonuçlar, her sabah hazır</small></span></button>
           <button type="button" class="lab-mode" data-lab="match" role="tab"><span class="lab-n">1</span><span class="lab-mode-t"><b>Bu maçta ne olur?</b><small>Maçı seç, durumları sistem bulsun</small></span></button>
           <button type="button" class="lab-mode" data-lab="find" role="tab"><span class="lab-n">2</span><span class="lab-mode-t"><b>Bu sonuca uyan maç bul</b><small>Sonucu seç, günün maçları taransın</small></span></button>
           <button type="button" class="lab-mode" data-lab="own" role="tab"><span class="lab-n">3</span><span class="lab-mode-t"><b>Kendi patternini test et</b><small>Koşulları kur, koşul koşul oku</small></span></button>
@@ -259,6 +260,16 @@
         <p class="lab-qbar" id="lab-qbar" aria-live="polite"></p>
 
       <!-- MOD 1 — BU MAÇTA NE OLUR? -->
+      <!-- GÜNÜN RAPORU -->
+      <div class="lab-panel" id="lab-daily" hidden>
+        <div class="sc-controls">
+          <label class="select"><span class="label">Gün</span><select id="ld-date"></select></label>
+          <button type="button" class="btn ghost" id="ld-build">Raporu yeniden üret</button>
+        </div>
+        <p class="count" id="ld-status"></p>
+        <div id="ld-out"><p class="note">Yükleniyor…</p></div>
+      </div>
+
       <div class="lab-panel" id="lab-match" hidden>
         <p class="ex-lbl">Bir maç seç <span class="muted">— bugünkü ve gelecek maçlar</span></p>
         <div class="sc-controls">

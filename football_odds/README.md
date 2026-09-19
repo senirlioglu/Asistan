@@ -305,6 +305,16 @@ our database gets a pre-match state row in the daily build, priced with nesine's
 a tie between clubs of two leagues (European cups, domestic cups) is placed under `CUP` with each club's
 standing taken from its own league.
 
+**Günün raporu** (`src/patterns/daily.py`) is the lab's front page: the day's matches through every
+main target (1, X, 2, 2,5 üst, KG var, İY/MS 1/2 and 2/1, İY 1/X/2), scanned in turn on the lab's one
+shared pool of `SCAN_WORKERS` threads and compiled into one digest — per target, the matches where the
+engines found a pattern or the layers' total differs from the price, split into "happened more" /
+"happened less", the engines' finds on top, then the notebook notes that name a result and the most-noted
+matches. The hourly job starts it after the state table is rebuilt when there is no report for today or
+it is over 12 h old (`FO_DAILY_REPORT=0` disables that); the page can ask for one (`POST /api/lab/gunluk`)
+and polls `GET /api/lab/gunluk?date=`. Reports live in `results/lab_daily/<date>.json`; finished mode 2
+scans are kept in `results/lab_scans/` too, so a deploy no longer loses them.
+
 ## Hosted deployment (Railway / any container host)
 
 `serve.py` is a single-process entry point: it serves the web app (FastAPI + `src/web/static/`) on `$PORT`, bootstraps

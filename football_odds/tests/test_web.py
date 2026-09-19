@@ -666,3 +666,28 @@ def test_notes_answer_is_kept_until_its_inputs_change(client, monkeypatch):
     # another day is another answer
     client.get("/api/notlar?date=2026-09-15")
     assert len(calls) == 3
+
+
+def test_the_daily_report_endpoints_build_in_the_background_and_serve_the_file(research_client, monkeypatch):
+    """Günün raporu: POST starts the build (refused while one runs), GET serves the report with its status."""
+    import time
+
+    from src.patterns import daily, target as tg
+
+    monkeypatch.setattr(web, "_nesine_brief", lambda *a, **k: None)
+    monkeypatch.setattr(web, "lab_matches", lambda *a, **k: {"matches": [
+        {"id": "s59", "date": "2026-02-28", "time": "20:00", "league": "E0", "league_name": "x", "home": "T5", "away": "T0", "ready": True}]})
+    monkeypatch.setattr(daily, "REPORT_TARGETS", ["ft_1", "ft_2"])
+    tg._JOBS.clear()
+    assert research_client.get("/api/lab/gunluk?date=2026-02-28").json()["exists"] is False
+    r = research_client.post("/api/lab/gunluk?date=2026-02-28").json()
+    assert r["started"] is True
+    for _ in range(200):
+        d = research_client.get("/api/lab/gunluk?date=2026-02-28").json()
+        if d["exists"] and not d["running"]:
+            break
+        time.sleep(0.1)
+    assert d["exists"] and d["report"]["n_matches"] == 1 and [t["key"] for t in d["report"]["targets"]] == ["ft_1", "ft_2"]
+    assert d["dates"] == ["2026-02-28"] and d["run"]["state"] == "done"
+    # the scans it ran are the same jobs mode 2 polls
+    assert research_client.get("/api/lab/tara?date=2026-02-28&target=ft_2").json()["state"] == "done"

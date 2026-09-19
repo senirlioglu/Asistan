@@ -2207,21 +2207,23 @@
     state.lab.inited = true;
     document.querySelectorAll("[data-lab]").forEach((b) => (b.onclick = () => labShow(b.dataset.lab)));
     try { state.lab.targets = await api("/api/lab/hedefler"); } catch (e) { state.lab.targets = { groups: [] }; }
-    lmInit(); lfInit(); exWire(); lcInit();
-    let want = "match";
-    try { want = localStorage.getItem("fo.labMode") || "match"; } catch (_) {}
+    lmInit(); lfInit(); exWire(); lcInit(); ldInit();
+    let want = "daily";
+    try { want = localStorage.getItem("fo.labMode") || "daily"; } catch (_) {}
     labShow(want);
   }
 
 
-  const LAB_Q = { match: "Bir maç seç. Sistem form, güç, gol, ikiz, fikstür döngüsü ve oran hareketini tarar; sen yalnızca sonucu okursun.",
+  const LAB_Q = { daily: "Günün maçları bütün ana sonuçlar için tarandı. Aşağıda motorların bulduğu desenler, en büyük farklar ve defter notları; her sabah kendiliğinden yenilenir.",
+                  match: "Bir maç seç. Sistem form, güç, gol, ikiz, fikstür döngüsü ve oran hareketini tarar; sen yalnızca sonucu okursun.",
                   find: "Bir sonuç seç. Günün maçlarında o sonucun geçmişte fiyattan ne kadar ayrıldığı taranır.",
                   own: "Koşullarını kur. Her koşul bir satır olarak eklenir; sayıyı hangisinin oynattığını görürsün.",
                   cycle: "Bir takım seç. Fikstür döngülerini sistem bulur; döngünün bir anlamı olup olmadığı ayrıca ölçülür." };
   function labShow(mode) {
     state.lab.mode = mode;
     document.querySelectorAll("[data-lab]").forEach((b) => { b.classList.toggle("is-on", b.dataset.lab === mode); b.setAttribute("aria-selected", b.dataset.lab === mode ? "true" : "false"); });
-    ["match", "find", "own", "cycle"].forEach((k) => { const p = $(`#lab-${k}`); if (p) p.hidden = k !== mode; });
+    ["daily", "match", "find", "own", "cycle"].forEach((k) => { const p = $(`#lab-${k}`); if (p) p.hidden = k !== mode; });
+    if (mode === "daily") ldLoad($("#ld-date").value, true);
     if (mode === "match" && state.lab.picked) labQ(`<b>${esc(state.lab.picked.home)} – ${esc(state.lab.picked.away)}</b> maçında ne olur?`);
     else if (mode === "own") labQ(exSentence());
     else if (mode === "cycle" && state.lab.cycle.team) labQ(`<b>${esc(state.lab.cycle.team)}</b> fikstürü geçmiş bir sezonu tekrarlıyor mu?`);
@@ -2263,6 +2265,124 @@
     }
     sel.value = today;
     sel.onchange = () => onChange(sel.value);
+  }
+
+  // ---------------------------------------------------------------- GÜNÜN RAPORU
+  // The day's matches through every main target, compiled on the server (patterns/daily.py) and kept on
+  // the volume. The page only reads it; "Raporu yeniden üret" asks the server to scan again.
+  const LD_GROUPS = [["ms", "Maç sonucu"], ["gol", "Gol"], ["iyms", "İlk yarı / maç sonu"], ["iy", "İlk yarı"]];
+  state.ld = { date: null, data: null, timer: null, open: new Set() };
+
+  function ldInit() {
+    labDates($("#ld-date"), (d) => ldLoad(d));
+    $("#ld-date").onchange = (e) => ldLoad(e.target.value);
+    $("#ld-build").onclick = ldBuild;
+  }
+
+  async function ldLoad(date, quiet) {
+    if (!date) return;
+    state.ld.date = date;
+    if (!quiet || !state.ld.data || state.ld.data.date !== date) $("#ld-status").textContent = "Rapor okunuyor…";
+    try {
+      const d = await api(`/api/lab/gunluk?date=${date}`);
+      if (state.ld.date !== date) return;
+      state.ld.data = d;
+      renderDaily(d);
+      clearTimeout(state.ld.timer);
+      if (d.running && state.lab.mode === "daily") state.ld.timer = setTimeout(() => ldLoad(date, true), 5000);
+    } catch (e) {
+      $("#ld-status").textContent = "Rapor okunamadı: " + e.message;
+      $("#ld-out").innerHTML = `<div class="day-empty">Rapor okunamadı (${esc(e.message)}). <button type="button" class="btn" id="ld-retry" style="margin-top:10px">Tekrar dene</button></div>`;
+      $("#ld-retry").onclick = () => ldLoad(date);
+    }
+  }
+
+  async function ldBuild() {
+    const date = $("#ld-date").value;
+    $("#ld-build").disabled = true;
+    try {
+      const r = await api(`/api/lab/gunluk?date=${date}`, { method: "POST" });
+      if (!r.started) toast(r.reason === "running" ? "Bir rapor zaten üretiliyor; bitince bu gün sıraya girer." : "Başlatılamadı.");
+      else toast("Rapor üretiliyor. On hedef sırayla taranır; bir saat kadar sürebilir.");
+      ldLoad(date, true);
+    } catch (e) { toast("Başlatılamadı: " + e.message); }
+    $("#ld-build").disabled = false;
+  }
+
+  const ldWhen = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+
+  function ldEntry(e, showTarget) {
+    const dir = e.direction === "mixed" ? `<span class="lab-chip">↕ çelişkili</span>`
+      : `<span class="lab-chip ${e.direction === "more" ? "up" : "down"}">${e.direction === "more" ? "↑ daha çok oldu" : "↓ daha az oldu"}</span>`;
+    const tgt = showTarget ? `<span class="ld-tgt">${esc(e.group === "iy" ? "İY " : e.group === "iyms" ? "İY/MS " : "")}${esc(e.target_label)}</span> ` : "";
+    const line = `${esc(targetMeaning(e.target, e.home, e.away))}: oran ${e.market?.p == null ? "yok" : pctv(e.market.p)}${e.estimate ? ` → eski maçlarda ${pctv(e.estimate.p)}` : ""}${e.difference != null ? ` · fark ${pp1(e.difference)} ${ciTxt(e.difference_ci)}` : ""}`;
+    const pats = (e.patterns || []).length ? `<div class="lab-pats">${e.patterns.map((f) => `<div class="lab-pat"><span class="lab-chip ${f.edge > 0 ? "up" : "down"}">${f.edge > 0 ? "↑" : "↓"}</span> <b>${esc(f.source_tr)}</b> · ${esc(f.side === "away" ? e.away : e.home)}${f.detail ? ` · ${esc(f.detail)}` : ""} <small class="muted">${f.n} eski maç · ${pctv(f.actual)} / oran ${pctv(f.market)}</small></div>`).join("")}</div>` : "";
+    const layers = (e.layers || []).filter((l) => l.edge != null && !["thin", "none"].includes(l.evidence));
+    const where = layers.length ? `<div class="ld-where">${layers.map((l) => `<span class="lab-chip ${l.edge > 0 ? "up" : "down"}" title="${l.n} eski maç">${l.edge > 0 ? "↑" : "↓"} ${esc({ team: `${e.home} geçmişi`, opponent: `${e.away} geçmişi`, similar: "aynı durum", both: "iki taraf benzer", twins: "en benzer maçlar" }[l.key] || l.key)}</span>`).join(" ")}</div>` : "";
+    return `<div class="ld-entry" data-id="${esc(e.id)}">
+      <div class="ld-head">${tgt}<b>${esc(e.home)} – ${esc(e.away)}</b><small class="muted">${esc(e.league_name || "")}${e.time ? " · " + esc(e.time) : ""}</small></div>
+      <div class="ld-dir">${dir} ${evBadge(e.evidence?.label)}</div>
+      <small class="muted ld-line">${line}</small>
+      ${nesLine(e.nesine, false) ? `<small class="lab-odds">${esc(nesLine(e.nesine, false))}</small>` : ""}
+      ${pats}${where}
+      <div class="lab-row-act"><button type="button" class="btn ghost" data-ld-detail="${esc(e.id)}" data-t="${esc(e.target)}">Detay</button><button type="button" class="btn ghost" data-ld-play="${esc(e.id)}" data-t="${esc(e.target)}">Oyna</button></div></div>`;
+  }
+
+  function ldList(entries, key, title) {
+    if (!entries.length) return `<div class="ld-col"><h4>${title} <small>0</small></h4><p class="note">Bu yönde bulgu yok.</p></div>`;
+    const open = state.ld.open.has(key), lim = 6;
+    const shown = open ? entries : entries.slice(0, lim);
+    return `<div class="ld-col"><h4>${title} <small>${entries.length} maç</small></h4>${shown.map((e) => ldEntry(e)).join("")}
+      ${entries.length > lim ? `<button type="button" class="btn ghost ld-more" data-ld-more="${esc(key)}">${open ? "Daha az göster" : `${entries.length - lim} maç daha göster`}</button>` : ""}</div>`;
+  }
+
+  function renderDaily(d) {
+    const box = $("#ld-out"), r = d.report, run = d.run;
+    const parts = [];
+    if (d.running && run) parts.push(`<b>Rapor üretiliyor:</b> ${run.step ? `${esc(run.step)} hedefi (${run.step_no}/${run.steps}), ${run.done}/${run.total} maç` : "hazırlanıyor"}…`);
+    else if (run && run.state === "error") parts.push(`<b>Son üretim başarısız:</b> ${esc(run.error || "")}`);
+    if (r) parts.push(`Üretildi: ${ldWhen(r.generated_at)} · ${r.n_matches} maç · ${r.targets.length} sonuç · ${r.n_linked} maçta nesine oranı`);
+    else if (!d.running) parts.push("Bu gün için rapor yok.");
+    $("#ld-status").innerHTML = parts.join(" · ");
+    $("#ld-build").textContent = r ? "Raporu yeniden üret" : "Raporu üret";
+    $("#ld-build").disabled = !!d.running;
+    if (!r) {
+      box.innerHTML = `<div class="day-empty">${d.running ? "Rapor üretiliyor; on hedef sırayla taranır, bir saat kadar sürebilir. Bu sayfa kendini yeniler." : "Bu gün için rapor üretilmemiş. Sunucu her sabah günün maçları analiz edilince kendisi üretir; şimdi istemek için üstteki düğmeyi kullan."}</div>`;
+      return;
+    }
+    const top = (r.top || []).length ? `<section class="ld-sec"><h3>Öne çıkanlar <small>pattern motorlarının desen bulduğu maçlar, önce en güçlüsü</small></h3>
+      <div class="ld-grid">${r.top.map((e) => ldEntry(e, true)).join("")}</div></section>` : "";
+    const groups = LD_GROUPS.map(([g, gl]) => {
+      const ts = r.targets.filter((t) => t.group === g);
+      if (!ts.length) return "";
+      return `<section class="ld-sec"><h3>${gl}</h3>${ts.map((t) => `<div class="ld-target">
+        <div class="ld-target-h"><b>${esc(g === "iy" ? "İY " : g === "iyms" ? "İY/MS " : "")}${esc(t.label)}</b> <small class="muted">${esc(t.explain || "")} · ${t.n_rows} maç tarandı · ${t.n_patterns} maçta motor deseni · ${t.n_clear} maçta anlamlı fark</small></div>
+        <div class="ld-cols">${ldList(t.more, t.key + ":more", "Eski maçlarda daha ÇOK oldu")}${ldList(t.less, t.key + ":less", "Eski maçlarda daha AZ oldu")}</div>
+        ${t.mixed.length ? `<div class="ld-cols">${ldList(t.mixed, t.key + ":mixed", "Çelişkili (bir desen çok, biri az diyor)")}</div>` : ""}</div>`).join("")}</section>`;
+    }).join("");
+    const n = r.notes || {};
+    const notes = `<section class="ld-sec"><h3>Defter notları <small>${n.n_with_notes || 0} maçta not uyandı; burada yalnızca bir sonuç söyleyenler</small></h3>
+      ${(n.result_notes || []).length ? n.result_notes.map((b) => `<div class="ld-note"><b>Not ${b.no} · ${esc(b.title)}</b> <small class="muted">${esc(b.expect || "")}</small>
+        <div class="ld-note-m">${b.matches.map((m) => `<span class="ld-nm"><button type="button" class="linkbtn" data-ld-detail="${esc(m.id)}" data-t="">${esc(m.home)} – ${esc(m.away)}</button><small class="muted"> ${esc(m.time || "")}${m.nesine && m.nesine["1"] ? ` · MS ${num(m.nesine["1"])} / ${num(m.nesine.X)} / ${num(m.nesine["2"])}` : ""}${Object.values(m.evidence || {}).length ? ` · ${esc(Object.entries(m.evidence).map(([k, v]) => `${k}: ${v}`).join("; "))}` : ""}</small></span>`).join("")}</div></div>`).join("")
+        : `<p class="note">Bugün sonuç söyleyen not uyanmadı.</p>`}
+      ${(n.most || []).length ? `<h4>En çok not toplayan maçlar</h4><div class="ld-note-m">${n.most.map((m) => `<span class="ld-nm"><button type="button" class="linkbtn" data-ld-detail="${esc(m.id)}" data-t="">${esc(m.home)} – ${esc(m.away)}</button><small class="muted"> ${esc(m.time || "")} · ${m.n} not (${m.nos.join(", ")})</small></span>`).join("")}</div>` : ""}</section>`;
+    box.innerHTML = `<div class="lab-verdict">${evBadge("KEŞİF")}<p><b>${fmtDate(r.date)}: ${r.n_matches} maç, ${r.targets.length} sonuç tarandı.</b> ${esc(r.note || "")}</p></div>${top}${groups}${notes}`;
+    box.querySelectorAll("[data-ld-more]").forEach((b) => (b.onclick = () => { const k = b.dataset.ldMore; if (state.ld.open.has(k)) state.ld.open.delete(k); else state.ld.open.add(k); renderDaily(d); }));
+    box.querySelectorAll("[data-ld-detail]").forEach((b) => (b.onclick = () => labOpenTarget(b.dataset.ldDetail, r.date, b.dataset.t || "ft_1")));
+    box.querySelectorAll("[data-ld-play]").forEach((b) => (b.onclick = () => {
+      const e = ldFind(r, b.dataset.ldPlay, b.dataset.t); if (!e) return;
+      const tLabel = (e.group === "iy" ? "İY " : e.group === "iyms" ? "İY/MS " : "") + e.target_label;
+      playOpen({ ...e, odds: { h: e.nesine?.ms?.["1"], d: e.nesine?.ms?.X, a: e.nesine?.ms?.["2"] } },
+        { target: { target: { key: e.target, label: tLabel }, market: e.market, estimate: e.estimate, difference: e.difference, evidence: e.evidence, match: { id: e.id } } });
+    }));
+  }
+
+  function ldFind(r, id, target) {
+    for (const t of r.targets) {
+      if (t.key !== target) continue;
+      for (const k of ["more", "less", "mixed"]) { const e = (t[k] || []).find((x) => x.id === id); if (e) return e; }
+    }
+    return (r.top || []).find((x) => x.id === id && x.target === target) || null;
   }
 
   // ---------------------------------------------------------------- MOD 1 — bu maçta ne olur?

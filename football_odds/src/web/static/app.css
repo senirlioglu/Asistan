@@ -803,3 +803,30 @@ td.nw { white-space: nowrap; }
   .play { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 92vh; border-radius: 18px 18px 0 0; padding: 14px 14px 20px; }
   .play-opt { min-width: 56px; padding: 6px 8px; }
 }
+
+/* ---------- Pattern Lab · Günün raporu ---------- */
+.ld-sec { margin: 18px 0 6px; }
+.ld-sec h3 { font-size: 1.15rem; margin: 0 0 8px; }
+.ld-sec h3 small, .ld-col h4 small { font-weight: 500; color: var(--ink-3); font-size: 0.78rem; margin-left: 6px; }
+.ld-sec h4 { font-size: 0.95rem; margin: 14px 0 6px; }
+.ld-target { margin: 8px 0 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); }
+.ld-target-h { margin-bottom: 6px; font-size: 0.95rem; }
+.ld-target-h small { display: block; font-size: 0.78rem; margin-top: 2px; }
+.ld-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; align-items: start; }
+.ld-col h4 { font-size: 0.8rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin: 8px 0 6px; }
+.ld-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.ld-entry { padding: 8px 0 10px; border-top: 1px dashed var(--line); font-size: 0.86rem; min-width: 0; }
+.ld-grid .ld-entry { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; background: var(--surface); }
+.ld-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.ld-head b { font-size: 0.95rem; }
+.ld-tgt { font-family: var(--font-display); font-weight: 700; font-size: 0.72rem; padding: 1px 7px; border-radius: 4px; background: var(--lab-soft); color: var(--lab-ink); }
+.ld-dir { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 4px 0 2px; }
+.ld-line { display: block; line-height: 1.4; }
+.ld-where { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 3px; }
+.ld-more { margin-top: 6px; padding: 5px 12px; font-size: 0.8rem; }
+.ld-note { padding: 8px 0; border-top: 1px dashed var(--line); font-size: 0.88rem; }
+.ld-note > small { display: block; margin: 2px 0 6px; }
+.ld-note-m { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.ld-nm { display: inline-block; font-size: 0.84rem; line-height: 1.4; max-width: 100%; }
+.ld-nm .linkbtn { font: inherit; font-weight: 600; cursor: pointer; }
+@media (max-width: 760px) { .ld-cols { grid-template-columns: 1fr; } }

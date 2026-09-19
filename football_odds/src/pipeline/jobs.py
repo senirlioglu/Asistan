@@ -200,6 +200,20 @@ def _build_state(settings: Settings, table) -> None:
             log.info("notes re-measured: %d rows -> %s", len(rows), out_p)
     except Exception as exc:  # noqa: BLE001 - derived data, never fatal
         log.warning("notes re-measure skipped: %s", exc)
+    _schedule_daily_report(settings)
+
+
+def _schedule_daily_report(settings: Settings) -> None:
+    """Günün raporu: after the state table is fresh, start today's report in the background when there is
+    none yet or it is half a day old. The scans share the lab's one pool; the job itself never waits."""
+    try:
+        from ..patterns import daily
+        from ..web.api import collect_day
+
+        if daily.maybe_schedule(settings, collect_day):
+            log.info("günün raporu started for %s", daily.today_tr())
+    except Exception as exc:  # noqa: BLE001 - derived data, never fatal
+        log.warning("günün raporu not scheduled: %s", exc)
 
 
 def run_fixture_refresh(settings: Settings, days: int = 7) -> int:
