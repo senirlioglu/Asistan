@@ -2302,7 +2302,8 @@
     $("#ld-build").disabled = true;
     try {
       const r = await api(`/api/lab/gunluk?date=${date}`, { method: "POST" });
-      if (!r.started) toast(r.reason === "running" ? "Bir rapor zaten üretiliyor; bitince bu gün sıraya girer." : "Başlatılamadı.");
+      if (!r.started) toast(r.reason === "running" ? "Bir rapor zaten üretiliyor; bitince tekrar dene."
+        : r.reason === "fresh" ? `Bu rapor ${r.age_min} dakika önce üretildi. Yeniden üretmek için en az ${r.cooldown_min} dakika geçmeli.` : "Başlatılamadı.");
       else toast("Rapor üretiliyor. On hedef sırayla taranır; bir saat kadar sürebilir.");
       ldLoad(date, true);
     } catch (e) { toast("Başlatılamadı: " + e.message); }

@@ -153,3 +153,28 @@ def test_build_report_runs_the_targets_in_turn_and_the_hourly_job_only_rebuilds_
     assert daily.status(s, "2026-09-20")["run"]["state"] == "done" and not daily.status(s, "2026-09-20")["queued"]
     monkeypatch.setenv("FO_DAILY_REPORT", "0")
     assert daily.maybe_schedule(s, collect, date="2026-09-19", force=True) is False
+
+
+def test_the_button_is_refused_while_the_last_report_is_fresh(settings, tmp_path, monkeypatch):
+    """A finger on "yeniden üret" must not keep the server scanning: a manual request waits out the cooldown,
+    unless the last run failed; the jobs' own requests are not held back."""
+    s = settings.with_overrides(**{"data.results_dir": str(tmp_path / "r"), "data.processed_dir": str(tmp_path / "p")})
+    (tmp_path / "p").mkdir()
+    monkeypatch.setattr(tg, "analyse", lambda *a, **k: None)
+    tg._JOBS.clear()
+    collect = lambda date: ([], {})
+    daily.build_report(s, "2026-09-19", collect, targets=["ft_1"])
+    out = daily.start_build(s, "2026-09-19", collect, manual=True)
+    assert out["started"] is False and out["reason"] == "fresh" and out["age_min"] == 0 and out["cooldown_min"] == daily.MANUAL_COOLDOWN_MIN
+    assert daily.start_build(s, "2026-09-19", collect, manual=False)["started"] is True      # the job may
+    for _ in range(100):
+        if not daily.is_running():
+            break
+        time.sleep(0.05)
+    with daily._RUN_LOCK:
+        daily._RUN.update(state="error", date="2026-09-19", error="x")                       # last run failed: allowed
+    assert daily.start_build(s, "2026-09-19", collect, manual=True)["started"] is True
+    for _ in range(100):
+        if not daily.is_running():
+            break
+        time.sleep(0.05)

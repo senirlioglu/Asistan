@@ -982,7 +982,7 @@ def lab_daily_start(date: str | None = Query(default=None, min_length=10, max_le
     if service.frame(settings) is None:
         raise HTTPException(404, "durum tablosu hazır değil")
     date = date or daily.today_tr()
-    out = daily.start_build(settings, date, collect_day)
+    out = daily.start_build(settings, date, collect_day, manual=True)
     return {**out, **daily.status(settings, date)}
 
 

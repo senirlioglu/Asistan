@@ -25,6 +25,7 @@ log = get_logger("patterns.daily")
 # the targets a day is scanned for, in the order they run (the ones people ask about first)
 REPORT_TARGETS = ["ft_1", "ft_X", "ft_2", "over25", "btts", "htft_1/2", "htft_2/1", "ht_1", "ht_X", "ht_2"]
 REBUILD_AFTER_H = 12          # a report older than this is rebuilt by the hourly job
+MANUAL_COOLDOWN_MIN = 30      # the page's "yeniden üret" is refused while the last report is younger than this
 PER_DIRECTION = 30            # at most this many matches per (target, direction) in the digest
 # the notebook notes that name a result (the odds-structure ones fire on a third of the bulletin every day)
 RESULT_NOTES = {"n1", "n2", "n4", "n5", "n6", "n7", "n10", "n11", "n14", "n16", "n19"}
@@ -212,15 +213,25 @@ def build_report(settings: Settings, date: str, collect: Collector, targets: lis
     return report
 
 
-def start_build(settings: Settings, dates: str | list[str], collect: Collector, targets: list[str] | None = None) -> dict:
+def start_build(settings: Settings, dates: str | list[str], collect: Collector, targets: list[str] | None = None,
+                manual: bool = False) -> dict:
     """Build the dates in turn, in the background (the morning asks for today, then tomorrow); refused
-    (with the current run's status) while one is running."""
+    (with the current run's status) while one is running. A manual request (the page's button) is also
+    refused while the last report is younger than MANUAL_COOLDOWN_MIN and was built without error: a
+    finger on the button must not keep the server scanning for ninety minutes at a time."""
     dates = [dates] if isinstance(dates, str) else list(dates)
     if not dates:
         return {"started": False, "reason": "empty", "run": dict(_RUN)}
     with _RUN_LOCK:
         if _RUN["state"] == "running":
             return {"started": False, "reason": "running", "run": dict(_RUN)}
+        last_failed = _RUN["state"] == "error" and _RUN["date"] in dates
+    if manual and not last_failed:
+        for d in dates:
+            rep = load_report(settings, d)
+            if rep and is_fresh(settings, d, MANUAL_COOLDOWN_MIN / 60):
+                age = int((dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(rep["generated_at"])).total_seconds() // 60)
+                return {"started": False, "reason": "fresh", "age_min": age, "cooldown_min": MANUAL_COOLDOWN_MIN, "run": dict(_RUN)}
         _RUN.update(date=dates[0], state="running", step=None, step_no=0, steps=len(targets or REPORT_TARGETS), done=0, total=0,
                     started_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), finished_at=None, error=None,
                     queue=dates[1:])
