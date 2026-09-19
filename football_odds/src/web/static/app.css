@@ -833,3 +833,14 @@ td.nw { white-space: nowrap; }
 .ld-nm { display: inline-block; font-size: 0.84rem; line-height: 1.4; max-width: 100%; }
 .ld-nm .linkbtn { font: inherit; font-weight: 600; cursor: pointer; }
 @media (max-width: 760px) { .ld-cols { grid-template-columns: 1fr; } }
+.ld-tabs { display: flex; flex-wrap: wrap; gap: 0 2px; border-bottom: 1px solid var(--line-strong); margin: 10px 0 8px; align-items: flex-end; }
+.ld-tabs .lab-tab { padding: 7px 10px; }
+.ld-tabsep { width: 10px; }
+.ld-list { list-style: none; margin: 0; padding: 0; }
+.ld-item { padding: 8px 0; border-top: 1px dashed var(--line); font-size: 0.9rem; line-height: 1.5; }
+.ld-item:first-child { border-top: 0; }
+.ld-act { white-space: nowrap; margin-left: 4px; }
+.ld-act .linkbtn { font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer; }
+.ld-body h4 { font-size: 0.82rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); margin: 14px 0 4px; }
+.ld-body h4 small { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--ink-3); margin-left: 6px; }
+@media (max-width: 600px) { .ld-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; } .ld-tabs .lab-tab { white-space: nowrap; } }

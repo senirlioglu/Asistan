@@ -115,6 +115,7 @@ def _entry(row: dict, target: str) -> dict:
             "market": row.get("market"), "estimate": row.get("estimate"), "difference": row.get("difference"),
             "difference_ci": row.get("difference_ci"), "evidence": row.get("evidence"), "similarity": row.get("similarity"),
             "patterns": row.get("patterns") or [], "layers": row.get("layers") or [],
+            "notes": [{"no": n.get("no"), "title": n.get("title"), "expect": n.get("expect")} for n in (row.get("notes") or []) if n.get("related")],
             "nesine": {k: nes.get(k) for k in ("code", "ms", "iy", "iyms", "o25") if nes.get(k) is not None} or None,
             "relevance": row.get("relevance") or {}}
 

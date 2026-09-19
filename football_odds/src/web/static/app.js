@@ -2271,7 +2271,7 @@
   // The day's matches through every main target, compiled on the server (patterns/daily.py) and kept on
   // the volume. The page only reads it; "Raporu yeniden üret" asks the server to scan again.
   const LD_GROUPS = [["ms", "Maç sonucu"], ["gol", "Gol"], ["iyms", "İlk yarı / maç sonu"], ["iy", "İlk yarı"]];
-  state.ld = { date: null, data: null, timer: null, open: new Set() };
+  state.ld = { date: null, data: null, timer: null, open: new Set(), tab: "top" };
 
   function ldInit() {
     labDates($("#ld-date"), (d) => ldLoad(d));
@@ -2371,32 +2371,62 @@
     return `<small class="muted ld-line">${parts.join("; ")}.</small>`;
   }
 
-  function ldEntry(e, showTarget) {
-    const h = ldHeadline(e);
-    const dir = e.direction === "mixed" ? `<span class="lab-chip">↕ desenler aynı yönde değil</span>`
-      : `<span class="lab-chip ${e.direction === "more" ? "up" : "down"}">${e.direction === "more" ? "↑ eski maçlarda daha çok oldu" : "↓ eski maçlarda daha az oldu"}</span>`;
-    const p = e.market?.p, q = e.estimate?.p, diff = e.difference;
-    const line = p == null
-      ? (q != null ? `Bu sonucun bugün oranı yok. Benzer eski maçlarda ${pctv(q, 0)} çıkmış.` : "")
-      : `Oran ${pctv(p, 0)} diyor; benzer eski maçlarda ${pctv(q, 0)} çıkmış${diff != null ? ` (${Math.abs(diff).toFixed(0)} puan ${diff > 0 ? "daha çok" : "daha az"})` : ""}.`;
-    const pats = (e.patterns || []).length ? `<div class="lab-pats"><small class="muted">Neden:</small>${e.patterns.map((f) => ldPatSentence(f, e)).join("")}</div>` : "";
-    return `<div class="ld-entry" data-id="${esc(e.id)}">
-      <div class="ld-head"><b>${esc(e.home)} – ${esc(e.away)}</b><small class="muted">${esc(e.league_name || "")}${e.time ? " · " + esc(e.time) : ""}</small></div>
-      <div class="ld-what">${showTarget || true ? `<span class="ld-tgt">${esc(h.group)}</span> ` : ""}<b>${esc(h.what)}</b></div>
-      <div class="ld-dir">${dir} ${evBadge(e.evidence?.label)}</div>
-      ${line ? `<small class="ld-line">${line}</small>` : ""}
-      ${nesLine(e.nesine, false) ? `<small class="lab-odds">${esc(nesLine(e.nesine, false))}</small>` : ""}
-      ${pats}${ldLayerSentence(e)}
-      <div class="lab-row-act"><button type="button" class="btn ghost" data-ld-detail="${esc(e.id)}" data-t="${esc(e.target)}">Detay</button><button type="button" class="btn ghost" data-ld-play="${esc(e.id)}" data-t="${esc(e.target)}">Oyna</button></div></div>`;
+  /** One engine finding, short: who the old matches were, how often the result came, what the odds said. */
+  function ldPatShort(f, e) {
+    const team = f.side === "away" ? e.away : e.home, other = f.side === "away" ? e.home : e.away;
+    const d = f.detail || "";
+    let who = "", m;
+    if ((m = d.match(/^form ([WDL]+)/))) {
+      who = f.source_tr === "Form deseni · benzer güçtekiler" ? `${esc(team)} gibi son ${m[1].length} maçı ${ldForm(m[1])} olan aynı güçteki takımlar`
+        : f.source_tr === "Form deseni · bu takım" ? `${esc(team)} son ${m[1].length} maçı ${ldForm(m[1])} olduğunda`
+        : `son ${m[1].length} maçı ${ldForm(m[1])} olan bütün takımlar`;
+    } else if ((m = d.match(/^\+ rakip saha formu ([WDL]+)/))) {
+      who = `${esc(gen(team))} rakibi son ${m[1].length} ${f.side === "away" ? "iç saha" : "deplasman"} maçında ${ldForm(m[1])} almışken`;
+    } else if ((m = d.match(/^\+ rakip formu ([WDL]+)/))) {
+      who = `${esc(gen(team))} rakibinin son ${m[1].length} maçı ${ldForm(m[1])} iken`;
+    } else if ((m = d.match(/^\+ güç farkı (-?\d+)/))) {
+      who = `${esc(team)} ile rakibi arasındaki güç farkı bugünkü gibiyken (${Number(m[1]) < 0 ? "rakip daha güçlü" : "rakip daha zayıf"})`;
+    } else if (/^\+ benzer rakip gücü/.test(d)) {
+      who = `${esc(gen(team))} rakibi ${esc(other)} gücündeyken`;
+    } else who = `${esc(f.source_tr || "")}${d ? " " + esc(d) : ""}`;
+    const rare = (f.market || 0) < 15;
+    return `${who} <b>${f.n} eski maçta</b> ${pctv(f.actual, rare ? 1 : 0)}, oran ${pctv(f.market, rare ? 1 : 0)}${(f.edge || 0) > 0 ? " diyordu" : " diyordu"}.`;
   }
 
-  function ldList(entries, key, title) {
-    if (!entries.length) return `<div class="ld-col"><h4>${title} <small>0</small></h4><p class="note">Bu yönde bulgu yok.</p></div>`;
-    const open = state.ld.open.has(key), lim = 6;
-    const shown = open ? entries : entries.slice(0, lim);
-    return `<div class="ld-col"><h4>${title} <small>${entries.length} maç</small></h4>${shown.map((e) => ldEntry(e)).join("")}
-      ${entries.length > lim ? `<button type="button" class="btn ghost ld-more" data-ld-more="${esc(key)}">${open ? "Daha az göster" : `${entries.length - lim} maç daha göster`}</button>` : ""}</div>`;
+  /** Fair odds from the old matches next to the price on offer: plus, minus or even. */
+  function ldFair(e) {
+    const q = e.estimate?.p, o = e.market?.odds;
+    if (q == null || !q || o == null) return "";
+    const fair = 100 / q;
+    const verdict = fair < o * 0.97 ? "artı" : fair > o * 1.03 ? "eksi" : "başa baş";
+    return `Adil oran ${num(fair, fair >= 10 ? 1 : 2)}, verilen ${num(o)}: <b>${verdict}</b>.`;
   }
+
+  /** One report line, the way a person would write it: match, time, price; the strongest reason; the total; the verdict. */
+  function ldItem(e, showTarget) {
+    const h = ldHeadline(e);
+    const p = e.market?.p, q = e.estimate?.p;
+    const rare = (p ?? q ?? 50) < 15;
+    const odds = e.market?.odds != null ? `oran <b>${num(e.market.odds)}</b>` : "bu sonucun oranı yok";
+    const total = p == null ? (q != null ? `Eski maçlarda ${pctv(q, rare ? 1 : 0)}.` : "")
+      : `Toplam: eski maçlarda ${pctv(q, rare ? 1 : 0)} karşı oran ${pctv(p, rare ? 1 : 0)}${e.difference != null && e.difference_ci?.[0] != null && (e.difference_ci[0] > 0 || e.difference_ci[1] < 0) ? "" : " (fark şansla açıklanabilir)"}.`;
+    const reasons = (e.patterns || []).slice(0, 3).map((f) => ldPatShort(f, e)).join(" ");
+    const notes = (e.notes || []).length ? ` ${e.notes.map((n) => `Not ${n.no} de bu maçta ${esc((n.expect || n.title || "").replace(/\.$/, ""))} diyor`).join("; ")}.` : "";
+    const ms = e.nesine?.ms?.["1"] ? ` <small class="muted">MS ${num(e.nesine.ms["1"])} / ${num(e.nesine.ms.X)} / ${num(e.nesine.ms["2"])}</small>` : "";
+    return `<li class="ld-item"><b>${showTarget ? `${esc(h.group === "iy" ? "İY " : "")}${esc(e.target_label)} · ` : ""}${esc(e.home)} – ${esc(e.away)}</b> <small class="muted">${e.time ? `(${esc(e.time)}) · ` : ""}${esc(e.league_name || "")}</small>, ${odds}.${ms}
+      ${e.direction === "mixed" ? "Sebepler aynı yönde değil. " : ""}${reasons} ${total} ${ldFair(e)}${notes}
+      <span class="ld-act"><button type="button" class="linkbtn" data-ld-detail="${esc(e.id)}" data-t="${esc(e.target)}">Detay</button> · <button type="button" class="linkbtn" data-ld-play="${esc(e.id)}" data-t="${esc(e.target)}">Oyna</button></span></li>`;
+  }
+
+  function ldItems(entries, key, title, showTarget) {
+    if (!entries.length) return "";
+    const open = state.ld.open.has(key), lim = 8;
+    const shown = open ? entries : entries.slice(0, lim);
+    return `<h4>${title} <small>${entries.length} maç</small></h4><ul class="ld-list">${shown.map((e) => ldItem(e, showTarget)).join("")}</ul>
+      ${entries.length > lim ? `<button type="button" class="btn ghost ld-more" data-ld-more="${esc(key)}">${open ? "Daha az göster" : `${entries.length - lim} maç daha göster`}</button>` : ""}`;
+  }
+
+  const LD_TAB_LABEL = (t) => (t.group === "iy" ? "İY " : "") + t.label;
 
   function renderDaily(d) {
     const box = $("#ld-out"), r = d.report, run = d.run;
@@ -2415,23 +2445,34 @@
         : "Bu gün için rapor üretilmemiş. Sunucu her sabah önce günün, sonra ertesi günün raporunu kendisi üretir; şimdi istemek için üstteki düğmeyi kullan."}</div>`;
       return;
     }
-    const top = (r.top || []).length ? `<section class="ld-sec"><h3>Öne çıkanlar <small>sistemin bir sebep bulduğu maçlar, önce en güçlüsü</small></h3>
-      <div class="ld-grid">${r.top.map((e) => ldEntry(e, true)).join("")}</div></section>` : "";
-    const groups = LD_GROUPS.map(([g, gl]) => {
-      const ts = r.targets.filter((t) => t.group === g);
-      if (!ts.length) return "";
-      return `<section class="ld-sec"><h3>${gl}</h3>${ts.map((t) => `<div class="ld-target">
-        <div class="ld-target-h"><b>${esc(t.explain || t.label)}</b> <small class="muted">${t.n_rows} maç tarandı · ${t.n_patterns} maçta sistem bir sebep buldu · ${t.n_clear} maçta oranla eski maçlar açıkça ayrışıyor</small></div>
-        <div class="ld-cols">${ldList(t.more, t.key + ":more", "Eski maçlarda daha ÇOK oldu")}${ldList(t.less, t.key + ":less", "Eski maçlarda daha AZ oldu")}</div>
-        ${t.mixed.length ? `<div class="ld-cols">${ldList(t.mixed, t.key + ":mixed", "Sebepler aynı yönde değil")}</div>` : ""}</div>`).join("")}</section>`;
-    }).join("");
-    const n = r.notes || {};
-    const notes = `<section class="ld-sec"><h3>Defter notları <small>${n.n_with_notes || 0} maçta senin notlarından biri tuttu; burada yalnızca bir sonuç söyleyenler</small></h3>
-      ${(n.result_notes || []).length ? n.result_notes.map((b) => `<div class="ld-note"><b>Not ${b.no} · ${esc(b.title)}</b> <small class="muted">${esc(b.expect || "")}</small>
-        <div class="ld-note-m">${b.matches.map((m) => `<span class="ld-nm"><button type="button" class="linkbtn" data-ld-detail="${esc(m.id)}" data-t="">${esc(m.home)} – ${esc(m.away)}</button><small class="muted"> ${esc(m.time || "")}${m.nesine && m.nesine["1"] ? ` · MS ${num(m.nesine["1"])} / ${num(m.nesine.X)} / ${num(m.nesine["2"])}` : ""}${Object.values(m.evidence || {}).length ? ` · ${esc(Object.entries(m.evidence).map(([k, v]) => `${k}: ${v}`).join("; "))}` : ""}</small></span>`).join("")}</div></div>`).join("")
-        : `<p class="note">Bugün sonuç söyleyen not uyanmadı.</p>`}
-      ${(n.most || []).length ? `<h4>En çok not toplayan maçlar</h4><div class="ld-note-m">${n.most.map((m) => `<span class="ld-nm"><button type="button" class="linkbtn" data-ld-detail="${esc(m.id)}" data-t="">${esc(m.home)} – ${esc(m.away)}</button><small class="muted"> ${esc(m.time || "")} · ${m.n} not (${m.nos.join(", ")})</small></span>`).join("")}</div>` : ""}</section>`;
-    box.innerHTML = `<div class="lab-verdict">${evBadge("KEŞİF")}<p><b>${fmtDate(r.date)}: ${r.n_matches} maç, ${r.targets.length} sonuç tarandı.</b> ${esc(r.note || "")}</p></div>${top}${groups}${notes}`;
+    const tabs = [{ key: "top", label: "Öne çıkanlar" }, ...r.targets.map((t) => ({ key: t.key, label: LD_TAB_LABEL(t), group: t.group })), { key: "notes", label: "Defter notları" }];
+    if (!tabs.some((t) => t.key === state.ld.tab)) state.ld.tab = "top";
+    const tab = state.ld.tab;
+    const groupSep = (t, i) => (i > 1 && tabs[i - 1].group && t.group && tabs[i - 1].group !== t.group) ? `<span class="ld-tabsep"></span>` : "";
+    const tabsHTML = `<div class="ld-tabs" role="tablist">${tabs.map((t, i) => `${groupSep(t, i)}<button type="button" role="tab" class="lab-tab ${t.key === tab ? "is-on" : ""}" data-ld-tab="${esc(t.key)}">${esc(t.label)}</button>`).join("")}</div>`;
+    let body = "";
+    if (tab === "top") {
+      body = (r.top || []).length
+        ? `<p class="note">Sistemin bir sebep bulduğu maçlar, önce en güçlüsü. Sebep: aynı durumdaki eski maçlarda o sonuç oranın dediğinden belirgin biçimde farklı gelmiş.</p>
+           <ul class="ld-list">${r.top.map((e) => ldItem(e, true)).join("")}</ul>`
+        : `<p class="note">Bugün sistem hiçbir maçta bir sebep bulamadı.</p>`;
+    } else if (tab === "notes") {
+      const n = r.notes || {};
+      body = `<p class="note">${n.n_with_notes || 0} maçta senin notlarından biri tuttu; burada yalnızca bir sonuç söyleyenler.</p>
+        ${(n.result_notes || []).length ? n.result_notes.map((b) => `<div class="ld-note"><b>Not ${b.no} · ${esc(b.title)}</b> <small class="muted">${esc(b.expect || "")}</small>
+          <div class="ld-note-m">${b.matches.map((m) => `<span class="ld-nm"><button type="button" class="linkbtn" data-ld-detail="${esc(m.id)}" data-t="">${esc(m.home)} – ${esc(m.away)}</button><small class="muted"> ${esc(m.time || "")}${m.nesine && m.nesine["1"] ? ` · MS ${num(m.nesine["1"])} / ${num(m.nesine.X)} / ${num(m.nesine["2"])}` : ""}${Object.values(m.evidence || {}).length ? ` · ${esc(Object.entries(m.evidence).map(([k, v]) => `${k}: ${v}`).join("; "))}` : ""}</small></span>`).join("")}</div></div>`).join("")
+          : `<p class="note">Bugün sonuç söyleyen not uyanmadı.</p>`}
+        ${(n.most || []).length ? `<h4>En çok not toplayan maçlar</h4><div class="ld-note-m">${n.most.map((m) => `<span class="ld-nm"><button type="button" class="linkbtn" data-ld-detail="${esc(m.id)}" data-t="">${esc(m.home)} – ${esc(m.away)}</button><small class="muted"> ${esc(m.time || "")} · ${m.n} not (${m.nos.join(", ")})</small></span>`).join("")}</div>` : ""}`;
+    } else {
+      const t = r.targets.find((x) => x.key === tab);
+      body = `<p class="note"><b>${esc(t.explain || t.label)}</b> ${t.n_rows} maç tarandı; ${t.n_patterns} maçta sistem bir sebep buldu, ${t.n_clear} maçta eski maçlar oranla açıkça ayrışıyor.${t.n_errors ? ` ${t.n_errors} maç hesaplanamadı.` : ""}</p>
+        ${ldItems(t.more, t.key + ":more", "Eski maçlarda daha ÇOK olmuş")}
+        ${ldItems(t.less, t.key + ":less", "Eski maçlarda daha AZ olmuş")}
+        ${ldItems(t.mixed, t.key + ":mixed", "Sebepler aynı yönde değil")}
+        ${!t.more.length && !t.less.length && !t.mixed.length ? `<p class="note">Bu sonuç için bugün öne çıkan maç yok.</p>` : ""}`;
+    }
+    box.innerHTML = `<div class="lab-verdict">${evBadge("KEŞİF")}<p><b>${fmtDate(r.date)}: ${r.n_matches} maç, ${r.targets.length} sonuç tarandı.</b> ${esc(r.note || "")}</p></div>${tabsHTML}<div class="ld-body">${body}</div>`;
+    box.querySelectorAll("[data-ld-tab]").forEach((b) => (b.onclick = () => { state.ld.tab = b.dataset.ldTab; renderDaily(d); }));
     box.querySelectorAll("[data-ld-more]").forEach((b) => (b.onclick = () => { const k = b.dataset.ldMore; if (state.ld.open.has(k)) state.ld.open.delete(k); else state.ld.open.add(k); renderDaily(d); }));
     box.querySelectorAll("[data-ld-detail]").forEach((b) => (b.onclick = () => labOpenTarget(b.dataset.ldDetail, r.date, b.dataset.t || "ft_1")));
     box.querySelectorAll("[data-ld-play]").forEach((b) => (b.onclick = () => {
