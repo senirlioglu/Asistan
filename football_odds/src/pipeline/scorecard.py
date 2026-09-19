@@ -64,7 +64,7 @@ def load_prediction_rows(results_dir: Path) -> list[dict]:
     frames = []
     for p in files:
         df = pd.read_csv(p)
-        df["stamp"] = p.name[:10]
+        df["stamp"] = "nesine" if p.name.startswith("nesine_") else p.name[:10]   # the bulletin's analysis has no run day
         frames.append(df)
     df = pd.concat(frames, ignore_index=True).sort_values("stamp").drop_duplicates("match_id", keep="last")
     details: dict[str, dict] = {}
@@ -122,8 +122,16 @@ def save_cache(settings: Settings, cache: dict[str, dict]) -> None:
 def _db_result(history: pd.DataFrame | None, row: dict) -> dict | None:
     if history is None or history.empty:
         return None
-    hit = history[(history["league"] == row["league"]) & (history["home_team"] == row["home"]) & (history["away_team"] == row["away"])
-                  & (history["date"].dt.strftime("%Y-%m-%d") == row["date_uk"])]
+    same = (history["league"] == row["league"]) & (history["home_team"] == row["home"]) & (history["away_team"] == row["away"])
+    days = history["date"].dt.strftime("%Y-%m-%d")
+    hit = history[same & (days == row["date_uk"])]
+    if hit.empty and row.get("stamp") == "nesine":       # a bulletin row is dated in Turkey time; the database in UK time
+        try:
+            d = dt.date.fromisoformat(row["date_uk"])
+            near = {(d + dt.timedelta(days=k)).isoformat() for k in (-1, 1)}
+            hit = history[same & days.isin(near)]
+        except ValueError:
+            pass
     if hit.empty:
         return None
     r = hit.iloc[0]

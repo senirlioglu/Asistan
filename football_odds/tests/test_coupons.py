@@ -61,3 +61,30 @@ def test_store_roundtrip(tmp_path):
     assert cp.load(settings) == []
     cp.save(settings, [{"id": "a", "picks": []}])
     assert cp.load(settings)[0]["id"] == "a"
+
+
+def test_half_time_markets_settle_and_frozen_odds_ride_along():
+    rows = {"m1": _row()}
+    lab = {"target": "htft_2/1", "target_label": "2/1", "market_p": 3.1, "estimate_p": 3.4, "difference": 0.3,
+           "evidence": "FARK YOK", "why": "eski maçlar oranı doğruluyor", "source": "pattern-lab", "junk": "dropped"}
+    c = cp.build_coupon([{"match_id": "m1", "market": "iyms", "pick": "2/1", "odds": 24.95, "odds_source": "nesine", "nesine_code": 3144896, "lab": lab},
+                         {"match_id": "m1", "market": "iy", "pick": "d"}], rows, "lab kuponu")
+    p = next(x for x in c["picks"] if x["market"] == "iyms")
+    assert p["odds"] == 24.95 and p["odds_source"] == "nesine" and p["nesine_code"] == 3144896
+    assert p["lab"]["evidence"] == "FARK YOK" and "junk" not in p["lab"]
+    assert p["system"] == {"hist": None, "market": None, "p_hist": None, "p_market": None}
+    # settled from the half-time score: trailed 0-1 at the break, won 2-1
+    res = {"m1": {"hs": 2, "as": 1, "ht_h": 0, "ht_a": 1}}
+    ev = cp.evaluate(c, res)
+    got = {x["market"]: x for x in ev["picks"]}
+    assert got["iyms"]["user_ok"] is True and got["iyms"]["pnl"] == pytest.approx(23.95) and got["iyms"]["pick_label"] == "2/1"
+    assert got["iy"]["user_ok"] is False                       # half time was 0-1, not a draw
+    assert ev["tally"]["user"] == {"ok": 1, "wrong": 1, "pending": 0, "pnl": pytest.approx(23.95), "n_odds": 1}
+    # no half-time score: those markets wait
+    ev2 = cp.evaluate(c, {"m1": {"hs": 2, "as": 1, "ht_h": None, "ht_a": None}})
+    assert all(x["user_ok"] is None for x in ev2["picks"]) and ev2["status"] == "pending"
+    # a bad price is ignored, not stored
+    c2 = cp.build_coupon([{"match_id": "m1", "market": "ms", "pick": "h", "odds": "abc"}], rows)
+    assert c2["picks"][0]["odds"] == rows["m1"]["odds"]["h"] and "odds_source" not in c2["picks"][0]
+    with pytest.raises(ValueError):
+        cp.build_coupon([{"match_id": "m1", "market": "iyms", "pick": "3/1"}], rows)

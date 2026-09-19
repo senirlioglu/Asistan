@@ -616,3 +616,20 @@ def test_day_falls_back_to_the_analysed_bulletin(client):
     assert an["rows"] and an["rows"][0]["home"] == "Juventus"
     # the bulletin file is not a run day: /api/meta's dates ignore it
     assert "nesine" not in " ".join(client.get("/api/meta").json()["dates"])
+
+
+def test_a_basket_pick_on_a_bulletin_match_becomes_a_coupon(client):
+    _nesine_files(web.RESULTS)
+    web._nesine_table_cached.cache_clear()
+    body = {"label": "sepet", "picks": [
+        {"match_id": "nes1", "market": "iyms", "pick": "2/1", "odds": 21.9, "odds_source": "nesine", "nesine_code": 3188900,
+         "lab": {"target": "htft_2/1", "target_label": "2/1", "market_p": 3.46, "estimate_p": 2.97, "difference": -0.49, "evidence": "FARK YOK", "why": "eski maçlar oranı doğruluyor", "source": "pattern-lab"}},
+        {"match_id": "abc", "market": "ms", "pick": "h"}]}                      # an analysed day's match in the same coupon
+    r = client.post("/api/coupons", json=body)
+    assert r.status_code == 200, r.text
+    c = r.json()["coupon"]
+    by = {p["match_id"]: p for p in c["picks"]}
+    assert by["nes1"]["odds"] == 21.9 and by["nes1"]["lab"]["evidence"] == "FARK YOK" and by["nes1"]["home"] == "Juventus"
+    assert by["abc"]["odds"] == 1.72 and c["status"] == "pending"
+    listed = client.get("/api/coupons").json()["coupons"]
+    assert listed[0]["label"] == "sepet" and len(listed[0]["picks"]) == 2

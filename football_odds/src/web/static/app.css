@@ -89,6 +89,11 @@ button { cursor: pointer; }
 /* ---------- page ---------- */
 .page { max-width: 1240px; margin: 0 auto; padding: 16px 16px 0; }
 @media (min-width: 1000px) { .page { padding: 20px 28px 0; } .topbar-inner { padding: 10px 28px; } }
+/* a real desktop: use it. The lab's day-scan table has twelve columns and wrapped into a ribbon at 1240px */
+@media (min-width: 1300px) { .page, .topbar-inner { max-width: min(1720px, 96vw); } .lab-grid { grid-template-columns: 280px minmax(0, 1fr); gap: 0 32px; } }
+.lab-stage table td.wrap { min-width: 320px; }
+@media (min-width: 1300px) { .lab-stage table td.wrap { min-width: 380px; } .lab-stage table { font-size: 0.82rem; } .lab-stage th, .lab-stage td { padding: 8px 8px; } }
+.lab-stage table th.num, .lab-stage table td.num { white-space: nowrap; }
 .h2 { font-size: 1.4rem; margin-bottom: 4px; }
 .lead { color: var(--ink-2); margin: 0 0 16px; max-width: 65ch; }
 
@@ -713,3 +718,33 @@ td.nw { white-space: nowrap; }
 .lab-stage table { font-size: 0.78rem; }
 .lab-stage th, .lab-stage td { padding: 6px 5px; }
 @media (max-width: 1000px) { .lab-stage .hide-md { display: none; } .fp, .fp-axis { width: 108px; } td.fp-td { width: 112px; } }
+
+/* ---------- "Bu maçı oyna" modal + the basket ---------- */
+.play-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 50; }
+.play { position: fixed; z-index: 51; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100vw - 24px)); max-height: 90vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px 18px; }
+.play-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.play-head .iconbtn { flex: 0 0 auto; width: 40px; height: 40px; font-size: 1.1rem; color: var(--ink); background: var(--surface-2); border-color: var(--line-strong); }
+.play-mk { margin: 10px 0; }
+.play-mk-t { font-family: var(--font-display); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+.play-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.play-opt { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 6px 10px; font: inherit; cursor: pointer; display: grid; gap: 1px; min-width: 64px; text-align: center; }
+.play-opt small { color: var(--ink-3); font-size: 0.72rem; }
+.play-opt.is-on { border-color: var(--lab); background: var(--lab-soft); color: var(--lab-ink); }
+.play-opt:disabled { opacity: 0.5; cursor: default; }
+.play-labbox { margin: 4px 0 8px; padding: 10px 12px; border-left: 3px solid var(--lab); background: var(--lab-soft); color: var(--lab-ink); border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.88rem; }
+.play-labbox .ev { margin-left: 6px; }
+.play-actions { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 12px; }
+.basket { position: fixed; right: 16px; bottom: 16px; z-index: 45; width: min(360px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.basket-head { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 0; background: var(--ink); color: var(--ground); padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+.basket-head .num { opacity: 0.85; font-weight: 500; }
+.basket.is-closed .basket-body { display: none; }
+.basket.is-closed .basket-caret { transform: rotate(180deg); }
+.basket-body { padding: 10px 12px 12px; display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.basket-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 0.85rem; }
+.basket-row small { display: block; color: var(--ink-3); font-size: 0.74rem; }
+.basket-row .x { border: 0; background: none; color: var(--ink-3); font-size: 1rem; cursor: pointer; padding: 2px 6px; }
+.basket-actions { display: flex; justify-content: flex-end; gap: 8px; }
+#basket-label { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: var(--radius-s); padding: 6px 8px; font: inherit; }
+.lab-picked-btns { display: flex; gap: 8px; align-items: center; }
+.sheet-play { flex: 0 0 auto; margin-left: auto; }

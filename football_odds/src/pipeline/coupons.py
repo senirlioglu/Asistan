@@ -19,13 +19,15 @@ from typing import Any
 
 from ..config import Settings
 
+HTFT = ("1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2")
 MARKETS = {
-    "ms": "Maç sonucu", "o25": "2,5 gol", "o15": "1,5 gol",
+    "ms": "Maç sonucu", "iy": "İlk yarı sonucu", "iyms": "İY/MS", "o25": "2,5 gol", "o15": "1,5 gol",
     "fh05": "İlk yarı 0,5 üst", "fh15": "İlk yarı 1,5 üst", "sh05": "İkinci yarı 0,5 üst", "sh15": "İkinci yarı 1,5 üst",
 }
-PICKS = {"ms": ("h", "d", "a"), "o25": ("over", "under"), "o15": ("over", "under"),
+PICKS = {"ms": ("h", "d", "a"), "iy": ("h", "d", "a"), "iyms": HTFT, "o25": ("over", "under"), "o15": ("over", "under"),
          "fh05": ("over", "under"), "fh15": ("over", "under"), "sh05": ("over", "under"), "sh15": ("over", "under")}
-PICK_TR = {"h": "1", "d": "X", "a": "2", "over": "Üst", "under": "Alt"}
+PICK_TR = {"h": "1", "d": "X", "a": "2", "over": "Üst", "under": "Alt", **{k: k for k in HTFT}}
+LAB_KEYS = ("target", "target_label", "market_p", "estimate_p", "difference", "evidence", "why", "source")   # what a pick remembers of the lab
 MAX_PICKS = 40
 
 
@@ -66,6 +68,8 @@ def system_picks(row: dict, market: str) -> dict[str, Any]:
     if market == "ms":
         h, m = _argmax(row["adj"]), _argmax(row["market"])
         return {"hist": h, "market": m, "p_hist": row["adj"].get(h) if h else None, "p_market": row["market"].get(m) if m else None}
+    if market in ("iy", "iyms"):                      # neither the analogues nor Football-Data price these
+        return {"hist": None, "market": None, "p_hist": None, "p_market": None}
     prob = {"o25": (row.get("hist_over25"), row.get("market_over25")), "o15": (row.get("hist_over15"), None),
             "fh05": (pct(row.get("fh_over05")), None), "fh15": (pct(row.get("fh_over15")), None),
             "sh05": (pct(row.get("sh_over05")), None), "sh15": (pct(row.get("sh_over15")), None)}[market]
@@ -100,8 +104,22 @@ def build_coupon(picks: list[dict], rows_by_id: dict[str, dict], label: str = ""
         if (mid, market) in seen:
             raise ValueError("aynı maç ve piyasa iki kez seçilmiş")
         seen.add((mid, market))
-        out.append({"match_id": mid, "league": row["league"], "home": row["home"], "away": row["away"], "date": row["date"], "time": row["time"],
-                    "market": market, "pick": pick, "odds": odds_for(row, market, pick), "system": system_picks(row, market)})
+        item = {"match_id": mid, "league": row["league"], "home": row["home"], "away": row["away"], "date": row["date"], "time": row["time"],
+                "market": market, "pick": pick, "odds": odds_for(row, market, pick), "system": system_picks(row, market)}
+        # a pick made from the page may carry the price it was made at (nesine's, frozen now — the bulletin
+        # moves) and what Pattern Lab said about it at that moment, so the lab can be scored later on real picks
+        try:
+            given = float(p["odds"]) if p.get("odds") is not None else None
+        except (TypeError, ValueError):
+            given = None
+        if given is not None and given > 1.0:
+            item["odds"] = round(given, 2)
+            item["odds_source"] = str(p.get("odds_source") or "nesine")[:20]
+        if p.get("nesine_code") is not None:
+            item["nesine_code"] = p["nesine_code"]
+        if isinstance(p.get("lab"), dict):
+            item["lab"] = {k: p["lab"][k] for k in LAB_KEYS if k in p["lab"]}
+        out.append(item)
     out.sort(key=lambda x: (x["date"], x["time"], x["home"], x["market"]))
     return {"id": secrets.token_hex(6), "created_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
             "label": str(label or "")[:60], "picks": out}
@@ -120,6 +138,11 @@ def settle_pick(market: str, pick: str, res: dict) -> bool | None:
     ht_h, ht_a = res.get("ht_h"), res.get("ht_a")
     if ht_h is None or ht_a is None:
         return None
+    if market in ("iy", "iyms"):
+        code = {"h": "1", "d": "X", "a": "2"}
+        ht = "h" if int(ht_h) > int(ht_a) else "a" if int(ht_h) < int(ht_a) else "d"
+        ft = "h" if hs > as_ else "a" if hs < as_ else "d"
+        return pick == (ht if market == "iy" else f"{code[ht]}/{code[ft]}")
     fh = int(ht_h) + int(ht_a)
     goals = fh if market.startswith("fh") else total - fh
     line = 0.5 if market.endswith("05") else 1.5
@@ -146,16 +169,14 @@ def evaluate(coupon: dict, results: dict[str, dict]) -> dict:
                 tally[side]["pending"] += 1
             else:
                 tally[side]["ok" if ok else "wrong"] += 1
-                if p["market"] in ("ms", "o25"):
-                    odds = p["odds"] if side == "user" else None
-                    # the system's odds are the price of ITS pick, not the user's
-                    if side != "user":
-                        odds = _odds_from_pick(p, pick)
-                    if odds:
-                        tally[side]["pnl"] += (odds - 1.0) if ok else -1.0
-                        tally[side]["n_odds"] += 1
-                        if side == "user":
-                            item["pnl"] = (odds - 1.0) if ok else -1.0
+                # the user's pick is priced whenever it carried a price (Football-Data's or nesine's, frozen);
+                # the system's picks only on ms / o25, at the price of ITS pick, not the user's
+                odds = p.get("odds") if side == "user" else (_odds_from_pick(p, pick) if p["market"] in ("ms", "o25") else None)
+                if odds:
+                    tally[side]["pnl"] += (odds - 1.0) if ok else -1.0
+                    tally[side]["n_odds"] += 1
+                    if side == "user":
+                        item["pnl"] = (odds - 1.0) if ok else -1.0
             item[f"{side}_ok"] = ok
             item[f"{side}_pick"] = pick
         picks.append(item)

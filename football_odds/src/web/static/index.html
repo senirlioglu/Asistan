@@ -269,7 +269,7 @@
         <div class="lab-list" id="lm-list"><p class="note">Yükleniyor…</p></div>
         <div class="lab-picked" id="lm-picked" hidden>
           <div class="lab-picked-top"><b id="lm-title"></b><span class="muted" id="lm-sub"></span></div>
-          <button type="button" class="btn ex-go" id="lm-go">BU MAÇI ANALİZ ET</button>
+          <span class="lab-picked-btns"><button type="button" class="btn ghost" id="lm-play">Bu maçı oyna</button><button type="button" class="btn ex-go" id="lm-go">BU MAÇI ANALİZ ET</button></span>
         </div>
         <div id="lm-scan"></div>
         <div id="lm-target" hidden>
@@ -542,11 +542,31 @@
       <p class="sheet-sub" id="sheet-sub"></p>
       <h2 class="sheet-title" id="sheet-title"></h2>
     </div>
+    <button class="btn ghost sheet-play" id="sheet-play" type="button">Bu maçı oyna</button>
     <button class="iconbtn" id="sheet-close" type="button" aria-label="Kapat">✕</button>
   </div>
   <div class="sheet-body" id="sheet-body"></div>
 </aside>
 
+<!-- "Bu maçı oyna": one pick at a time into the basket; the basket becomes one coupon on save -->
+<div class="play-backdrop" id="play-backdrop" hidden></div>
+<div class="play" id="play" hidden role="dialog" aria-modal="true" aria-labelledby="play-title">
+  <div class="play-head"><div><p class="sheet-sub" id="play-sub"></p><h2 class="sheet-title" id="play-title"></h2></div>
+    <button class="iconbtn" id="play-close" type="button" aria-label="Kapat">✕</button></div>
+  <div id="play-lab"></div>
+  <div id="play-markets"></div>
+  <p class="note" id="play-note"></p>
+  <div class="play-actions"><span class="count" id="play-pick"></span><button type="button" class="btn" id="play-add" disabled>Kupona ekle</button></div>
+</div>
+<div class="basket" id="basket" hidden>
+  <button type="button" class="basket-head" id="basket-toggle"><span>Kupon · <b id="basket-n">0</b> seçim</span><span class="num" id="basket-odds"></span><span class="basket-caret">▾</span></button>
+  <div class="basket-body" id="basket-body">
+    <div id="basket-list"></div>
+    <input type="text" id="basket-label" maxlength="60" placeholder="Kupon adı (isteğe bağlı)">
+    <div class="basket-actions"><button type="button" class="btn ghost" id="basket-clear">Temizle</button><button type="button" class="btn" id="basket-save">Kuponu kaydet</button></div>
+    <p class="note">Kaydedince Oyun sekmesinde "Kuponlarım" altına girer; sonuçlar geldikçe tuttu / tutmadı olur. Sonra yeni kupon için sepet boş başlar.</p>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
 <script src="/static/app.js"></script>
 </body>

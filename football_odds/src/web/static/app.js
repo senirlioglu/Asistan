@@ -1191,6 +1191,130 @@
     });
   }
 
+  // ------------------------------------------------------------------ "Bu maçı oyna": one pick into the basket
+  // The basket is one coupon in the making. It lives in the browser across tabs and reloads; "Kuponu
+  // kaydet" turns it into one coupon through the Oyun tab's own endpoint and starts a fresh basket.
+  const PLAY_MARKETS = [
+    ["ms", "Maç sonucu", [["h", "1"], ["d", "X"], ["a", "2"]]],
+    ["iy", "İlk yarı sonucu", [["h", "1"], ["d", "X"], ["a", "2"]]],
+    ["iyms", "İY/MS", ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"].map((k) => [k, k])],
+    ["o25", "2,5 gol", [["over", "Üst"], ["under", "Alt"]]], ["o15", "1,5 gol", [["over", "Üst"], ["under", "Alt"]]],
+    ["fh05", "İlk yarı 0,5", [["over", "Üst"], ["under", "Alt"]]], ["fh15", "İlk yarı 1,5", [["over", "Üst"], ["under", "Alt"]]],
+    ["sh05", "İkinci yarı 0,5", [["over", "Üst"], ["under", "Alt"]]], ["sh15", "İkinci yarı 1,5", [["over", "Üst"], ["under", "Alt"]]],
+  ];
+  const PLAY_LABEL = Object.fromEntries(PLAY_MARKETS.map(([k, t]) => [k, t]));
+  const PLAY_PICK = { h: "1", d: "X", a: "2", over: "Üst", under: "Alt" };
+  /** A lab target -> the coupon's market and pick. */
+  function targetToPick(key) {
+    if (!key) return null;
+    const ft = { "1": "h", X: "d", "2": "a" };
+    if (key.startsWith("ft_")) return { market: "ms", pick: ft[key.slice(3)] };
+    if (key.startsWith("ht_")) return { market: "iy", pick: ft[key.slice(3)] };
+    if (key.startsWith("htft_")) return { market: "iyms", pick: key.slice(5) };
+    if (key === "over25") return { market: "o25", pick: "over" };
+    if (key === "over15") return { market: "o15", pick: "over" };
+    return null;
+  }
+  /** The price of one option: nesine's when the bulletin quotes it, else Football-Data's for 1X2 / 2,5. */
+  function playOdds(m, market, pick) {
+    const n = m.nesine || m._nesine || {};
+    if (market === "ms") return n.ms?.[PLAY_PICK[pick]] ?? m.odds?.[pick] ?? null;
+    if (market === "iy") return n.iy?.[PLAY_PICK[pick]] ?? null;
+    if (market === "iyms") return n.iyms?.[pick] ?? null;
+    if (market === "o25") return n.o25?.[pick === "over" ? "ust" : "alt"] ?? m.odds_ou?.[pick] ?? null;
+    return null;
+  }
+  const playState = { m: null, market: null, pick: null, lab: null };
+  function playInit() {
+    $("#play-close").onclick = playClose; $("#play-backdrop").onclick = playClose;
+    $("#play-add").onclick = () => {
+      const { m, market, pick, lab } = playState; if (!m || !market || !pick) return;
+      const odds = playOdds(m, market, pick);
+      const n = m.nesine || m._nesine || {};
+      basketAdd({ match_id: m.id, home: m.home, away: m.away, date: m.date, time: m.time || "", league_name: m.league_name || "",
+        market, pick, odds: odds != null ? Number(odds) : null, odds_source: odds != null && (n.ms || n.iy) ? "nesine" : (odds != null ? "football-data" : null),
+        nesine_code: n.code || m.nesine_code || null, lab: lab && targetToPick(lab.target?.key)?.market === market && targetToPick(lab.target?.key)?.pick === pick ? {
+          target: lab.target.key, target_label: lab.target.label, market_p: lab.market?.p ?? null, estimate_p: lab.estimate?.p ?? null,
+          difference: lab.difference ?? null, evidence: lab.evidence?.label || null, why: lab.evidence?.why || null, source: "pattern-lab" } : null });
+      playClose(); toast(`Sepete eklendi: ${m.home} – ${m.away} · ${PLAY_LABEL[market]} ${PLAY_PICK[pick] || pick}`);
+    };
+  }
+  function playClose() { $("#play").hidden = true; $("#play-backdrop").hidden = true; }
+  /** Open the modal for a match payload (a Maçlar card, a lab row); `opts.target` is the lab's analysis of the target on screen. */
+  async function playOpen(m, opts = {}) {
+    playState.m = m; playState.lab = opts.target || null;
+    const pre = targetToPick(opts.target?.target?.key);
+    playState.market = pre?.market || null; playState.pick = pre?.pick || null;
+    $("#play-title").textContent = `${m.home} – ${m.away}`;
+    $("#play-sub").textContent = `${m.league_name || ""}${m.time ? " · " + m.time : ""} · ${fmtDate(m.date)}`;
+    $("#play").hidden = false; $("#play-backdrop").hidden = false;
+    if (!m.nesine && !m._nesine) {                       // the bulletin's prices for İY / İY-MS, when it quotes the match
+      $("#play-markets").innerHTML = `<p class="note">Oranlar yükleniyor…</p>`;
+      try { const d = await api(`/api/match/${encodeURIComponent(m.id)}`); m._nesine = d.nesine || null; } catch (_) { m._nesine = null; }
+      if (playState.m !== m) return;
+    }
+    playRender();
+  }
+  function playRender() {
+    const { m, market, pick, lab } = playState;
+    const labBox = $("#play-lab");
+    const pre = targetToPick(lab?.target?.key);
+    labBox.innerHTML = lab && pre ? `<div class="play-labbox"><b>${esc(lab.target.label)}</b> için Pattern Lab: oran ${lab.market?.p != null ? pctv(lab.market.p) : "yok"} diyor,
+        eski maçlarda ${lab.estimate?.p != null ? pctv(lab.estimate.p) : "–"} oldu ${evBadge(lab.evidence?.label)}<br><small>${esc(lab.evidence?.why || "")}. Bu bir tavsiye değil; seçim senin.</small></div>` : "";
+    $("#play-markets").innerHTML = PLAY_MARKETS.map(([mk, title, opts]) => `<div class="play-mk"><div class="play-mk-t">${esc(title)}</div><div class="play-opts">
+      ${opts.map(([k, lbl]) => { const o = playOdds(m, mk, k); return `<button type="button" class="play-opt ${market === mk && pick === k ? "is-on" : ""}" data-mk="${mk}" data-pk="${esc(k)}"><b>${esc(lbl)}</b><small>${o != null ? num(o) : "oran yok"}</small></button>`; }).join("")}
+      </div></div>`).join("");
+    const n = m.nesine || m._nesine;
+    $("#play-note").textContent = n ? "Oranlar nesine bülteninden, ekleme anında dondurulur. Oranı olmayan seçenekler kupona oransız girer (tuttu / tutmadı sayılır, para hesabına girmez)."
+      : "Bu maç nesine bülteninde bulunamadı: yalnızca Football-Data'nın 1X2 ve 2,5 oranları var; diğer seçenekler oransız girer.";
+    $("#play-markets").querySelectorAll(".play-opt").forEach((b) => (b.onclick = () => { playState.market = b.dataset.mk; playState.pick = b.dataset.pk; playRender(); }));
+    const o = market && pick ? playOdds(m, market, pick) : null;
+    $("#play-pick").textContent = market && pick ? `${PLAY_LABEL[market]} · ${PLAY_PICK[pick] || pick}${o != null ? ` @ ${num(o)}` : " · oransız"}` : "Bir seçenek seç";
+    $("#play-add").disabled = !(market && pick);
+  }
+
+  // ---- the basket
+  const BASKET_KEY = "fo_basket";
+  function basketLoad() { try { return JSON.parse(localStorage.getItem(BASKET_KEY) || "[]"); } catch (_) { return []; } }
+  function basketStore(items) { try { localStorage.setItem(BASKET_KEY, JSON.stringify(items)); } catch (_) { /* private mode */ } }
+  function basketInit() {
+    state.basket = basketLoad();
+    const box = $("#basket");
+    $("#basket-toggle").onclick = () => box.classList.toggle("is-closed");
+    $("#basket-clear").onclick = () => { if (!state.basket.length || confirm("Sepet boşaltılsın mı?")) { state.basket = []; basketStore([]); basketRender(); } };
+    $("#basket-save").onclick = basketSave;
+    basketRender();
+  }
+  function basketAdd(pick) {
+    state.basket = state.basket.filter((x) => !(x.match_id === pick.match_id && x.market === pick.market));   // one pick per match and market
+    state.basket.push({ ...pick, added_at: new Date().toISOString() });
+    basketStore(state.basket); basketRender(); $("#basket").classList.remove("is-closed");
+  }
+  function basketRender() {
+    const box = $("#basket"), items = state.basket || [];
+    box.hidden = items.length === 0;
+    $("#basket-n").textContent = items.length;
+    const priced = items.filter((x) => x.odds != null);
+    const total = priced.reduce((a, x) => a * x.odds, 1);
+    $("#basket-odds").textContent = priced.length ? `toplam oran ${total.toFixed(2)}${priced.length < items.length ? ` (${items.length - priced.length} oransız)` : ""}` : "";
+    $("#basket-list").innerHTML = items.map((x, i) => `<div class="basket-row"><span><b>${esc(x.home)} – ${esc(x.away)}</b><small>${esc(x.league_name)} · ${fmtDate(x.date)}${x.time ? " " + esc(x.time) : ""}${x.lab ? ` · Lab: ${esc(x.lab.target_label)} ${esc(EV_TXT[x.lab.evidence]?.[0] || x.lab.evidence || "")}` : ""}</small></span>
+      <span class="num">${esc(PLAY_LABEL[x.market] || x.market)} <b>${esc(PLAY_PICK[x.pick] || x.pick)}</b>${x.odds != null ? `<br><small>@ ${num(x.odds)}</small>` : "<br><small>oransız</small>"}</span>
+      <button type="button" class="x" data-i="${i}" aria-label="Çıkar">✕</button></div>`).join("");
+    $("#basket-list").querySelectorAll("[data-i]").forEach((b) => (b.onclick = () => { state.basket.splice(Number(b.dataset.i), 1); basketStore(state.basket); basketRender(); }));
+    $("#basket-save").disabled = items.length === 0;
+  }
+  async function basketSave() {
+    const items = state.basket || []; if (!items.length) return;
+    $("#basket-save").disabled = true;
+    const picks = items.map((x) => ({ match_id: x.match_id, market: x.market, pick: x.pick, odds: x.odds, odds_source: x.odds_source, nesine_code: x.nesine_code, lab: x.lab }));
+    try {
+      await api("/api/coupons", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ picks, label: $("#basket-label").value }) });
+      state.basket = []; basketStore([]); $("#basket-label").value = ""; basketRender();
+      toast("Kupon kaydedildi. Oyun sekmesinde 'Kuponlarım' altında.");
+      if (state.cp?.loaded) loadCoupons();
+    } catch (e) { toast("Kaydedilemedi: " + e.message); $("#basket-save").disabled = false; }
+  }
+
   // ------------------------------------------------------------------ detail sheet
   const HTFT_ORDER = ["1/1", "1/X", "1/2", "X/1", "X/X", "X/2", "2/1", "2/X", "2/2"];
 
@@ -1832,6 +1956,7 @@
     $("#sheet-sub").innerHTML = `${esc(m.league_name)}${m.time ? " · " + esc(m.time) : ""} · ${fmtDate(m.date)}${src} <span id="sheet-live" data-id="${esc(m.id)}">${liveBadge(state.live?.[m.id], m)}</span>`;
     $("#sheet-title").textContent = `${m.home} – ${m.away}`;
     mountDetail($("#sheet-body"), m);
+    const play = $("#sheet-play"); if (play) play.onclick = () => playOpen(m);
     $("#sheet").hidden = false; $("#sheet-backdrop").hidden = false; document.body.style.overflow = "hidden";
     $("#sheet").scrollTop = 0;
   }
@@ -2192,6 +2317,7 @@
       + (nesLine(m.nesine) ? `<br><span class="lab-odds">${esc(nesLine(m.nesine))}</span>` : "");
     $("#lm-scan").innerHTML = ""; $("#lm-target").hidden = true; $("#lm-out").innerHTML = "";
     labQ(`<b>${esc(m.home)} – ${esc(m.away)}</b> maçında ne olur?`);
+    const play = $("#lm-play"); if (play) play.onclick = () => playOpen(m, { target: state.lab.target?.match?.id === m.id ? state.lab.target : null });
     if (!opts.quiet) $("#lm-picked").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
@@ -2321,6 +2447,7 @@
       const d = await api(`/api/lab/hedef/${encodeURIComponent(m.id)}?target=${encodeURIComponent(key)}`);
       state.lab.target = d;
       box.innerHTML = targetHTML(d, m);
+      box.querySelectorAll("[data-play-target]").forEach((b) => (b.onclick = () => playOpen(m, { target: d })));
       box.querySelectorAll("[data-open]").forEach((b) => (b.onclick = () => openSheetAt(m, b.dataset.open)));
       box.querySelectorAll("[data-cycle]").forEach((b) => (b.onclick = () => { labShow("cycle"); lcRun(d.match.home, b.dataset.cycle); }));
     } catch (e) { box.innerHTML = `<p class="note">Hesaplanamadı: ${esc(e.message)}</p>`; }
@@ -2348,7 +2475,8 @@
             ? `Aradaki fark şansla açıklanamayacak kadar büyük: bu sonuç geçmişte oranların dediğinden <b>${d.difference > 0 ? "daha çok" : "daha az"}</b> olmuş.`
             : "<b>Aradaki fark şansla açıklanabilir</b>; oranlar zaten doğru görünüyor."}`
         : `Piyasa <b>${pctv(mk.p)}</b> bekliyor; 200 maça ulaşan katman olmadığı için pattern tahmini yok.`;
-    const verdict = `<div class="lab-verdict">${evBadge(d.evidence.label)}<p>${sentence} <span class="muted">${esc(d.evidence.why)}.</span></p></div>`;
+    const verdict = `<div class="lab-verdict">${evBadge(d.evidence.label)}<p>${sentence} <span class="muted">${esc(d.evidence.why)}.</span></p></div>
+      <div class="lab-actions"><button type="button" class="btn ghost" data-play-target>Bu sonucu oyna</button></div>`;
     const fig = `<div class="lab-fig">
       <div class="lab-stat"><small>ORAN NE DİYOR</small><b class="is-market">${mk.p == null ? "yok" : pctv(mk.p)}</b>
         <span class="muted">${mk.p == null ? esc(mk.note || "") : mk.source === "nesine" ? `nesine oranı ${num(mk.odds)}, marj çıkarılmış` : mk.odds ? `konsensüs oranı ${num(mk.odds)}` : "Football-Data konsensüsü"}</span></div>
@@ -2470,7 +2598,7 @@
           <td class="num">${r.similarity == null ? "–" : pctv(r.similarity, 0)}</td>
           <td class="wrap">${where(r) || "<small class=\"muted\">—</small>"}</td>
           <td>${evBadge(r.evidence?.label)}</td>
-          <td><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}
+          <td class="nw"><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button> <button type="button" class="btn ghost" data-play-row="${esc(r.id)}">Oyna</button></td></tr>`).join("")}
       </tbody></table></div>
       <p class="note">Sıralama bahis tavsiyesi değil, "önce buna bak" sırasıdır: farkı büyük, eski maçı çok ve daha önce de görülmüş olanlar üstte.
         Maçın altındaki satırlar pattern motorlarının bu sonuç için kendi bulduğu desenlerdir: form deseni (bu takım / tüm takımlar / benzer güçtekiler) ve iki takımın birlikte durumu; her biri o maçın kendi ailesinde çoklu test düzeltmesinden geçmiştir.
@@ -2480,6 +2608,11 @@
     const wire = () => {
       box.querySelectorAll("[data-detail]").forEach((b) => (b.onclick = () => labOpenTarget(b.dataset.detail, date, target)));
       box.querySelectorAll("[data-ftab]").forEach((b) => (b.onclick = () => { state.lab.find.tab = b.dataset.ftab; renderFind(d, target, date); }));
+      box.querySelectorAll("[data-play-row]").forEach((b) => (b.onclick = () => {
+        const r = rows.find((x) => x.id === b.dataset.playRow); if (!r) return;
+        playOpen({ ...r, odds: { h: r.nesine?.ms?.["1"], d: r.nesine?.ms?.X, a: r.nesine?.ms?.["2"] } },
+          { target: { target: { key: target, label: tLabel }, market: r.market, estimate: r.estimate, difference: r.difference, evidence: r.evidence, match: { id: r.id } } });
+      }));
     };
     render();
   }
@@ -2827,6 +2960,7 @@
     document.querySelectorAll(".tab").forEach((b) => (b.onclick = () => showView(b.dataset.view)));
     $("#status-btn").onclick = statusDetail;
     $("#sheet-close").onclick = closeSheet; $("#sheet-backdrop").onclick = closeSheet;
+    playInit(); basketInit();
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
     $("#date-select").onchange = (e) => loadDay(e.target.value);
     $("#sort-select").onchange = (e) => { state.sort = e.target.value; renderCards(); };
