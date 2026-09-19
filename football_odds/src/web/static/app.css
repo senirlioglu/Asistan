@@ -560,7 +560,7 @@ tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
 .lab-qbar { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--lab); background: var(--lab-soft); color: var(--lab-ink); border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.95rem; }
 .lab-qbar:empty { display: none; }
 .lab-qbar b { font-weight: 700; }
-@media (max-width: 760px) {
+@media (max-width: 1000px) {   /* a tablet gets the whole width for the stage; the rail becomes a strip */
   .lab-grid { grid-template-columns: 1fr; gap: 0; }
   .lab-rail { flex-direction: row; overflow-x: auto; scrollbar-width: none; border-right: 0; border-bottom: 1px solid var(--line); position: static; padding: 6px 0; gap: 4px; }
   .lab-rail::-webkit-scrollbar { display: none; }
@@ -750,3 +750,45 @@ td.nw { white-space: nowrap; }
 #basket-label { border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: var(--radius-s); padding: 6px 8px; font: inherit; }
 .lab-picked-btns { display: flex; gap: 8px; align-items: center; }
 .sheet-play { flex: 0 0 auto; margin-left: auto; }
+
+/* ---------- responsive: nothing wider than the screen, tables as cards on a phone ---------- */
+.select, .dateselect { min-width: 0; max-width: 100%; }
+.select select, .dateselect select { max-width: 100%; }
+.chips-scroll { min-width: 0; max-width: 100%; }
+.sc-controls > *, .dayhead > * { min-width: 0; max-width: 100%; }
+@media (max-width: 760px) {
+  .select, .dateselect { width: 100%; }
+  .select select, .dateselect select { width: 100%; }
+  .stats { margin-left: 0; width: 100%; justify-content: space-between; }
+  .lab-picked { flex-direction: column; align-items: stretch; }
+  .lab-picked-btns { flex-wrap: wrap; }
+  .lab-picked-btns .btn { flex: 1 1 auto; }
+  .lab-actions .btn, .lab-verdict + .lab-actions .btn { width: 100%; }
+  .lab-why { grid-template-columns: 1fr; }
+  .lab-list { max-height: 50vh; }
+}
+@media (max-width: 900px) {
+  /* tables that carry data-h labels turn into cards */
+  table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; box-sizing: border-box; }
+  table.stack thead { display: none; }
+  table.stack tr { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 8px 10px; margin: 8px 0; background: var(--surface); }
+  table.stack tr.thin { opacity: 0.75; }
+  table.stack td { border: 0; padding: 3px 0; text-align: left; white-space: normal; min-width: 0; }
+  table.stack td.num { text-align: left; }
+  table.stack td[data-h]::before { content: attr(data-h) ": "; color: var(--ink-3); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  table.stack td.fp-td, table.stack td.hide-md { display: none; }
+  table.stack td.act { padding-top: 6px; display: flex; gap: 6px; }
+  table.stack td.act .btn { flex: 1 1 auto; }
+}
+@media (max-width: 760px) {
+  .basket { left: 8px; right: 8px; bottom: 8px; width: auto; }
+  .basket-body { max-height: 55vh; }
+}
+@media (min-width: 600px) and (max-width: 900px) {
+  table.stack tbody { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }   /* two cards side by side on a tablet */
+  table.stack tr { margin: 0; }
+}
+@media (max-width: 600px) {
+  .play { left: 0; right: 0; top: auto; bottom: 0; transform: none; width: 100%; max-height: 92vh; border-radius: 18px 18px 0 0; padding: 14px 14px 20px; }
+  .play-opt { min-width: 56px; padding: 6px 8px; }
+}

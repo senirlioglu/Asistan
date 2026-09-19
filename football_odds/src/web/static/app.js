@@ -92,7 +92,8 @@
       return;
     }
     state.view = name;
-    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("is-active", b.dataset.view === name));
+    document.querySelectorAll(".tab").forEach((b) => { const on = b.dataset.view === name; b.classList.toggle("is-active", on);
+      if (on && b.scrollIntoView) b.scrollIntoView({ block: "nearest", inline: "center" }); });   // a phone's tab strip scrolls
     $("#view-list").hidden = name !== "list";
     $("#view-glossary").hidden = name !== "glossary";
     $("#view-scorecard").hidden = name !== "scorecard";
@@ -1292,6 +1293,7 @@
   function basketInit() {
     state.basket = basketLoad();
     const box = $("#basket");
+    if (matchMedia("(max-width: 760px)").matches) box.classList.add("is-closed");
     $("#basket-toggle").onclick = () => box.classList.toggle("is-closed");
     $("#basket-clear").onclick = () => { if (!state.basket.length || confirm("Sepet boşaltılsın mı?")) { state.basket = []; basketStore([]); basketRender(); } };
     $("#basket-save").onclick = basketSave;
@@ -1300,7 +1302,8 @@
   function basketAdd(pick) {
     state.basket = state.basket.filter((x) => !(x.match_id === pick.match_id && x.market === pick.market));   // one pick per match and market
     state.basket.push({ ...pick, added_at: new Date().toISOString() });
-    basketStore(state.basket); basketRender(); $("#basket").classList.remove("is-closed");
+    basketStore(state.basket); basketRender();
+    if (!matchMedia("(max-width: 760px)").matches) $("#basket").classList.remove("is-closed");
   }
   function basketRender() {
     const box = $("#basket"), items = state.basket || [];
@@ -2470,10 +2473,10 @@
 
   function layerRows(layers, dom) {
     return layers.map((l) => `<tr class="${l.n < 200 ? "thin" : ""}"><td class="wrap">${esc(l.label)}${l.note ? `<br><small class="muted">${esc(l.note)}</small>` : ""}</td>
-        <td class="num">${l.n || "–"}</td><td class="num">${pctv(l.actual)}</td>
-        <td class="num">${pctv(l.expected)}${l.reference ? `<br><small class="muted">${REF_TR[l.reference]}</small>` : ""}</td>
-        <td class="num ${l.ci && l.ci[0] != null && (l.ci[0] > 0 || l.ci[1] < 0) ? "yes" : ""}"><b>${l.edge == null ? "–" : pp1(l.edge)}</b><br><small class="muted">${ciTxt(l.ci)}</small></td>
-        <td class="fp-td">${fpCell(l.edge, l.ci, dom)}</td><td>${evBadge(l.evidence_tr)}</td></tr>`).join("");
+        <td class="num" data-h="Maç">${l.n || "–"}</td><td class="num" data-h="Oldu">${pctv(l.actual)}</td>
+        <td class="num" data-h="Oran diyordu">${pctv(l.expected)}${l.reference ? ` <small class="muted">${REF_TR[l.reference]}</small>` : ""}</td>
+        <td class="num ${l.ci && l.ci[0] != null && (l.ci[0] > 0 || l.ci[1] < 0) ? "yes" : ""}" data-h="Fark"><b>${l.edge == null ? "–" : pp1(l.edge)}</b> <small class="muted">${ciTxt(l.ci)}</small></td>
+        <td class="fp-td">${fpCell(l.edge, l.ci, dom)}</td><td data-h="Güven">${evBadge(l.evidence_tr)}</td></tr>`).join("");
   }
 
 
@@ -2500,7 +2503,7 @@
     <p class="note">${sim ? `En yakın ${sim.k} ikizin ortanca benzerliği; ${sim.n_above_90} tanesi 90'ın üstünde. ` : ""}${esc(SIM_TIP)}</p>`;
     const dom = fpDomain(d.layers);
     const table = `<div class="lab-sec">Katmanlar</div>
-      <div class="table-wrap"><table><thead><tr><th>Hangi eski maçlara bakıldı</th><th class="num" title="kaç eski maç">Maç</th><th class="num" title="o maçlarda bu sonuç ne sıklıkta oldu">Oldu</th><th class="num" title="oranlar o maçlarda ne bekliyordu">Oran diyordu</th>
+      <div class="table-wrap"><table class="stack"><thead><tr><th>Hangi eski maçlara bakıldı</th><th class="num" title="kaç eski maç">Maç</th><th class="num" title="o maçlarda bu sonuç ne sıklıkta oldu">Oldu</th><th class="num" title="oranlar o maçlarda ne bekliyordu">Oran diyordu</th>
         <th class="num">Fark</th><th class="fp-h">${fpAxis(dom)}</th><th>Ne kadar güvenilir</th></tr></thead><tbody>${layerRows(d.layers, dom)}</tbody></table></div>
       <p class="note"><b>Oran diyordu</b>: oranı olan marketlerde o maçların kendi oranı; oranı tutulmayanlarda (İY, İY/MS, 1,5/3,5 üst, KG) aynı orandaki maçlarda
         aynı şeyin ne sıklıkta olduğu. Renkli nokta: fark şansla açıklanamayacak kadar büyük. Gri satır: 200 maçtan az, sayıya güvenme.</p>`;
@@ -2587,30 +2590,30 @@
         <button type="button" class="lab-tab ${tab === "patterns" ? "is-on" : ""}" data-ftab="patterns">Patternler <small>${rows.length} maç</small></button>
         <button type="button" class="lab-tab ${tab === "notes" ? "is-on" : ""}" data-ftab="notes">Defter notları <small>${withNotes.length} maçta ilgili not</small></button></div>`;
     const notesHTML = () => withNotes.length || rows.some((r) => (r.notes || []).length)
-      ? `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="num hide-md">Saat</th><th class="num">Oran</th><th>Bu maçta uyanan notlar</th><th></th></tr></thead><tbody>
+      ? `<div class="table-wrap"><table class="stack"><thead><tr><th>Maç</th><th class="num hide-md">Saat</th><th class="num">Oran</th><th>Bu maçta uyanan notlar</th><th></th></tr></thead><tbody>
         ${rows.filter((r) => (r.notes || []).length).sort((a, b) => b.notes.filter((n) => n.related).length - a.notes.filter((n) => n.related).length).map((r) => `<tr>
           <td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br><small class="muted">${esc(r.league_name || "")}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}</td>
-          <td class="num hide-md">${esc(r.time || "")}</td><td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
-          <td class="wrap">${r.notes.map((n) => `<div class="lab-note ${n.related ? "is-rel" : ""}" title="${esc(n.expect || "")}"><b>Not ${n.no}</b> ${esc(n.title)}${n.related ? ` <span class="ev ev-ctx">${esc(tLabel)} ile ilgili</span>` : ""}<br><small class="muted">${esc(n.expect || "")}</small></div>`).join("")}</td>
-          <td><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}</tbody></table></div>
+          <td class="num hide-md">${esc(r.time || "")}</td><td class="num" data-h="Oran">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
+          <td class="wrap" data-h="Uyanan notlar">${r.notes.map((n) => `<div class="lab-note ${n.related ? "is-rel" : ""}" title="${esc(n.expect || "")}"><b>Not ${n.no}</b> ${esc(n.title)}${n.related ? ` <span class="ev ev-ctx">${esc(tLabel)} ile ilgili</span>` : ""}<br><small class="muted">${esc(n.expect || "")}</small></div>`).join("")}</td>
+          <td class="act"><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button></td></tr>`).join("")}</tbody></table></div>
         <p class="note">Defterdeki kurallar bu maçların nesine oranlarına uygulanır: kural bu maçta tutuyorsa burada görünür. "İlgili" etiketi, notun oynamayı söylediği sonucun seçtiğin hedefle aynı olduğunu gösterir. Not tutması bir tahmin değildir; notların havuz geneli ölçümü Araştırma raporlarında.</p>`
       : `<div class="day-empty">Bu günün maçlarında uyanan defter notu yok (nesine bülteninde olmayan maçlarda notlar bakılamaz).</div>`;
     const render = () => { box.innerHTML = verdict + tabs + (tab === "notes" ? notesHTML() : patternsHTML()); wire(); };
-    const patternsHTML = () => `<div class="table-wrap"><table><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
+    const patternsHTML = () => `<div class="table-wrap"><table class="stack"><thead><tr><th>Maç</th><th class="hide-md">Lig</th><th class="num hide-md">Saat</th><th class="num">Oran</th>
         <th class="num">Piyasa</th><th class="num">Pattern</th><th class="num">Δ · %95</th><th class="fp-h">${fpAxis(dom)}</th><th class="num" title="${esc(SIM_TIP)}">Benzerlik</th><th>Nerede</th><th>Kanıt</th><th></th></tr></thead><tbody>
         ${rows.map((r) => `<tr class="${r.n_layers ? "" : "thin"}"><td class="wrap"><b>${esc(r.home)} – ${esc(r.away)}</b><br>
             <small class="muted">${esc(targetMeaning(target, r.home, r.away))}${deltaMeaning(r.difference, r.difference_ci) ? " · " + deltaMeaning(r.difference, r.difference_ci) : ""}</small>${nesLine(r.nesine, false) ? `<br><small class="lab-odds">${esc(nesLine(r.nesine, false))}</small>` : ""}
             ${(r.patterns || []).length ? `<div class="lab-pats">${r.patterns.map((f) => `<div class="lab-pat"><span class="lab-chip ${f.edge > 0 ? "up" : "down"}">${f.edge > 0 ? "↑ daha çok oldu" : "↓ daha az oldu"}</span> <b>${esc(f.source_tr)}</b> · ${esc(f.side === "away" ? r.away : r.home)}${f.detail ? ` · ${esc(f.detail)}` : ""} <small class="muted">${f.n} eski maç · ${pctv(f.actual)} / oran ${pctv(f.market)} · ${esc(f.evidence_tr || "")}</small></div>`).join("")}</div>` : ""}</td>
           <td class="hide-md nw">${esc(r.league_name || r.league || "")}</td><td class="num hide-md">${esc(r.time || "")}</td>
-          <td class="num">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
-          <td class="num">${r.market?.p == null ? "<small class=\"muted\">yok</small>" : pctv(r.market.p)}</td>
-          <td class="num">${r.estimate ? pctv(r.estimate.p) : "–"}</td>
-          <td class="num ${r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0) ? "yes" : ""}"><b>${r.difference == null ? "–" : pp1(r.difference)}</b><br><small class="muted">${ciTxt(r.difference_ci)}</small></td>
+          <td class="num" data-h="Oran">${r.market?.odds != null ? num(r.market.odds) : "–"}</td>
+          <td class="num" data-h="Oran ne diyor">${r.market?.p == null ? "<small class=\"muted\">yok</small>" : pctv(r.market.p)}</td>
+          <td class="num" data-h="Eski maçlarda">${r.estimate ? pctv(r.estimate.p) : "–"}</td>
+          <td class="num ${r.difference_ci?.[0] != null && (r.difference_ci[0] > 0 || r.difference_ci[1] < 0) ? "yes" : ""}" data-h="Fark"><b>${r.difference == null ? "–" : pp1(r.difference)}</b> <small class="muted">${ciTxt(r.difference_ci)}</small></td>
           <td class="fp-td">${fpCell(r.difference, r.difference_ci, dom)}</td>
-          <td class="num">${r.similarity == null ? "–" : pctv(r.similarity, 0)}</td>
-          <td class="wrap">${where(r) || "<small class=\"muted\">—</small>"}</td>
-          <td>${evBadge(r.evidence?.label)}</td>
-          <td class="nw"><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button> <button type="button" class="btn ghost" data-play-row="${esc(r.id)}">Oyna</button></td></tr>`).join("")}
+          <td class="num" data-h="Benzerlik">${r.similarity == null ? "–" : pctv(r.similarity, 0)}</td>
+          <td class="wrap" data-h="Nerede">${where(r) || "<small class=\"muted\">—</small>"}</td>
+          <td data-h="Güven">${evBadge(r.evidence?.label)}</td>
+          <td class="nw act"><button type="button" class="btn ghost" data-detail="${esc(r.id)}">Detay</button> <button type="button" class="btn ghost" data-play-row="${esc(r.id)}">Oyna</button></td></tr>`).join("")}
       </tbody></table></div>
       <p class="note">Sıralama bahis tavsiyesi değil, "önce buna bak" sırasıdır: farkı büyük, eski maçı çok ve daha önce de görülmüş olanlar üstte.
         Maçın altındaki satırlar pattern motorlarının bu sonuç için kendi bulduğu desenlerdir: form deseni (bu takım / tüm takımlar / benzer güçtekiler) ve iki takımın birlikte durumu; her biri o maçın kendi ailesinde çoklu test düzeltmesinden geçmiştir.
