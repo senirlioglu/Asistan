@@ -2147,23 +2147,25 @@
       <line x1="${x(-dom)}" y1="3" x2="${x(dom)}" y2="3"/>
       <text x="${x(-dom)}" y="13" text-anchor="start">−${dom}</text><text x="${x(0)}" y="13" text-anchor="middle">0</text><text x="${x(dom)}" y="13" text-anchor="end">+${dom}</text></svg>`;
   }
-  /** Market vs pattern on one % axis: two dots, the pattern's interval as a band, a legend. */
+  /** Market vs pattern on one % axis: two dots, the pattern's interval as a band, a legend.
+   *  Drawn with positioned HTML (percent offsets), not a stretched SVG: a viewBox scaled to the
+   *  stage width smeared the labels and dots sideways on a wide desktop. */
   function dumbbell(market, est) {
     const vals = [market, est?.p, est?.ci?.[0], est?.ci?.[1]].filter((v) => v != null);
     if (!vals.length) return "";
     const hi = Math.min(100, Math.ceil(Math.max(...vals) * 1.25 / 5) * 5 || 5);
-    const W = 300, pad = 12, x = (v) => pad + (W - 2 * pad) * Math.max(0, Math.min(hi, v)) / hi;
-    const band = est?.ci?.[0] != null ? `<line class="band" x1="${x(est.ci[0]).toFixed(1)}" y1="30" x2="${x(est.ci[1]).toFixed(1)}" y2="30"/>` : "";
-    const link = market != null && est?.p != null ? `<line class="link" x1="${x(market).toFixed(1)}" y1="30" x2="${x(est.p).toFixed(1)}" y2="30"/>` : "";
-    const lbl = (v, cls, dy) => v == null ? "" : `<text x="${x(v).toFixed(1)}" y="${dy}" text-anchor="middle">${pctv(v)}</text>`;
-    const apart = market != null && est?.p != null && Math.abs(x(market) - x(est.p)) < 34;
-    return `<div class="dumb"><svg viewBox="0 0 ${W} 58" preserveAspectRatio="none" role="img" aria-label="piyasa ${pctv(market)} ile pattern tahmini ${est ? pctv(est.p) : "yok"} aynı yüzde ekseninde">
-      <line class="axis" x1="${pad}" y1="30" x2="${W - pad}" y2="30"/>
-      <text class="tick" x="${pad}" y="52" text-anchor="start">%0</text><text class="tick" x="${W - pad}" y="52" text-anchor="end">%${hi}</text>
-      ${band}${link}
-      ${market != null ? `<circle class="pt m" cx="${x(market).toFixed(1)}" cy="30" r="5"/>` : ""}
-      ${est?.p != null ? `<circle class="pt p" cx="${x(est.p).toFixed(1)}" cy="30" r="5"/>` : ""}
-      ${lbl(market, "m", apart ? 12 : 18)}${lbl(est?.p, "p", apart && market != null ? 22 : 18)}</svg>
+    const x = (v) => 100 * Math.max(0, Math.min(hi, v)) / hi;
+    const seg = (cls, a, b) => `<i class="${cls}" style="left:${Math.min(x(a), x(b)).toFixed(2)}%;width:${Math.abs(x(a) - x(b)).toFixed(2)}%"></i>`;
+    const band = est?.ci?.[0] != null ? seg("dumb-band", est.ci[0], est.ci[1]) : "";
+    const link = market != null && est?.p != null ? seg("dumb-link", market, est.p) : "";
+    const apart = market != null && est?.p != null && Math.abs(x(market) - x(est.p)) < 12;
+    const lbl = (v, cls, row) => v == null ? "" : `<b class="dumb-lbl ${cls} ${row}" style="left:${x(v).toFixed(2)}%">${pctv(v)}</b>`;
+    return `<div class="dumb"><div class="dumb-plot" role="img" aria-label="piyasa ${pctv(market)} ile pattern tahmini ${est ? pctv(est.p) : "yok"} aynı yüzde ekseninde">
+      <i class="dumb-axis"></i>${band}${link}
+      ${market != null ? `<i class="dumb-pt m" style="left:${x(market).toFixed(2)}%"></i>` : ""}
+      ${est?.p != null ? `<i class="dumb-pt p" style="left:${x(est.p).toFixed(2)}%"></i>` : ""}
+      ${lbl(market, "m", apart ? "up" : "")}${lbl(est?.p, "p", apart && market != null ? "up2" : "")}
+      <small class="dumb-tick l">%0</small><small class="dumb-tick r">%${hi}</small></div>
       <div class="legend-row"><span><i class="lm"></i>oran ne diyor</span><span><i class="lp"></i>eski maçlarda ne oldu (bant: olası aralık)</span></div></div>`;
   }
   /** Similarity: a hatched meter, deliberately unlike a probability bar. */
