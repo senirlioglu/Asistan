@@ -648,7 +648,8 @@ def _bulletin_odds(date_tr: str, home: str, away: str, code: int | None = None) 
     best = _bulletin_find(date_tr, home, away, code)
     if best is None:
         return None
-    return {"code": best.get("code"), "ms": best.get("ms") or {}, "iy": best.get("iy") or {}, "o25": best.get("o25") or {}}
+    return {"code": best.get("code"), "ms": best.get("ms") or {}, "iy": best.get("iy") or {}, "iyms": best.get("iyms") or {},
+            "o25": best.get("o25") or {}}
 
 
 def _nesine_brief(date_tr: str, home: str, away: str, code: int | None = None, store: dict | None = None) -> dict | None:
