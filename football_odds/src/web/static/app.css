@@ -819,9 +819,12 @@ td.nw { white-space: nowrap; }
 .ld-grid .ld-entry { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 10px 12px; background: var(--surface); }
 .ld-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
 .ld-head b { font-size: 0.95rem; }
+.ld-what { margin-top: 3px; font-size: 0.92rem; }
 .ld-tgt { font-family: var(--font-display); font-weight: 700; font-size: 0.72rem; padding: 1px 7px; border-radius: 4px; background: var(--lab-soft); color: var(--lab-ink); }
 .ld-dir { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 4px 0 2px; }
-.ld-line { display: block; line-height: 1.4; }
+.ld-line { display: block; line-height: 1.45; margin-top: 3px; }
+.ld-entry .lab-pats { margin-top: 6px; }
+.ld-entry .lab-pat { font-size: 0.82rem; line-height: 1.45; }
 .ld-where { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 3px; }
 .ld-more { margin-top: 6px; padding: 5px 12px; font-size: 0.8rem; }
 .ld-note { padding: 8px 0; border-top: 1px dashed var(--line); font-size: 0.88rem; }

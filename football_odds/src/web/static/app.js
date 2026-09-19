@@ -2312,20 +2312,81 @@
 
   const ldWhen = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
+  // ---- plain words for the report ---------------------------------------------------------------
+  /** "WWWWD" -> "4 galibiyet, 1 beraberlik". */
+  function ldForm(str) {
+    const c = { W: 0, D: 0, L: 0 };
+    for (const ch of String(str || "")) if (ch in c) c[ch]++;
+    const parts = [];
+    if (c.W) parts.push(`${c.W} galibiyet`); if (c.D) parts.push(`${c.D} beraberlik`); if (c.L) parts.push(`${c.L} mağlubiyet`);
+    return parts.join(", ") || str;
+  }
+  /** The headline: what the scanned result means in this match, in words. */
+  function ldHeadline(e) {
+    const g = { ms: "Maç sonucu", iy: "İlk yarı", iyms: "İlk yarı / maç sonu", gol: "Gol" }[e.group] || "";
+    const ft = { "1": `${e.home} kazanır`, X: "berabere biter", "2": `${e.away} kazanır` };
+    const ht = { "1": `${e.home} önde`, X: "berabere", "2": `${e.away} önde` };
+    let what = "";
+    if (e.target.startsWith("ft_")) what = ft[e.target.slice(3)];
+    else if (e.target.startsWith("ht_")) what = ht[e.target.slice(3)];          // the chip already says "İlk yarı"
+    else if (e.target.startsWith("htft_")) { const [h, f] = e.target.slice(5).split("/"); what = `ilk yarı ${ht[h]}, sonunda ${ft[f]}`; }
+    else what = { over15: "en az 2 gol olur", over25: "en az 3 gol olur", over35: "en az 4 gol olur", btts: "iki takım da gol atar" }[e.target] || e.target;
+    return { group: g, what };
+  }
+  /** One engine finding as a sentence: who the old matches were, how often the result came, what the odds said. */
+  function ldPatSentence(f, e) {
+    const team = f.side === "away" ? e.away : e.home, other = f.side === "away" ? e.home : e.away;
+    const d = f.detail || "";
+    let who = "";
+    let m;
+    if ((m = d.match(/^form ([WDL]+)/))) {
+      const form = ldForm(m[1]);
+      who = f.source_tr === "Form deseni · benzer güçtekiler" ? `${esc(team)} gibi son ${m[1].length} maçı ${form} olan, aynı güçteki takımlar`
+        : f.source_tr === "Form deseni · bu takım" ? `${esc(team)}, son ${m[1].length} maçı ${form} olduğu her seferinde`
+        : `Son ${m[1].length} maçı ${form} olan bütün takımlar`;
+    } else if ((m = d.match(/^\+ rakip saha formu ([WDL]+)/))) {
+      who = `${esc(team)} bugünkü durumundayken rakibi son ${m[1].length} ${f.side === "away" ? "iç saha" : "deplasman"} maçında ${ldForm(m[1])} almış olan eski maçlar`;
+    } else if ((m = d.match(/^\+ rakip formu ([WDL]+)/))) {
+      who = `${esc(team)} bugünkü durumundayken rakibinin son ${m[1].length} maçı ${ldForm(m[1])} olan eski maçlar`;
+    } else if ((m = d.match(/^\+ güç farkı (-?\d+)/))) {
+      who = `${esc(team)} bugünkü durumundayken rakiple güç farkı bugünkü gibi (${Number(m[1]) < 0 ? "rakip daha güçlü" : "rakip daha zayıf"}) olan eski maçlar`;
+    } else if (/^\+ benzer rakip gücü/.test(d)) {
+      who = `${esc(team)} bugünkü durumundayken rakibi ${esc(other)} gücünde olan eski maçlar`;
+    } else {
+      who = `${esc(f.source_tr || "")}${d ? " · " + esc(d) : ""}`;
+    }
+    const up = (f.edge || 0) > 0;
+    return `<div class="lab-pat"><span class="lab-chip ${up ? "up" : "down"}">${up ? "↑" : "↓"}</span> ${who}: <b>${f.n} eski maçta</b> bu sonuç <b>${pctv(f.actual, 0)}</b> çıkmış, oran <b>${pctv(f.market, 0)}</b> diyordu.</div>`;
+  }
+  /** The layers that agree or disagree, as one sentence. */
+  function ldLayerSentence(e) {
+    const name = { team: `${esc(e.home)} kendi geçmişinde`, opponent: `${esc(e.away)} kendi geçmişinde`, similar: "aynı durumdaki tüm eski maçlarda",
+                   both: "iki tarafı da benzeyen eski maçlarda", twins: "en çok benzeyen eski maçlarda" };
+    const ls = (e.layers || []).filter((l) => l.edge != null && !["thin", "none"].includes(l.evidence) && name[l.key]);
+    if (!ls.length) return "";
+    const more = ls.filter((l) => l.edge > 0).map((l) => name[l.key]), less = ls.filter((l) => l.edge < 0).map((l) => name[l.key]);
+    const parts = [];
+    if (more.length) parts.push(`${more.join(", ")} bu sonuç <b>daha çok</b> olmuş`);
+    if (less.length) parts.push(`${less.join(", ")} <b>daha az</b> olmuş`);
+    return `<small class="muted ld-line">${parts.join("; ")}.</small>`;
+  }
+
   function ldEntry(e, showTarget) {
-    const dir = e.direction === "mixed" ? `<span class="lab-chip">↕ çelişkili</span>`
-      : `<span class="lab-chip ${e.direction === "more" ? "up" : "down"}">${e.direction === "more" ? "↑ daha çok oldu" : "↓ daha az oldu"}</span>`;
-    const tgt = showTarget ? `<span class="ld-tgt">${esc(e.group === "iy" ? "İY " : e.group === "iyms" ? "İY/MS " : "")}${esc(e.target_label)}</span> ` : "";
-    const line = `${esc(targetMeaning(e.target, e.home, e.away))}: oran ${e.market?.p == null ? "yok" : pctv(e.market.p)}${e.estimate ? ` → eski maçlarda ${pctv(e.estimate.p)}` : ""}${e.difference != null ? ` · fark ${pp1(e.difference)} ${ciTxt(e.difference_ci)}` : ""}`;
-    const pats = (e.patterns || []).length ? `<div class="lab-pats">${e.patterns.map((f) => `<div class="lab-pat"><span class="lab-chip ${f.edge > 0 ? "up" : "down"}">${f.edge > 0 ? "↑" : "↓"}</span> <b>${esc(f.source_tr)}</b> · ${esc(f.side === "away" ? e.away : e.home)}${f.detail ? ` · ${esc(f.detail)}` : ""} <small class="muted">${f.n} eski maç · ${pctv(f.actual)} / oran ${pctv(f.market)}</small></div>`).join("")}</div>` : "";
-    const layers = (e.layers || []).filter((l) => l.edge != null && !["thin", "none"].includes(l.evidence));
-    const where = layers.length ? `<div class="ld-where">${layers.map((l) => `<span class="lab-chip ${l.edge > 0 ? "up" : "down"}" title="${l.n} eski maç">${l.edge > 0 ? "↑" : "↓"} ${esc({ team: `${e.home} geçmişi`, opponent: `${e.away} geçmişi`, similar: "aynı durum", both: "iki taraf benzer", twins: "en benzer maçlar" }[l.key] || l.key)}</span>`).join(" ")}</div>` : "";
+    const h = ldHeadline(e);
+    const dir = e.direction === "mixed" ? `<span class="lab-chip">↕ desenler aynı yönde değil</span>`
+      : `<span class="lab-chip ${e.direction === "more" ? "up" : "down"}">${e.direction === "more" ? "↑ eski maçlarda daha çok oldu" : "↓ eski maçlarda daha az oldu"}</span>`;
+    const p = e.market?.p, q = e.estimate?.p, diff = e.difference;
+    const line = p == null
+      ? (q != null ? `Bu sonucun bugün oranı yok. Benzer eski maçlarda ${pctv(q, 0)} çıkmış.` : "")
+      : `Oran ${pctv(p, 0)} diyor; benzer eski maçlarda ${pctv(q, 0)} çıkmış${diff != null ? ` (${Math.abs(diff).toFixed(0)} puan ${diff > 0 ? "daha çok" : "daha az"})` : ""}.`;
+    const pats = (e.patterns || []).length ? `<div class="lab-pats"><small class="muted">Neden:</small>${e.patterns.map((f) => ldPatSentence(f, e)).join("")}</div>` : "";
     return `<div class="ld-entry" data-id="${esc(e.id)}">
-      <div class="ld-head">${tgt}<b>${esc(e.home)} – ${esc(e.away)}</b><small class="muted">${esc(e.league_name || "")}${e.time ? " · " + esc(e.time) : ""}</small></div>
+      <div class="ld-head"><b>${esc(e.home)} – ${esc(e.away)}</b><small class="muted">${esc(e.league_name || "")}${e.time ? " · " + esc(e.time) : ""}</small></div>
+      <div class="ld-what">${showTarget || true ? `<span class="ld-tgt">${esc(h.group)}</span> ` : ""}<b>${esc(h.what)}</b></div>
       <div class="ld-dir">${dir} ${evBadge(e.evidence?.label)}</div>
-      <small class="muted ld-line">${line}</small>
+      ${line ? `<small class="ld-line">${line}</small>` : ""}
       ${nesLine(e.nesine, false) ? `<small class="lab-odds">${esc(nesLine(e.nesine, false))}</small>` : ""}
-      ${pats}${where}
+      ${pats}${ldLayerSentence(e)}
       <div class="lab-row-act"><button type="button" class="btn ghost" data-ld-detail="${esc(e.id)}" data-t="${esc(e.target)}">Detay</button><button type="button" class="btn ghost" data-ld-play="${esc(e.id)}" data-t="${esc(e.target)}">Oyna</button></div></div>`;
   }
 
@@ -2354,18 +2415,18 @@
         : "Bu gün için rapor üretilmemiş. Sunucu her sabah önce günün, sonra ertesi günün raporunu kendisi üretir; şimdi istemek için üstteki düğmeyi kullan."}</div>`;
       return;
     }
-    const top = (r.top || []).length ? `<section class="ld-sec"><h3>Öne çıkanlar <small>pattern motorlarının desen bulduğu maçlar, önce en güçlüsü</small></h3>
+    const top = (r.top || []).length ? `<section class="ld-sec"><h3>Öne çıkanlar <small>sistemin bir sebep bulduğu maçlar, önce en güçlüsü</small></h3>
       <div class="ld-grid">${r.top.map((e) => ldEntry(e, true)).join("")}</div></section>` : "";
     const groups = LD_GROUPS.map(([g, gl]) => {
       const ts = r.targets.filter((t) => t.group === g);
       if (!ts.length) return "";
       return `<section class="ld-sec"><h3>${gl}</h3>${ts.map((t) => `<div class="ld-target">
-        <div class="ld-target-h"><b>${esc(g === "iy" ? "İY " : g === "iyms" ? "İY/MS " : "")}${esc(t.label)}</b> <small class="muted">${esc(t.explain || "")} · ${t.n_rows} maç tarandı · ${t.n_patterns} maçta motor deseni · ${t.n_clear} maçta anlamlı fark</small></div>
+        <div class="ld-target-h"><b>${esc(t.explain || t.label)}</b> <small class="muted">${t.n_rows} maç tarandı · ${t.n_patterns} maçta sistem bir sebep buldu · ${t.n_clear} maçta oranla eski maçlar açıkça ayrışıyor</small></div>
         <div class="ld-cols">${ldList(t.more, t.key + ":more", "Eski maçlarda daha ÇOK oldu")}${ldList(t.less, t.key + ":less", "Eski maçlarda daha AZ oldu")}</div>
-        ${t.mixed.length ? `<div class="ld-cols">${ldList(t.mixed, t.key + ":mixed", "Çelişkili (bir desen çok, biri az diyor)")}</div>` : ""}</div>`).join("")}</section>`;
+        ${t.mixed.length ? `<div class="ld-cols">${ldList(t.mixed, t.key + ":mixed", "Sebepler aynı yönde değil")}</div>` : ""}</div>`).join("")}</section>`;
     }).join("");
     const n = r.notes || {};
-    const notes = `<section class="ld-sec"><h3>Defter notları <small>${n.n_with_notes || 0} maçta not uyandı; burada yalnızca bir sonuç söyleyenler</small></h3>
+    const notes = `<section class="ld-sec"><h3>Defter notları <small>${n.n_with_notes || 0} maçta senin notlarından biri tuttu; burada yalnızca bir sonuç söyleyenler</small></h3>
       ${(n.result_notes || []).length ? n.result_notes.map((b) => `<div class="ld-note"><b>Not ${b.no} · ${esc(b.title)}</b> <small class="muted">${esc(b.expect || "")}</small>
         <div class="ld-note-m">${b.matches.map((m) => `<span class="ld-nm"><button type="button" class="linkbtn" data-ld-detail="${esc(m.id)}" data-t="">${esc(m.home)} – ${esc(m.away)}</button><small class="muted"> ${esc(m.time || "")}${m.nesine && m.nesine["1"] ? ` · MS ${num(m.nesine["1"])} / ${num(m.nesine.X)} / ${num(m.nesine["2"])}` : ""}${Object.values(m.evidence || {}).length ? ` · ${esc(Object.entries(m.evidence).map(([k, v]) => `${k}: ${v}`).join("; "))}` : ""}</small></span>`).join("")}</div></div>`).join("")
         : `<p class="note">Bugün sonuç söyleyen not uyanmadı.</p>`}
