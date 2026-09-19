@@ -134,5 +134,13 @@ def test_build_report_runs_the_targets_in_turn_and_the_hourly_job_only_rebuilds_
             break
         time.sleep(0.05)
     assert not daily.is_running() and daily.status(s, "2026-09-19")["run"]["state"] == "done"
-    monkeypatch.setenv("FO_DAILY_REPORT", "0")
+    # the morning's daily job makes a new one even when the last is fresh
+    monkeypatch.setattr(daily, "REBUILD_AFTER_H", 12)
     assert daily.maybe_schedule(s, collect, date="2026-09-19") is False
+    assert daily.maybe_schedule(s, collect, date="2026-09-19", force=True) is True
+    for _ in range(100):
+        if not daily.is_running():
+            break
+        time.sleep(0.05)
+    monkeypatch.setenv("FO_DAILY_REPORT", "0")
+    assert daily.maybe_schedule(s, collect, date="2026-09-19", force=True) is False

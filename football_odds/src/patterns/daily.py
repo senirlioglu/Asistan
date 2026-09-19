@@ -239,15 +239,16 @@ def today_tr() -> str:
     return dt.datetime.now(ZoneInfo("Europe/Istanbul")).date().isoformat()
 
 
-def maybe_schedule(settings: Settings, collect: Collector, date: str | None = None) -> bool:
+def maybe_schedule(settings: Settings, collect: Collector, date: str | None = None, force: bool = False) -> bool:
     """Called by the hourly job after the state table is rebuilt: start today's report when there is
-    none yet or the one there is half a day old. Never blocks the job. Returns True when started."""
+    none yet or the one there is half a day old (`force`: the daily job, always). Never blocks the job.
+    Returns True when started."""
     import os
 
     date = date or today_tr()
     if os.environ.get("FO_DAILY_REPORT", "1").strip().lower() in ("0", "false", "no"):
         return False
-    if is_running() or is_fresh(settings, date):
+    if is_running() or (not force and is_fresh(settings, date)):
         return False
     from . import service
 

@@ -295,7 +295,9 @@ def build(settings: Settings, df: pd.DataFrame | None = None) -> pd.DataFrame:
     pairs = pair_table(df)
     p = cache_path(settings)
     p.parent.mkdir(parents=True, exist_ok=True)
-    pairs.to_parquet(p, index=False)
+    tmp = p.with_name(p.name + ".tmp")      # atomic: the lab reads this table while the job rewrites it
+    pairs.to_parquet(tmp, index=False)
+    tmp.replace(p)
     meta = {"state_mtime": sp.stat().st_mtime if sp.exists() else None, "n_pairs": int(len(pairs)),
             "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "seconds": round((dt.datetime.now() - started).total_seconds(), 1)}

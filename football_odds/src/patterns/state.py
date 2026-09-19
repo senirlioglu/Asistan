@@ -303,7 +303,11 @@ def build(settings: Settings, df: pd.DataFrame | None = None, write: bool = True
     if write:
         p = state_path(settings)
         p.parent.mkdir(parents=True, exist_ok=True)
-        out.to_parquet(p, index=False)
+        # written beside and renamed over: a day scan reading the table mid-write saw "Parquet magic
+        # bytes not found" and lost 50 matches on 19 Sep. The rename is atomic; readers see old or new
+        tmp = p.with_name(p.name + ".tmp")
+        out.to_parquet(tmp, index=False)
+        tmp.replace(p)
         log.info("wrote %s in %.0fs", p, (dt.datetime.now() - started).total_seconds())
     return out
 

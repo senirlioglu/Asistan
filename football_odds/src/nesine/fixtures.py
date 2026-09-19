@@ -275,7 +275,9 @@ def analyse_bulletin(settings: Settings, table: pd.DataFrame | None, meta: dict,
     pd.DataFrame(rows).to_csv(pred_p, index=False)
     det_p.write_text(json.dumps({"written_at": now.isoformat(timespec="seconds"), "matches": details}, ensure_ascii=False), encoding="utf-8")
     if frames:
-        pd.concat(frames, ignore_index=True).to_parquet(an_p, index=False)
+        tmp = an_p.with_name(an_p.name + ".tmp")      # atomic: the Maçlar tab reads this while it is rewritten
+        pd.concat(frames, ignore_index=True).to_parquet(tmp, index=False)
+        tmp.replace(an_p)
     elif an_p.exists():
         an_p.unlink()
     log.info("nesine bulletin analysed: %d fresh, %d kept, %d rows -> %s", n_new, n_kept, len(rows), pred_p)

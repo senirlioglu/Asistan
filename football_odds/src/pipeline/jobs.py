@@ -124,7 +124,7 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
         df, _ = build_processed(settings)
         _write(settings, "running", "analysing upcoming fixtures", started_at=started.isoformat())
         table = run_today(settings, date=dt.date.today(), days=days, refresh=True, merge=True)
-        _build_state(settings, table)
+        _build_state(settings, table, daily=True)
         try:  # the last week: any day without a prediction file gets analysed after the fact (results come from the database)
             _write(settings, "running", "analysing last week's matches", started_at=started.isoformat())
             from .today import run_backfill
@@ -151,7 +151,7 @@ def run_daily_job(settings: Settings, days: int = 7, full_download: bool = False
         _LOCK.release()
 
 
-def _build_state(settings: Settings, table) -> None:
+def _build_state(settings: Settings, table, daily: bool = False) -> None:
     """Refresh the pre-match state table (form, goals, table position, TSI) including today's fixtures.
 
     The research tab reads it; the prediction path does not, so a failure here is logged and
@@ -200,17 +200,19 @@ def _build_state(settings: Settings, table) -> None:
             log.info("notes re-measured: %d rows -> %s", len(rows), out_p)
     except Exception as exc:  # noqa: BLE001 - derived data, never fatal
         log.warning("notes re-measure skipped: %s", exc)
-    _schedule_daily_report(settings)
+    _schedule_daily_report(settings, force=daily)
 
 
-def _schedule_daily_report(settings: Settings) -> None:
+def _schedule_daily_report(settings: Settings, force: bool = False) -> None:
     """Günün raporu: after the state table is fresh, start today's report in the background when there is
-    none yet or it is half a day old. The scans share the lab's one pool; the job itself never waits."""
+    none yet or it is half a day old; the morning's daily job always makes a new one (the bulletin is
+    complete then, and matches leave it as they kick off). The scans share the lab's one pool; the job
+    itself never waits."""
     try:
         from ..patterns import daily
         from ..web.api import collect_day
 
-        if daily.maybe_schedule(settings, collect_day):
+        if daily.maybe_schedule(settings, collect_day, force=force):
             log.info("günün raporu started for %s", daily.today_tr())
     except Exception as exc:  # noqa: BLE001 - derived data, never fatal
         log.warning("günün raporu not scheduled: %s", exc)

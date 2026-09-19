@@ -108,7 +108,9 @@ def build_processed(settings: Settings, seasons: list[str] | None = None, league
 
     out_path = out_path or (settings.processed_dir / "matches.parquet")
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(out_path, index=False)
+    tmp = out_path.with_name(out_path.name + ".tmp")      # atomic: the web app reads the database while the job rewrites it
+    df.to_parquet(tmp, index=False)
+    tmp.replace(out_path)
     log.info("wrote %s (%d matches)", out_path, len(df))
 
     report["rows_written"] = int(len(df))
