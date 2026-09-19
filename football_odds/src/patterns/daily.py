@@ -30,7 +30,7 @@ PER_DIRECTION = 30            # at most this many matches per (target, direction
 RESULT_NOTES = {"n1", "n2", "n4", "n5", "n6", "n7", "n10", "n11", "n14", "n16", "n19"}
 
 _RUN: dict = {"date": None, "state": "idle", "step": None, "step_no": 0, "steps": 0, "done": 0, "total": 0,
-              "started_at": None, "finished_at": None, "error": None}
+              "started_at": None, "finished_at": None, "error": None, "queue": []}
 _RUN_LOCK = threading.Lock()
 
 Collector = Callable[[str], tuple[list[dict], dict]]     # date -> (matches, nesine_by_id), as mode 2 assembles them
@@ -67,6 +67,7 @@ def status(settings: Settings, date: str) -> dict:
         run = dict(_RUN)
     rep = load_report(settings, date)
     out = {"date": date, "running": run["state"] == "running" and run["date"] == date,
+           "queued": run["state"] == "running" and date in (run.get("queue") or []),
            "run": run if run["date"] == date else None,
            "generated_at": rep.get("generated_at") if rep else None, "exists": rep is not None,
            "dates": report_dates(settings)}
@@ -211,24 +212,38 @@ def build_report(settings: Settings, date: str, collect: Collector, targets: lis
     return report
 
 
-def start_build(settings: Settings, date: str, collect: Collector, targets: list[str] | None = None) -> dict:
-    """Build in the background; refused (with the current run's status) while one is running."""
+def start_build(settings: Settings, dates: str | list[str], collect: Collector, targets: list[str] | None = None) -> dict:
+    """Build the dates in turn, in the background (the morning asks for today, then tomorrow); refused
+    (with the current run's status) while one is running."""
+    dates = [dates] if isinstance(dates, str) else list(dates)
+    if not dates:
+        return {"started": False, "reason": "empty", "run": dict(_RUN)}
     with _RUN_LOCK:
         if _RUN["state"] == "running":
             return {"started": False, "reason": "running", "run": dict(_RUN)}
-        _RUN.update(date=date, state="running", step=None, step_no=0, steps=len(targets or REPORT_TARGETS), done=0, total=0,
-                    started_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), finished_at=None, error=None)
+        _RUN.update(date=dates[0], state="running", step=None, step_no=0, steps=len(targets or REPORT_TARGETS), done=0, total=0,
+                    started_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"), finished_at=None, error=None,
+                    queue=dates[1:])
 
     def work():
-        try:
-            build_report(settings, date, collect, targets)
-        except Exception as exc:  # noqa: BLE001 - the page shows the error; the next hourly job retries
-            log.error("günün raporu %s failed: %s\n%s", date, exc, traceback.format_exc())
+        for i, date in enumerate(dates):
             with _RUN_LOCK:
-                _RUN.update(state="error", error=f"{type(exc).__name__}: {exc}",
-                            finished_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+                _RUN.update(date=date, state="running", queue=dates[i + 1:])
+            try:
+                build_report(settings, date, collect, targets)
+            except Exception as exc:  # noqa: BLE001 - the page shows the error; the next hourly job retries
+                log.error("günün raporu %s failed: %s\n%s", date, exc, traceback.format_exc())
+                with _RUN_LOCK:
+                    _RUN.update(state="error", error=f"{type(exc).__name__}: {exc}",
+                                finished_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+                # the queue goes on: tomorrow's report should not die with today's
+                if i + 1 < len(dates):
+                    continue
+                return
+        with _RUN_LOCK:
+            _RUN["queue"] = []
 
-    threading.Thread(target=work, name=f"lab-daily-{date}", daemon=True).start()
+    threading.Thread(target=work, name=f"lab-daily-{dates[0]}", daemon=True).start()
     with _RUN_LOCK:
         return {"started": True, "run": dict(_RUN)}
 
@@ -239,20 +254,32 @@ def today_tr() -> str:
     return dt.datetime.now(ZoneInfo("Europe/Istanbul")).date().isoformat()
 
 
+def _next_day(date: str) -> str:
+    return (dt.date.fromisoformat(date) + dt.timedelta(days=1)).isoformat()
+
+
 def maybe_schedule(settings: Settings, collect: Collector, date: str | None = None, force: bool = False) -> bool:
-    """Called by the hourly job after the state table is rebuilt: start today's report when there is
-    none yet or the one there is half a day old (`force`: the daily job, always). Never blocks the job.
-    Returns True when started."""
+    """Called by the jobs after the state table is rebuilt. The morning's daily job (`force`) makes
+    today's report and then tomorrow's, always. The hourly refresh only fills a gap: today's when it
+    is missing or half a day old, tomorrow's when it is missing. Never blocks the job. Returns True
+    when a build was started."""
     import os
 
     date = date or today_tr()
     if os.environ.get("FO_DAILY_REPORT", "1").strip().lower() in ("0", "false", "no"):
         return False
-    if is_running() or (not force and is_fresh(settings, date)):
+    if is_running():
         return False
     from . import service
 
     if service.frame(settings) is None:          # nothing to scan yet (first boot)
         return False
-    out = start_build(settings, date, collect)
+    dates = []
+    if force or not is_fresh(settings, date):
+        dates.append(date)
+    if force or load_report(settings, _next_day(date)) is None:
+        dates.append(_next_day(date))
+    if not dates:
+        return False
+    out = start_build(settings, dates, collect)
     return bool(out.get("started"))

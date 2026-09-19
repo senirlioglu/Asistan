@@ -2214,7 +2214,7 @@
   }
 
 
-  const LAB_Q = { daily: "Günün maçları bütün ana sonuçlar için tarandı. Aşağıda motorların bulduğu desenler, en büyük farklar ve defter notları; her sabah kendiliğinden yenilenir.",
+  const LAB_Q = { daily: "Günün maçları bütün ana sonuçlar için tarandı. Aşağıda motorların bulduğu desenler, en büyük farklar ve defter notları; her sabah önce bugün, sonra yarın kendiliğinden hazırlanır.",
                   match: "Bir maç seç. Sistem form, güç, gol, ikiz, fikstür döngüsü ve oran hareketini tarar; sen yalnızca sonucu okursun.",
                   find: "Bir sonuç seç. Günün maçlarında o sonucun geçmişte fiyattan ne kadar ayrıldığı taranır.",
                   own: "Koşullarını kur. Her koşul bir satır olarak eklenir; sayıyı hangisinin oynattığını görürsün.",
@@ -2289,7 +2289,7 @@
       state.ld.data = d;
       renderDaily(d);
       clearTimeout(state.ld.timer);
-      if (d.running && state.lab.mode === "daily") state.ld.timer = setTimeout(() => ldLoad(date, true), 5000);
+      if ((d.running || d.queued) && state.lab.mode === "daily") state.ld.timer = setTimeout(() => ldLoad(date, true), 5000);
     } catch (e) {
       $("#ld-status").textContent = "Rapor okunamadı: " + e.message;
       $("#ld-out").innerHTML = `<div class="day-empty">Rapor okunamadı (${esc(e.message)}). <button type="button" class="btn" id="ld-retry" style="margin-top:10px">Tekrar dene</button></div>`;
@@ -2340,6 +2340,7 @@
     const box = $("#ld-out"), r = d.report, run = d.run;
     const parts = [];
     if (d.running && run) parts.push(`<b>Rapor üretiliyor:</b> ${run.step ? `${esc(run.step)} hedefi (${run.step_no}/${run.steps}), ${run.done}/${run.total} maç` : "hazırlanıyor"}…`);
+    else if (d.queued) parts.push("<b>Sırada:</b> önceki günün raporu bitince bu gün üretilecek…");
     else if (run && run.state === "error") parts.push(`<b>Son üretim başarısız:</b> ${esc(run.error || "")}`);
     if (r) parts.push(`Üretildi: ${ldWhen(r.generated_at)} · ${r.n_matches} maç · ${r.targets.length} sonuç · ${r.n_linked} maçta nesine oranı`);
     else if (!d.running) parts.push("Bu gün için rapor yok.");
@@ -2347,7 +2348,9 @@
     $("#ld-build").textContent = r ? "Raporu yeniden üret" : "Raporu üret";
     $("#ld-build").disabled = !!d.running;
     if (!r) {
-      box.innerHTML = `<div class="day-empty">${d.running ? "Rapor üretiliyor; on hedef sırayla taranır, bir saat kadar sürebilir. Bu sayfa kendini yeniler." : "Bu gün için rapor üretilmemiş. Sunucu her sabah günün maçları analiz edilince kendisi üretir; şimdi istemek için üstteki düğmeyi kullan."}</div>`;
+      box.innerHTML = `<div class="day-empty">${d.running ? "Rapor üretiliyor; on hedef sırayla taranır, bir saat kadar sürebilir. Bu sayfa kendini yeniler."
+        : d.queued ? "Bu gün sırada: önceki günün raporu bitince üretilecek. Bu sayfa kendini yeniler."
+        : "Bu gün için rapor üretilmemiş. Sunucu her sabah önce günün, sonra ertesi günün raporunu kendisi üretir; şimdi istemek için üstteki düğmeyi kullan."}</div>`;
       return;
     }
     const top = (r.top || []).length ? `<section class="ld-sec"><h3>Öne çıkanlar <small>pattern motorlarının desen bulduğu maçlar, önce en güçlüsü</small></h3>

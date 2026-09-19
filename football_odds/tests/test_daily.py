@@ -123,24 +123,33 @@ def test_build_report_runs_the_targets_in_turn_and_the_hourly_job_only_rebuilds_
     assert daily.load_report(s, "2026-09-19")["n_matches"] == 1 and daily.report_dates(s) == ["2026-09-19"]
     st = daily.status(s, "2026-09-19")
     assert st["exists"] and not st["running"] and st["generated_at"]
-    # fresh: the hourly job leaves it; stale: it starts one (in the background)
     monkeypatch.setattr(daily, "REPORT_TARGETS", ["ft_1"])
     monkeypatch.setattr("src.patterns.service.frame", lambda *a, **k: object())
-    assert daily.maybe_schedule(s, collect, date="2026-09-19") is False
-    monkeypatch.setattr(daily, "REBUILD_AFTER_H", 0)
+
+    def settle():
+        for _ in range(200):
+            if not daily.is_running():
+                return
+            time.sleep(0.05)
+
+    # the hourly job fills gaps: today's is fresh, tomorrow's is missing -> tomorrow's is built
     assert daily.maybe_schedule(s, collect, date="2026-09-19") is True
-    for _ in range(100):
-        if not daily.is_running():
-            break
-        time.sleep(0.05)
-    assert not daily.is_running() and daily.status(s, "2026-09-19")["run"]["state"] == "done"
-    # the morning's daily job makes a new one even when the last is fresh
+    settle()
+    assert daily.report_dates(s) == ["2026-09-19", "2026-09-20"]
+    assert daily.maybe_schedule(s, collect, date="2026-09-19") is False          # both there, today fresh
+    made = daily.load_report(s, "2026-09-19")["generated_at"]
+    monkeypatch.setattr(daily, "REBUILD_AFTER_H", 0)                             # today's is stale now
+    time.sleep(1.1)
+    assert daily.maybe_schedule(s, collect, date="2026-09-19") is True
+    settle()
+    assert daily.load_report(s, "2026-09-19")["generated_at"] != made and daily.status(s, "2026-09-19")["run"]["state"] == "done"
+    # the morning's daily job makes both anew even when they are fresh: today first, tomorrow queued behind it
     monkeypatch.setattr(daily, "REBUILD_AFTER_H", 12)
     assert daily.maybe_schedule(s, collect, date="2026-09-19") is False
     assert daily.maybe_schedule(s, collect, date="2026-09-19", force=True) is True
-    for _ in range(100):
-        if not daily.is_running():
-            break
-        time.sleep(0.05)
+    st = daily.status(s, "2026-09-20")
+    assert st["queued"] or st["running"] or daily.status(s, "2026-09-20")["run"] is not None
+    settle()
+    assert daily.status(s, "2026-09-20")["run"]["state"] == "done" and not daily.status(s, "2026-09-20")["queued"]
     monkeypatch.setenv("FO_DAILY_REPORT", "0")
     assert daily.maybe_schedule(s, collect, date="2026-09-19", force=True) is False
