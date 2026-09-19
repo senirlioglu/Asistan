@@ -88,3 +88,18 @@ def test_half_time_markets_settle_and_frozen_odds_ride_along():
     assert c2["picks"][0]["odds"] == rows["m1"]["odds"]["h"] and "odds_source" not in c2["picks"][0]
     with pytest.raises(ValueError):
         cp.build_coupon([{"match_id": "m1", "market": "iyms", "pick": "3/1"}], rows)
+
+
+def test_lab_scoreboard_groups_picks_by_what_the_lab_said():
+    rows = {"m1": _row(), "m2": _row()}
+    lab = lambda ev: {"target": "htft_2/1", "target_label": "2/1", "evidence": ev, "source": "pattern-lab"}  # noqa: E731
+    c = cp.build_coupon([{"match_id": "m1", "market": "iyms", "pick": "2/1", "odds": 20.0, "lab": lab("KEŞİF")},
+                         {"match_id": "m2", "market": "iy", "pick": "d", "odds": 2.0, "lab": lab("FARK YOK")},
+                         {"match_id": "m1", "market": "ms", "pick": "h"}], rows)
+    ev = cp.evaluate(c, {"m1": {"hs": 2, "as": 1, "ht_h": 0, "ht_a": 1}})          # m2 not played yet
+    board = cp.lab_scoreboard([ev])
+    by = {r["evidence"]: r for r in board}
+    assert by["KEŞİF"]["ok"] == 1 and by["KEŞİF"]["hit_pct"] == 100.0 and by["KEŞİF"]["pnl"] == 19.0 and by["KEŞİF"]["with_lab"]
+    assert by["FARK YOK"]["pending"] == 1 and by["FARK YOK"]["hit_pct"] is None
+    assert by["—"]["with_lab"] is False and by["—"]["ok"] == 1                # the plain pick, listed last
+    assert [r["evidence"] for r in board] == ["KEŞİF", "FARK YOK", "—"]

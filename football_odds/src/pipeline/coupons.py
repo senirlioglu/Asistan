@@ -205,3 +205,37 @@ def attach_prices(coupon: dict, rows_by_id: dict[str, dict]) -> dict:
         elif p["market"] == "o25":
             p["prices"] = {"over": row.get("odds_o25"), "under": row.get("odds_u25")}
     return coupon
+
+
+# --------------------------------------------------------------------------- the lab, scored on real picks
+
+LAB_ORDER = ("KEŞİF", "İLERİ TESTTE", "DOĞRULANDI", "FARK YOK", "YETERSİZ VERİ")
+
+
+def lab_scoreboard(evaluated: list[dict]) -> list[dict]:
+    """Every pick that carried Pattern Lab's view, grouped by what the lab said at the time, against the
+    picks made without it: did the lab's İLK BULGU picks land more often than its ORANLAR DOĞRU picks?
+    The forward test the lab cannot run on itself — the reader's own choices are the test set."""
+    groups: dict[str, dict] = {}
+    for c in evaluated:
+        for p in c.get("picks", []):
+            lab = p.get("lab") or {}
+            key = str(lab.get("evidence") or "") if lab else "—"
+            g = groups.setdefault(key, {"evidence": key, "n": 0, "ok": 0, "wrong": 0, "pending": 0, "pnl": 0.0, "n_odds": 0})
+            g["n"] += 1
+            ok = p.get("user_ok")
+            if ok is None:
+                g["pending"] += 1
+                continue
+            g["ok" if ok else "wrong"] += 1
+            if p.get("pnl") is not None:
+                g["pnl"] += float(p["pnl"])
+                g["n_odds"] += 1
+    rows = []
+    for key, g in groups.items():
+        settled = g["ok"] + g["wrong"]
+        rows.append({**g, "pnl": round(g["pnl"], 2), "hit_pct": round(100.0 * g["ok"] / settled, 1) if settled else None,
+                     "with_lab": key != "—"})
+    order = {k: i for i, k in enumerate(LAB_ORDER)}
+    rows.sort(key=lambda r: (not r["with_lab"], order.get(r["evidence"], 99), r["evidence"]))
+    return rows

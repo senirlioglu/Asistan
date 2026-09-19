@@ -364,6 +364,8 @@ td .infobtn { width: 22px; height: 22px; font-size: 0.75rem; vertical-align: mid
 .cp-total { background: var(--surface-2); border-left: 3px solid var(--ink); padding: 8px 12px; border-radius: 0 var(--radius-s) var(--radius-s) 0; margin-bottom: 10px; font-size: 0.9rem; }
 .cp-total-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .cp-total-row b { min-width: 60px; }
+.cp-lab { border-left-color: var(--lab); }
+.cp-lab table { font-size: 0.82rem; margin-top: 6px; }
 .cp-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; min-width: 0; }
 .cp-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
 .cp-tally { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.85rem; color: var(--ink-2); margin-bottom: 6px; }

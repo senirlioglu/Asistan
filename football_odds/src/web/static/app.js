@@ -607,14 +607,26 @@
     const box = $("#cp-list");
     try {
       const d = await api("/api/coupons");
-      renderCoupons(d.coupons || []);
+      renderCoupons(d.coupons || [], d.lab_score || []);
     } catch (e) { box.textContent = "Kuponlar yüklenemedi: " + e.message; }
   }
 
   const tallyTxt = (t) => `${t.ok} tuttu · ${t.wrong} tutmadı${t.pending ? ` · ${t.pending} bekliyor` : ""}${t.n_odds ? ` · kâr ${signed(t.pnl)} (${t.n_odds} oranlı seçim)` : ""}`;
   const statusTr = { pending: ["Bekliyor", ""], won: ["Hepsi tuttu", "won"], lost: ["Tutmadı", "lost"] };
 
-  function renderCoupons(list) {
+  /** The lab scored on the reader's own picks: hit rate and profit by what the lab said when the pick was made. */
+  function labScoreHTML(rows) {
+    const withLab = rows.filter((r) => r.with_lab);
+    if (!withLab.length) return "";
+    const name = (r) => r.with_lab ? `${esc(EV_TXT[r.evidence]?.[0] || r.evidence)}` : "Lab görüşü olmadan";
+    return `<div class="cp-total cp-lab"><span class="label">Pattern Lab'in görüşüne göre — senin seçimlerinde</span>
+      <div class="table-wrap"><table><thead><tr><th>Lab ne demişti</th><th class="num">Seçim</th><th class="num">Tuttu</th><th class="num">Tutmadı</th><th class="num">Bekliyor</th><th class="num">İsabet</th><th class="num">Kâr</th></tr></thead><tbody>
+      ${rows.map((r) => `<tr class="${r.with_lab ? "" : "thin"}"><td class="wrap">${name(r)}</td><td class="num">${r.n}</td><td class="num">${r.ok}</td><td class="num">${r.wrong}</td><td class="num">${r.pending}</td>
+        <td class="num">${r.hit_pct == null ? "–" : "%" + r.hit_pct.toFixed(0)}</td><td class="num">${r.n_odds ? `${signed(r.pnl)} <small class="muted">(${r.n_odds})</small>` : "–"}</td></tr>`).join("")}</tbody></table></div>
+      <p class="note">Seçimi yaparken Pattern Lab'in söylediği rozet o seçimle birlikte saklanır. Bu tablo, lab'in "İLK BULGU" dediği seçimlerinin "ORANLAR DOĞRU" dediklerinden daha çok tutup tutmadığını gösterir: lab'in senin gerçek seçimlerinle sınavı. Az seçimde sayılar tesadüf olabilir.</p></div>`;
+  }
+
+  function renderCoupons(list, labScore = []) {
     const box = $("#cp-list");
     if (!list.length) { box.innerHTML = `<p class="note">Henüz kupon yok. Yukarıdan maç seçip kaydet.</p>`; return; }
     const agg = { user: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 }, hist: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 }, market: { ok: 0, wrong: 0, pending: 0, pnl: 0, n_odds: 0 } };
@@ -625,10 +637,10 @@
       <div class="cp-total-row"><b class="c-hist">Geçmiş</b><span>${tallyTxt(agg.hist)}</span></div>
       <div class="cp-total-row"><b class="c-market">Piyasa</b><span>${tallyTxt(agg.market)}</span></div>
       <p class="note">Piyasa yalnızca maç sonucu ve 2,5 golde görüş bildirir; 1,5 gol ve yarı başlıklarında sadece sen ve geçmiş sayılır. Kâr: seçim başına 1 birim, o tarafın kendi seçiminin oranıyla.</p></div>` : "";
-    box.innerHTML = head + list.map((c) => {
+    box.innerHTML = head + labScoreHTML(labScore) + list.map((c) => {
       const [st, cls] = statusTr[c.status] || [c.status, ""];
       const rows = c.picks.map((p) => `<tr><td class="wrap"><button type="button" class="infobtn" data-mid="${esc(p.match_id)}" title="Analiz, sapma, nesine oranları ve notlar" aria-label="${esc(p.home)} – ${esc(p.away)} bilgi">i</button> ${esc(p.home)} – ${esc(p.away)}<small class="muted"> · ${fmtShort(p.date)}${p.time ? " " + esc(p.time) : ""}${p.score ? ` · <b>${esc(p.score)}</b>${p.ht_score ? ` (${esc(p.ht_score)})` : ""}` : ""}</small></td><td class="wrap">${esc(p.market_label)}</td>
-        <td class="num">${esc(p.pick_label)} ${okMark(p.user_ok)}${p.odds ? `<small class="muted"> @${num(p.odds)}</small>` : ""}</td>
+        <td class="num">${esc(p.pick_label)} ${okMark(p.user_ok)}${p.odds ? `<small class="muted"> @${num(p.odds)}</small>` : ""}${p.lab ? `<br><small class="muted" title="${esc(p.lab.why || "")}">Lab: ${esc(EV_TXT[p.lab.evidence]?.[0] || p.lab.evidence || "")}</small>` : ""}</td>
         <td class="num">${p.hist_pick ? `${CP_PICK[p.hist_pick]} ${okMark(p.hist_ok)}` : "–"}</td>
         <td class="num hide-sm">${p.market_pick ? `${CP_PICK[p.market_pick]} ${okMark(p.market_ok)}` : "–"}</td>
         <td class="num hide-sm">${esc(p.score || "–")}${p.ht_score ? `<small class="muted"> (${esc(p.ht_score)})</small>` : ""}</td></tr>`).join("");

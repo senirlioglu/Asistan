@@ -500,7 +500,7 @@ def coupons_list() -> dict:
     results = realised_results(settings, rows, _history())
     out = [cp.evaluate(c, results) for c in items]
     out.sort(key=lambda c: c["created_at"], reverse=True)
-    return {"coupons": out}
+    return {"coupons": out, "lab_score": cp.lab_scoreboard(out)}
 
 
 @app.post("/api/coupons")
