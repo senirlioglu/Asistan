@@ -290,7 +290,15 @@
       state.nt.data = await api(`/api/notlar?${q}`);
       state.nt.date = state.nt.data.date;
       renderNotes();
-    } catch (e) { if (!silent) $("#nt-count").textContent = "Notlar yüklenemedi: " + e.message; }
+    } catch (e) {
+      // a phone on a slow link gives up on the first read: say so where the matches would be, with a way back
+      if (!silent) {
+        $("#nt-count").textContent = "Notlar yüklenemedi: " + e.message;
+        $("#nt-body").innerHTML = `<div class="day-empty">Nesine bülteni okunamadı (${esc(e.message)}). Sunucu meşgul olabilir; birkaç saniye sonra tekrar dene.<br>
+          <button type="button" class="btn" id="nt-retry" style="margin-top:10px">Tekrar dene</button></div>`;
+        $("#nt-retry").onclick = () => loadNotes(false);
+      }
+    }
     state.nt.loading = false;
   }
 

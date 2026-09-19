@@ -1090,6 +1090,9 @@ def research() -> dict:
     return files
 
 
+_NOTLAR_CACHE: dict = {"key": None, "payload": None}
+
+
 @app.get("/api/notlar")
 def notlar(date: str | None = None, refresh: bool = False) -> dict:
     """nesine.com bulletin filtered by the user's notes: every football match with the notes it satisfies."""
@@ -1103,10 +1106,20 @@ def notlar(date: str | None = None, refresh: bool = False) -> dict:
         matches, meta = watcher.refresh_once(settings) if refresh else load_matches(settings)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(502, f"nesine bülteni alınamadı: {exc}")
-    meta = {**meta, "watch": watcher.status()}
     dates = sorted({m["date"] for m in matches if m["date"]})
     today = dt.date.today().isoformat()
     date = date or (today if today in dates else (dates[0] if dates else None))
+    # The page re-reads this every 30 s while the tab is open, and a phone gives up after a few seconds.
+    # Scoring 600 bulletin matches against the notes, the team history and our own fixtures took 4–6 s
+    # per call, so the answer is kept until something it was built from changes: the bulletin itself
+    # (fetched_at), the odds store, our prediction files or the match database.
+    hist = settings.processed_dir / "matches.parquet"
+    store_p = watcher.store_path(settings)
+    key = (date, meta.get("fetched_at"), store_p.stat().st_mtime if store_p.exists() else None,
+           hist.stat().st_mtime if hist.exists() else None,
+           tuple(sorted((p.name, p.stat().st_mtime) for p in RESULTS.glob("*_predictions.csv"))))
+    if _NOTLAR_CACHE["key"] == key and _NOTLAR_CACHE["payload"] is not None:
+        return {**_NOTLAR_CACHE["payload"], "meta": {**meta, "watch": watcher.status()}}
     if date:
         matches = [m for m in matches if m["date"] == date]
     index = _team_index()
@@ -1117,8 +1130,10 @@ def notlar(date: str | None = None, refresh: bool = False) -> dict:
         hh = team_hits(m, index) if index is not None else {}
         out_matches.append({**_nesine_payload(m, evaluate(m, hh), store), "ours": ours.get(m["code"])})
     rules = [{k: v for k, v in r.items() if k != "fn"} | {"applied": r.get("applied", True) and (r.get("fn") is not None or r["id"] in ("n2", "n14"))} for r in RULES]
-    return {"meta": meta, "dates": dates, "date": date, "rules": rules, "history": cached_backtest(settings),
-            "matches": out_matches, "n_hits": sum(1 for m in out_matches if m["hits"])}
+    payload = {"dates": dates, "date": date, "rules": rules, "history": cached_backtest(settings),
+               "matches": out_matches, "n_hits": sum(1 for m in out_matches if m["hits"])}
+    _NOTLAR_CACHE.update(key=key, payload=payload)
+    return {**payload, "meta": {**meta, "watch": watcher.status()}}
 
 
 def _analogue_rows(an: pd.DataFrame, teams: set[str], k: int) -> dict:

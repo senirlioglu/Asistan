@@ -633,3 +633,36 @@ def test_a_basket_pick_on_a_bulletin_match_becomes_a_coupon(client):
     assert by["abc"]["odds"] == 1.72 and c["status"] == "pending"
     listed = client.get("/api/coupons").json()["coupons"]
     assert listed[0]["label"] == "sepet" and len(listed[0]["picks"]) == 2
+
+
+def test_notes_answer_is_kept_until_its_inputs_change(client, monkeypatch):
+    """The Nesine tab re-reads /api/notlar every 30 s and a phone gives up after a few seconds: scoring the
+    bulletin is done once per (bulletin, odds store, predictions, history) and then served from memory."""
+    from src.nesine import bulletin, watcher
+
+    sample = {"code": 4242, "date": "2026-09-14", "time": "22:00", "home": "Arsenal FC", "away": "Everton",
+              "league": "İngiltere Premier Lig", "league_code": 1, "ms": {"1": 1.72, "X": 3.8, "2": 4.7},
+              "iyms": {}, "iy": {}, "iy05": {"alt": 1.64, "ust": 2.2}, "h1_15": {}, "h2_15": {}, "o25": {}, "o35": {}, "o45": {},
+              "gol_araligi": {}, "iy_kg": {}, "y2_kg": {}, "iy_y2_kg": {}, "iy_sonucu_kg": {}, "ilk_gol": {}, "iki_yari_15_ust": {},
+              "iy_skor": {}, "skor": {}, "korner": {}}
+    meta = {"fetched_at": "2026-09-14T18:00:00+00:00", "from_cache": True, "error": None}
+    monkeypatch.setattr(bulletin, "load_matches", lambda *a, **k: ([sample], dict(meta)))
+    monkeypatch.setattr(watcher, "load_store", lambda *a, **k: {"matches": {}})
+    monkeypatch.setattr(watcher, "start_if_enabled", lambda *a, **k: None)
+    monkeypatch.setattr(web, "_NOTLAR_CACHE", {"key": None, "payload": None})
+    calls = []
+    real = web._ours_lookup
+    monkeypatch.setattr(web, "_ours_lookup", lambda ms: calls.append(1) or real(ms))
+
+    first = client.get("/api/notlar?date=2026-09-14").json()
+    second = client.get("/api/notlar?date=2026-09-14").json()
+    assert first["matches"][0]["code"] == 4242 and first["n_hits"] == 1        # note 5 reads the 1.64
+    assert second["matches"] == first["matches"] and len(calls) == 1          # served from memory
+    assert "watch" in second["meta"]                                           # the live watcher state is not frozen with it
+    # a fresh bulletin invalidates it
+    meta["fetched_at"] = "2026-09-14T18:10:00+00:00"
+    client.get("/api/notlar?date=2026-09-14")
+    assert len(calls) == 2
+    # another day is another answer
+    client.get("/api/notlar?date=2026-09-15")
+    assert len(calls) == 3
