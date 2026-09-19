@@ -91,8 +91,13 @@ button { cursor: pointer; }
 @media (min-width: 1000px) { .page { padding: 20px 28px 0; } .topbar-inner { padding: 10px 28px; } }
 /* a real desktop: use it. The lab's day-scan table has twelve columns and wrapped into a ribbon at 1240px */
 @media (min-width: 1300px) { .page, .topbar-inner { max-width: min(1720px, 96vw); } .lab-grid { grid-template-columns: 280px minmax(0, 1fr); gap: 0 32px; } }
-.lab-stage table td.wrap { min-width: 320px; }
-@media (min-width: 1300px) { .lab-stage table td.wrap { min-width: 380px; } .lab-stage table { font-size: 0.82rem; } .lab-stage th, .lab-stage td { padding: 8px 8px; } }
+.lab-stage table td.wrap { min-width: 240px; }
+@media (min-width: 1300px) { .lab-stage table td.wrap { min-width: 320px; } .lab-stage table { font-size: 0.82rem; } .lab-stage th, .lab-stage td { padding: 8px 8px; } }
+/* below a wide desktop the day-scan table drops league, time and the plot (league and time move under the match name) */
+.show-lg { display: none; }
+@media (max-width: 1500px) { .lab-stage .hide-lg { display: none; } .lab-stage .show-lg { display: block; } }
+@media (max-width: 900px) { .lab-stage .show-lg { display: block; } }
+.lab-stage table td.wrap small { display: block; }
 .lab-stage table th.num, .lab-stage table td.num { white-space: nowrap; }
 .h2 { font-size: 1.4rem; margin-bottom: 4px; }
 .lead { color: var(--ink-2); margin: 0 0 16px; max-width: 65ch; }
@@ -560,7 +565,7 @@ tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
 .lab-qbar { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--lab); background: var(--lab-soft); color: var(--lab-ink); border-radius: 0 var(--radius-s) var(--radius-s) 0; font-size: 0.95rem; }
 .lab-qbar:empty { display: none; }
 .lab-qbar b { font-weight: 700; }
-@media (max-width: 1000px) {   /* a tablet gets the whole width for the stage; the rail becomes a strip */
+@media (max-width: 1200px) {   /* below a wide desktop the stage gets the whole width (the day-scan table needs ~880px); the rail becomes a strip */
   .lab-grid { grid-template-columns: 1fr; gap: 0; }
   .lab-rail { flex-direction: row; overflow-x: auto; scrollbar-width: none; border-right: 0; border-bottom: 1px solid var(--line); position: static; padding: 6px 0; gap: 4px; }
   .lab-rail::-webkit-scrollbar { display: none; }
@@ -578,7 +583,7 @@ tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
 .lab-row-main { display: flex; flex-direction: column; gap: 1px; }
 .lab-row-main small { font-size: 0.74rem; }
 .lab-odds { display: block; font-size: 0.72rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-@media (min-width: 1000px) { .lab-list { max-height: 540px; } .lab-grid { grid-template-columns: 260px minmax(0, 1fr); gap: 0 30px; } }
+@media (min-width: 1201px) { .lab-list { max-height: 540px; } .lab-grid { grid-template-columns: 260px minmax(0, 1fr); gap: 0 30px; } }
 .lab-row.is-on { border-left-color: var(--lab); background: var(--lab-soft); }
 .lab-row.is-na { opacity: 0.5; }
 .lab-picked { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
@@ -593,7 +598,10 @@ tr.ac-alive td { background: var(--surface-2); font-weight: 600; }
 .lab-tab { border: 0; background: none; padding: 8px 12px; font: inherit; font-weight: 700; color: var(--ink-3); border-bottom: 3px solid transparent; margin-bottom: -1px; cursor: pointer; }
 .lab-tab small { font-weight: 500; color: var(--ink-3); margin-left: 4px; }
 .lab-tab.is-on { color: var(--lab-ink); border-bottom-color: var(--lab); }
-.lab-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line-strong); white-space: nowrap; margin: 1px 0; }
+.lab-chip { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line-strong); white-space: normal; margin: 1px 0; max-width: 200px; text-align: left; }
+.lab-row-act { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.lab-row-act .btn { padding: 5px 12px; font-size: 0.8rem; }
+.lab-stage table td.where { white-space: normal; max-width: 240px; min-width: 120px; }
 .lab-chip.up { background: var(--lab-soft); color: var(--lab-ink); border-color: var(--lab-line); }
 .lab-chip.down { background: var(--warn-bg); color: var(--warn-ink); border-color: var(--warn-line); }
 .lab-pats { margin-top: 4px; display: grid; gap: 3px; }
